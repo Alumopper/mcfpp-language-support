@@ -1,0 +1,9 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <fileTypeDetector implementation="top.mcfpp.intellij.datapack.MinecraftMetadataFileTypeDetector"/>
+    </extensions>
+    <extensions defaultExtensionNs="JavaScript">
+        <JsonSchema.ProviderFactory
+                implementation="top.mcfpp.intellij.datapack.MinecraftDatapackJsonSchemaProviderFactory"/>
+    </extensions>
+</idea-plugin>

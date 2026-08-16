@@ -1,0 +1,23 @@
+namespace complete.app;
+
+import complete.models:Counter;
+import complete.math:doubled as twice;
+import complete.math:* as math;
+
+func announce(message as string) = example.mni.ProjectMni.announce;
+
+func main() {
+    var counter as Counter = Counter();
+    var next as int = counter.increment();
+    var result as int = twice(next);
+    var qualifiedResult as int = math:doubled(result);
+    announce("MCFPP complete project is ready");
+    /say MCFPP command bridge is active
+    Test.qwq(1)
+}
+
+object data Test {
+    func qwq(i as int){
+        print(i)
+    }
+}

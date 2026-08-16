@@ -1,0 +1,14 @@
+{
+  "sourcePath": "src/main/mcfpp",
+  "description": "End-to-end MCFPP language server and Java MNI fixture",
+  "namespace": "complete",
+  "targetPath": "build/datapack",
+  "jars": [
+    "build/libs/mcfpp-complete-project.jar"
+  ],
+  "copyImport": false,
+  "args": [
+    "-level=info",
+    "-debug"
+  ]
+}

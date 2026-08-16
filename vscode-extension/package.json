@@ -1,0 +1,83 @@
+{
+  "name": "mcfpp-vscode",
+  "displayName": "MCFPP Language",
+  "description": "VSCode extension for the MCFPP language",
+  "version": "1.0.0",
+  "publisher": "mcfpp",
+  "preview": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alumopper/mcfpp-language-support.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Alumopper/mcfpp-language-support/issues"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:mcfpp"
+  ],
+  "main": "./out/extension.js",
+  "extensionDependencies": [
+    "MinecraftCommands.syntax-mcfunction"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mcfpp",
+        "aliases": ["MCFPP", "mcfpp"],
+        "extensions": [".mcfpp"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mcfpp",
+        "scopeName": "source.mcfpp",
+        "path": "./syntaxes/simple.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.mcfunction": "mcfunction"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[mcfpp]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
+    "semanticTokenScopes": [
+      {
+        "language": "mcfpp",
+        "scopes": {
+          "namespace": ["entity.name.namespace.mcfpp"],
+          "class": ["entity.name.type.class.mcfpp"],
+          "interface": ["entity.name.type.interface.mcfpp"],
+          "enum": ["entity.name.type.enum.mcfpp"],
+          "function": ["entity.name.function.mcfpp"],
+          "method": ["entity.name.function.member.mcfpp"],
+          "property": ["variable.other.property.mcfpp"],
+          "variable": ["variable.other.readwrite.mcfpp"],
+          "parameter": ["variable.parameter.mcfpp"]
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}

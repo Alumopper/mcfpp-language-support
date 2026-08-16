@@ -1,0 +1,13 @@
+/vscode-extension/node_modules/
+/vscode-extension/server/
+/vscode-extension/out/
+/vscode-extension/*.vsix
+/language-server/build/
+/language-server/docs/
+/language-server/.gradle/
+/language-server/grammar-output.txt
+/.release/
+/.trae/
+/.idea/
+/examples/complete-mcfpp-project/.idea/
+/examples/complete-mcfpp-project/bin/

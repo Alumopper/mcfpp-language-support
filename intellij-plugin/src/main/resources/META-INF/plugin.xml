@@ -1,0 +1,141 @@
+<idea-plugin>
+    <id>top.mcfpp.language</id>
+    <name>MCFPP Language</name>
+    <vendor url="https://www.mcfpp.top">MCFPP</vendor>
+
+    <description><![CDATA[
+        <p>First-class MCFPP language support for IntelliJ IDEA.</p>
+        <p>The plugin reuses the MCFPP language server and integrates MNI targets directly with IDEA's Java PSI and project indexes.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+    <depends optional="true" config-file="top.mcfpp.language-lsp.xml">com.intellij.modules.lsp</depends>
+    <depends optional="true" config-file="top.mcfpp.language-java.xml">com.intellij.java</depends>
+    <depends optional="true" config-file="top.mcfpp.language-json.xml">com.intellij.modules.json</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+                name="MCFPP"
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppFileType"
+                fieldName="INSTANCE"
+                extensions="mcfpp"/>
+        <fileType
+                name="Minecraft Function"
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionFileType"
+                fieldName="INSTANCE"
+                extensions="mcfunction"/>
+        <lang.parserDefinition
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppParserDefinition"/>
+        <lang.parserDefinition
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionParserDefinition"/>
+        <lang.syntaxHighlighterFactory
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppSyntaxHighlighterFactory"/>
+        <lang.syntaxHighlighterFactory
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionSyntaxHighlighterFactory"/>
+        <lang.commenter
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppCommenter"/>
+        <lang.commenter
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionCommenter"/>
+        <lang.braceMatcher
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppBraceMatcher"/>
+        <lang.quoteHandler
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppQuoteHandler"/>
+        <annotator
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppSemanticAnnotator"/>
+        <annotator
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionAnnotator"/>
+        <externalAnnotator
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.command.McfppCommandExternalAnnotator"/>
+        <externalAnnotator
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.command.MinecraftFunctionExternalAnnotator"/>
+        <completion.contributor
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppCompletionContributor"/>
+        <completion.contributor
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionCompletionContributor"/>
+        <completion.confidence
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.command.MinecraftCommandCompletionConfidence"/>
+        <completion.confidence
+                language="MinecraftFunction"
+                implementationClass="top.mcfpp.intellij.command.MinecraftCommandCompletionConfidence"/>
+        <typedHandler implementation="top.mcfpp.intellij.command.MinecraftCommandTypedHandler"/>
+        <codeInsight.parameterInfo
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppParameterInfoHandler"/>
+        <psi.referenceContributor
+                language="MCFPP"
+                implementation="top.mcfpp.intellij.lang.McfppReferenceContributor"/>
+        <lang.findUsagesProvider
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppFindUsagesProvider"/>
+        <lang.refactoringSupport
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppRefactoringSupportProvider"/>
+        <lang.psiStructureViewFactory
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppStructureViewFactory"/>
+        <lang.foldingBuilder
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppFoldingBuilder"/>
+        <colorSettingsPage implementation="top.mcfpp.intellij.lang.McfppColorSettingsPage"/>
+        <lang.formatter
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.lang.McfppFormattingModelBuilder"/>
+        <fileTypeIndentOptionsProvider implementation="top.mcfpp.intellij.lang.McfppIndentOptionsProvider"/>
+        <lineIndentProvider implementation="top.mcfpp.intellij.lang.McfppLineIndentProvider" order="first"/>
+        <postStartupActivity implementation="top.mcfpp.intellij.command.McfppCommandServiceStartupActivity"/>
+        <langCodeStyleSettingsProvider implementation="top.mcfpp.intellij.lang.McfppCodeStyleSettingsProvider"/>
+        <defaultLiveTemplates file="/liveTemplates/MCFPP.xml"/>
+        <liveTemplateContext
+                contextId="MCFPP"
+                implementation="top.mcfpp.intellij.lang.McfppTemplateContext"/>
+        <additionalLibraryRootsProvider implementation="top.mcfpp.intellij.mni.McfppLibraryRootsProvider"/>
+        <fileBasedIndex implementation="top.mcfpp.intellij.lang.McfppSymbolIndex"/>
+        <gotoSymbolContributor implementation="top.mcfpp.intellij.lang.McfppGoToSymbolContributor"/>
+        <gotoClassContributor implementation="top.mcfpp.intellij.lang.McfppGoToTypeContributor"/>
+        <localInspection
+                language="MCFPP"
+                shortName="McfppDuplicateDeclaration"
+                displayName="Duplicate MCFPP declaration"
+                groupName="MCFPP"
+                enabledByDefault="true"
+                level="ERROR"
+                implementationClass="top.mcfpp.intellij.lang.McfppDuplicateDeclarationInspection"/>
+        <intentionAction>
+            <className>top.mcfpp.intellij.lang.McfppCreateFunctionIntention</className>
+            <category>MCFPP</category>
+            <skipBeforeAfter>true</skipBeforeAfter>
+        </intentionAction>
+        <intentionAction>
+            <className>top.mcfpp.intellij.lang.McfppCreateTypeIntention</className>
+            <category>MCFPP</category>
+            <skipBeforeAfter>true</skipBeforeAfter>
+        </intentionAction>
+        <intentionAction>
+            <className>top.mcfpp.intellij.lang.McfppAddImportIntention</className>
+            <category>MCFPP</category>
+            <skipBeforeAfter>true</skipBeforeAfter>
+        </intentionAction>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij.platform.backend.documentation">
+        <targetProvider implementation="top.mcfpp.intellij.lang.McfppDocumentationTargetProvider"/>
+    </extensions>
+</idea-plugin>

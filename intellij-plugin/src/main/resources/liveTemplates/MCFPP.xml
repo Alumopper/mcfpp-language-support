@@ -1,0 +1,47 @@
+<templateSet group="MCFPP">
+    <template name="fn" value="func $NAME$($PARAMS$) -&gt; $RETURN$ {&#10;    $END$&#10;}" description="Create an MCFPP function" toReformat="true" toShortenFQNames="true">
+        <variable name="NAME" expression="" defaultValue="&quot;name&quot;" alwaysStopAt="true"/>
+        <variable name="PARAMS" expression="" defaultValue="&quot;&quot;" alwaysStopAt="true"/>
+        <variable name="RETURN" expression="" defaultValue="&quot;void&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="nfn" value="func $NAME$($PARAMS$) -&gt; $RETURN$ = $JAVA_CLASS$.$JAVA_METHOD$;" description="Create an MNI-backed function" toReformat="true" toShortenFQNames="true">
+        <variable name="NAME" expression="" defaultValue="&quot;name&quot;" alwaysStopAt="true"/>
+        <variable name="PARAMS" expression="" defaultValue="&quot;&quot;" alwaysStopAt="true"/>
+        <variable name="RETURN" expression="" defaultValue="&quot;void&quot;" alwaysStopAt="true"/>
+        <variable name="JAVA_CLASS" expression="" defaultValue="&quot;top.mcfpp.mni.Example&quot;" alwaysStopAt="true"/>
+        <variable name="JAVA_METHOD" expression="" defaultValue="&quot;invoke&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="data" value="data $NAME$ {&#10;    $END$&#10;}" description="Create an MCFPP data type" toReformat="true" toShortenFQNames="true">
+        <variable name="NAME" expression="" defaultValue="&quot;Name&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="object" value="object data $NAME$ {&#10;    $END$&#10;}" description="Create an MCFPP object data type" toReformat="true" toShortenFQNames="true">
+        <variable name="NAME" expression="" defaultValue="&quot;Name&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="enum" value="enum $NAME$ {&#10;    $END$&#10;}" description="Create an MCFPP enum" toReformat="true" toShortenFQNames="true">
+        <variable name="NAME" expression="" defaultValue="&quot;Name&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="ctor" value="constructor($PARAMS$) {&#10;    $END$&#10;}" description="Create an MCFPP constructor" toReformat="true" toShortenFQNames="true">
+        <variable name="PARAMS" expression="" defaultValue="&quot;&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="field" value="var $NAME$ as $TYPE$ = $VALUE$;" description="Create an MCFPP field or local variable" toReformat="true" toShortenFQNames="true">
+        <variable name="NAME" expression="" defaultValue="&quot;name&quot;" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;int&quot;" alwaysStopAt="true"/>
+        <variable name="VALUE" expression="" defaultValue="&quot;0&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="if" value="if ($CONDITION$) {&#10;    $END$&#10;}" description="Create an if block" toReformat="true" toShortenFQNames="true">
+        <variable name="CONDITION" expression="" defaultValue="&quot;true&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+    <template name="for" value="for ($ITEM$ : $ITERABLE$) {&#10;    $END$&#10;}" description="Create a foreach block" toReformat="true" toShortenFQNames="true">
+        <variable name="ITEM" expression="" defaultValue="&quot;item&quot;" alwaysStopAt="true"/>
+        <variable name="ITERABLE" expression="" defaultValue="&quot;items&quot;" alwaysStopAt="true"/>
+        <context><option name="MCFPP" value="true"/></context>
+    </template>
+</templateSet>

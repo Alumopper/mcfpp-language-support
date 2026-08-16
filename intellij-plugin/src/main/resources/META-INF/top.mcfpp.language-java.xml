@@ -1,0 +1,26 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <completion.contributor
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.mni.McfppMniCompletionContributor"/>
+        <psi.referenceContributor
+                language="MCFPP"
+                implementation="top.mcfpp.intellij.mni.McfppMniReferenceContributor"/>
+        <gotoDeclarationHandler
+                implementation="top.mcfpp.intellij.mni.McfppMniGotoDeclarationHandler"/>
+        <codeInsight.lineMarkerProvider
+                language="MCFPP"
+                implementationClass="top.mcfpp.intellij.mni.McfppMniLineMarkerProvider"/>
+        <codeInsight.lineMarkerProvider
+                language="JAVA"
+                implementationClass="top.mcfpp.intellij.mni.McfppMniLineMarkerProvider"/>
+        <localInspection
+                language="MCFPP"
+                shortName="McfppMniBinding"
+                displayName="Invalid MCFPP native Java binding"
+                groupName="MCFPP"
+                enabledByDefault="true"
+                level="ERROR"
+                implementationClass="top.mcfpp.intellij.mni.McfppMniBindingInspection"/>
+    </extensions>
+</idea-plugin>

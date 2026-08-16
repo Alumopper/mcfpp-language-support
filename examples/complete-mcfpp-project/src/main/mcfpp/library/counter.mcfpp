@@ -1,0 +1,11 @@
+namespace complete.models;
+
+data Counter {
+    var value as int = 0;
+
+    func increment() -> int {
+        value = value + 1;
+        return value;
+    }
+
+}

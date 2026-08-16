@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcfpp.top/schemas/minecraft/tag.schema.json",
+  "title": "Minecraft data pack tag",
+  "type": "object",
+  "required": ["values"],
+  "properties": {
+    "replace": { "type": "boolean", "default": false },
+    "values": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "description": "Resource location or #tag." },
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "required": { "type": "boolean", "default": true }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

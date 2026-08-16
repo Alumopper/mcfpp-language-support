@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcfpp.top/schemas/minecraft/loot-table.schema.json",
+  "title": "Minecraft loot table",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "minecraft:empty", "minecraft:entity", "minecraft:block", "minecraft:chest",
+        "minecraft:fishing", "minecraft:gift", "minecraft:advancement_reward",
+        "minecraft:barter", "minecraft:command", "minecraft:selector", "minecraft:archaeology",
+        "minecraft:vault", "minecraft:shearing", "minecraft:equipment"
+      ]
+    },
+    "random_sequence": { "type": "string" },
+    "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+    "pools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rolls", "entries"],
+        "properties": {
+          "rolls": { "$ref": "#/$defs/numberProvider" },
+          "bonus_rolls": { "$ref": "#/$defs/numberProvider" },
+          "conditions": { "type": "array", "items": { "type": "object" } },
+          "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+          "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "$defs": {
+    "numberProvider": {
+      "oneOf": [
+        { "type": "number" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "value": { "type": "number" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "minecraft:alternatives", "minecraft:dynamic", "minecraft:empty", "minecraft:group",
+            "minecraft:item", "minecraft:loot_table", "minecraft:sequence", "minecraft:tag"
+          ]
+        },
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "expand": { "type": "boolean" },
+        "weight": { "type": "integer", "minimum": 0 },
+        "quality": { "type": "integer" },
+        "conditions": { "type": "array", "items": { "type": "object" } },
+        "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+      },
+      "additionalProperties": true
+    },
+    "function": {
+      "type": "object",
+      "required": ["function"],
+      "properties": {
+        "function": { "type": "string" },
+        "conditions": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,46 @@
+// Simple Language Test File
+// 这是一个Simple Language的示例文件，展示了语言的各种特性
+
+// 变量定义
+var x = 10
+var y = 20
+var name = "Simple Language"
+
+// 函数定义
+func add(a as int, b as int) -> int {
+    var result = a + b
+    return result
+}
+
+func greet(name as string) {
+    print("Hello, " + name + "!")
+}
+
+// 条件语句
+if x > 20 {
+    print("x is greater than 20")
+    print("x value: " + x)
+} else {
+    print("x is less than or equal to 20")
+}
+
+// 函数调用
+var sum = add(5, 3)
+print("Sum: " + sum)
+
+greet(name)
+
+// 嵌套调用
+print("Result of add(10, 20): " + add(10, 20))
+
+// 更多变量定义
+var isActive = true
+var pi = 3.14159
+
+data Test {
+    var qwq as string
+
+    func test() {
+        print("qwq")
+    }
+}

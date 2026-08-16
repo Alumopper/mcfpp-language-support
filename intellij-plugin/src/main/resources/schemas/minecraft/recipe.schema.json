@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcfpp.top/schemas/minecraft/recipe.schema.json",
+  "title": "Minecraft recipe",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "minecraft:blasting", "minecraft:campfire_cooking", "minecraft:crafting_shaped",
+        "minecraft:crafting_shapeless", "minecraft:crafting_special_armordye",
+        "minecraft:crafting_special_bannerduplicate", "minecraft:crafting_special_bookcloning",
+        "minecraft:crafting_special_firework_rocket", "minecraft:crafting_special_firework_star",
+        "minecraft:crafting_special_firework_star_fade", "minecraft:crafting_special_mapcloning",
+        "minecraft:crafting_special_mapextending", "minecraft:crafting_special_repairitem",
+        "minecraft:crafting_special_shielddecoration", "minecraft:crafting_special_shulkerboxcoloring",
+        "minecraft:crafting_special_suspiciousstew", "minecraft:crafting_special_tippedarrow",
+        "minecraft:smelting", "minecraft:smithing_transform", "minecraft:smithing_trim",
+        "minecraft:smoking", "minecraft:stonecutting", "minecraft:transmute"
+      ]
+    },
+    "group": { "type": "string" },
+    "category": { "enum": ["building", "equipment", "misc", "redstone", "food", "blocks"] },
+    "show_notification": { "type": "boolean", "default": true },
+    "pattern": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 3 },
+      "minItems": 1,
+      "maxItems": 3
+    },
+    "key": { "type": "object", "additionalProperties": { "$ref": "#/$defs/ingredient" } },
+    "ingredients": { "type": "array", "items": { "$ref": "#/$defs/ingredient" }, "minItems": 1 },
+    "ingredient": { "$ref": "#/$defs/ingredient" },
+    "base": { "$ref": "#/$defs/ingredient" },
+    "addition": { "$ref": "#/$defs/ingredient" },
+    "template": { "$ref": "#/$defs/ingredient" },
+    "material": { "$ref": "#/$defs/ingredient" },
+    "result": { "$ref": "#/$defs/itemStack" },
+    "experience": { "type": "number", "minimum": 0 },
+    "cookingtime": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "ingredient": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "item": { "type": "string" },
+            "tag": { "type": "string" },
+            "items": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": true
+        },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "itemStack": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "item": { "type": "string" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 99 },
+            "components": { "type": "object" }
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

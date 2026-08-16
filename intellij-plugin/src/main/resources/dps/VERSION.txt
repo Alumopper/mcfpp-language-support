@@ -1,0 +1,4 @@
+Datapack Sandbox 1.1.0
+Source: https://github.com/Alumopper/DatapackSandbox
+Commit: 9c9f763cd1c9582f3458542fedbeff89b8628f70
+SHA-256: 4a37cde465abb5be238bda21727d053d231abbb14d4f8f89925af2cb3e8ce0c8

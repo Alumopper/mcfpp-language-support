@@ -1,0 +1,220 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "MCFPP",
+  "scopeName": "source.mcfpp",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#commands" },
+    { "include": "#annotations" },
+    { "include": "#selectors" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#declarations" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.documentation.mcfpp",
+          "begin": "#\\{",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.begin.mcfpp" }
+          },
+          "end": "\\}#",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.end.mcfpp" }
+          },
+          "patterns": [
+            {
+              "name": "storage.type.doc.tag.mcfpp",
+              "match": "(?<!\\S)@[A-Za-z_][A-Za-z0-9_]*"
+            }
+          ]
+        },
+        {
+          "name": "comment.block.documentation.mcfpp",
+          "begin": "###",
+          "end": "###"
+        },
+        {
+          "name": "comment.block.mcfpp",
+          "begin": "##",
+          "end": "##"
+        },
+        {
+          "name": "comment.line.number-sign.mcfpp",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "commands": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.mcfunction",
+          "begin": "^(\\s*)(/)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.whitespace.leading.mcfpp" },
+            "2": { "name": "punctuation.definition.command.mcfpp" }
+          },
+          "end": "$",
+          "patterns": [
+            { "include": "source.mcfunction" }
+          ]
+        },
+        {
+          "name": "meta.embedded.block.mcfunction.inline",
+          "begin": "(/)(?=[^\\s])",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.command.mcfpp" }
+          },
+          "end": "(?=\\s*$)",
+          "patterns": [
+            { "include": "source.mcfunction" }
+          ]
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "storage.type.annotation.mcfpp",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "selectors": {
+      "patterns": [
+        {
+          "name": "variable.language.selector.mcfpp",
+          "match": "@[arpse]\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.mcfpp",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mcfpp",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.interpolation.mcfpp",
+              "begin": "\\$\\{",
+              "end": "\\}"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.mcfpp",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mcfpp",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.mcfpp",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.mcfpp",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.mcfpp",
+          "match": "\\b(?:0x[0-9A-Fa-f]+|\\d+\\.\\d+|\\d+)(?:[bBsSlLfFdD])?\\b"
+        },
+        {
+          "name": "constant.language.boolean.mcfpp",
+          "match": "\\b(?:true|false|null)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.mcfpp",
+          "match": "\\b(?:if|else|while|for|do|try|store|execute|break|continue|return)\\b"
+        },
+        {
+          "name": "keyword.declaration.mcfpp",
+          "match": "\\b(?:namespace|import|typealias|data|object|interface|enum|func|constructor|var|get|set|operator)\\b"
+        },
+        {
+          "name": "storage.modifier.mcfpp",
+          "match": "\\b(?:inline|const|static|override|abstract|native|dynamic|global|public|protected|private|impl|extends|from|as|final|concrete)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.mcfpp",
+          "match": "\\b(?:vec\\d+|int|long|byte|short|float|double|bool|string|text|selector|entity|nbt|any|void|list|map|dict|Type|ByteArray|IntArray|LongArray)\\b"
+        },
+        {
+          "name": "entity.name.type.mcfpp",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "entity.name.namespace.mcfpp",
+          "match": "(?<=\\bnamespace\\s)[A-Za-z_][A-Za-z0-9_.]*"
+        },
+        {
+          "name": "entity.name.function.mcfpp",
+          "match": "(?<=\\bfunc\\s)(?:[A-Za-z_][A-Za-z0-9_<>!?|:&\\[\\]]*\\s*\\.\\s*)?[A-Za-z_][A-Za-z0-9_]*(?=\\s*(?:<[^>]*>\\s*)?\\()"
+        },
+        {
+          "name": "variable.other.definition.mcfpp",
+          "match": "(?<=\\bvar\\s)[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.mcfpp",
+          "match": "(==|!=|~=|<=|>=|->|=>|::|\\.\\.|&&|\\|\\||\\+\\+|--|\\+=|-=|\\*=|/=|%=|=|\\+|-|\\*|/|%|<|>|\\||&|!)"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.group.mcfpp",
+          "match": "[\\(\\)\\[\\]]"
+        },
+        {
+          "name": "punctuation.definition.block.mcfpp",
+          "match": "[\\{\\}]"
+        },
+        {
+          "name": "punctuation.separator.mcfpp",
+          "match": "[,;:]"
+        }
+      ]
+    }
+  }
+}

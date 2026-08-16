@@ -1,0 +1,5 @@
+namespace complete.math;
+
+func doubled(value as int) -> int {
+    return value * 2;
+}

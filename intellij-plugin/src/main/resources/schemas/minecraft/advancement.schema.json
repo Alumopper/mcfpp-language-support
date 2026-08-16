@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcfpp.top/schemas/minecraft/advancement.schema.json",
+  "title": "Minecraft advancement",
+  "type": "object",
+  "required": ["criteria"],
+  "properties": {
+    "display": {
+      "type": "object",
+      "required": ["icon", "title", "description"],
+      "properties": {
+        "icon": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": { "type": "string" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 99 },
+            "components": { "type": "object" }
+          }
+        },
+        "title": { "$ref": "#/$defs/textComponent" },
+        "description": { "$ref": "#/$defs/textComponent" },
+        "frame": { "enum": ["task", "challenge", "goal"] },
+        "background": { "type": "string" },
+        "show_toast": { "type": "boolean", "default": true },
+        "announce_to_chat": { "type": "boolean", "default": true },
+        "hidden": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": true
+    },
+    "parent": { "type": "string" },
+    "criteria": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["trigger"],
+        "properties": {
+          "trigger": { "type": "string" },
+          "conditions": { "type": "object" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+    },
+    "rewards": {
+      "type": "object",
+      "properties": {
+        "experience": { "type": "integer", "minimum": 0 },
+        "loot": { "type": "array", "items": { "type": "string" } },
+        "recipes": { "type": "array", "items": { "type": "string" } },
+        "function": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sends_telemetry_event": { "type": "boolean", "default": false }
+  },
+  "$defs": {
+    "textComponent": {
+      "oneOf": [{ "type": "string" }, { "type": "array" }, { "type": "object" }]
+    }
+  },
+  "additionalProperties": false
+}

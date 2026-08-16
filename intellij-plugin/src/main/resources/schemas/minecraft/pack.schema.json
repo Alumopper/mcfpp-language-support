@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcfpp.top/schemas/minecraft/pack.schema.json",
+  "title": "Minecraft pack.mcmeta",
+  "type": "object",
+  "required": ["pack"],
+  "properties": {
+    "pack": {
+      "type": "object",
+      "required": ["pack_format", "description"],
+      "properties": {
+        "pack_format": { "type": "integer", "minimum": 1, "description": "Primary data pack format." },
+        "description": { "$ref": "#/$defs/textComponent" },
+        "supported_formats": {
+          "description": "Additional compatible pack formats.",
+          "oneOf": [
+            { "type": "integer", "minimum": 1 },
+            { "$ref": "#/$defs/formatRange" },
+            { "type": "array", "items": { "oneOf": [{ "type": "integer" }, { "$ref": "#/$defs/formatRange" }] } }
+          ]
+        },
+        "min_format": { "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 }] },
+        "max_format": { "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 }] }
+      },
+      "additionalProperties": true
+    },
+    "overlays": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["formats", "directory"],
+            "properties": {
+              "formats": { "oneOf": [{ "type": "integer" }, { "$ref": "#/$defs/formatRange" }] },
+              "directory": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "filter": {
+      "type": "object",
+      "properties": {
+        "block": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "namespace": { "type": "string" },
+              "path": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "formatRange": {
+      "type": "object",
+      "properties": {
+        "min_inclusive": { "type": "integer" },
+        "max_inclusive": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "textComponent": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array" },
+        { "type": "object" }
+      ]
+    }
+  },
+  "additionalProperties": true
+}
