@@ -14,7 +14,7 @@ public final class McfppFindUsagesProvider implements FindUsagesProvider {
         return new DefaultWordsScanner(
                 new McfppLexer(),
                 TokenSet.create(McfppTokenTypes.IDENTIFIER),
-                TokenSet.create(McfppTokenTypes.COMMENT, McfppTokenTypes.DOC_COMMENT),
+                TokenSet.create(McfppTokenTypes.COMMENT, McfppTokenTypes.DOC_COMMENT, McfppTokenTypes.VERSION_DIRECTIVE),
                 TokenSet.create(McfppTokenTypes.STRING)
         );
     }

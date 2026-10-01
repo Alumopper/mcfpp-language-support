@@ -11,11 +11,25 @@ import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
+import com.intellij.codeInsight.lookup.Lookup;
 
 import java.util.Arrays;
 import java.util.List;
 
 public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
+    public void testCompletesVersionDirectiveWithCondition() {
+        myFixture.configureByText(McfppFileType.INSTANCE, "#i<caret>");
+        var items = myFixture.completeBasic();
+        if (items != null) {
+            var directive = Arrays.stream(items).filter(item -> item.getLookupString().equals("if"))
+                    .findFirst().orElseThrow(() -> new AssertionError("#if was not offered"));
+            myFixture.getLookup().setCurrentItem(directive);
+            myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR);
+        }
+        assertEquals("#if MC >= 26.3", myFixture.getEditor().getDocument().getText());
+        myFixture.checkResult("#if MC >= 26.3<caret>");
+    }
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();

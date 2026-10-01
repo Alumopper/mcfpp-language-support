@@ -14,6 +14,7 @@ import com.intellij.psi.PsiModifier;
 import com.intellij.psi.search.GlobalSearchScope;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.lang.McfppFile;
+import top.mcfpp.intellij.lang.McfppFileModels;
 
 import java.util.Arrays;
 import java.util.List;
@@ -38,7 +39,7 @@ public final class McfppMniBindingInspection extends LocalInspectionTool {
     }
 
     private static void inspectFile(PsiFile file, ProblemsHolder holder) {
-        CharSequence source = file.getViewProvider().getContents();
+        CharSequence source = McfppFileModels.activeSource(file);
         JavaPsiFacade facade = JavaPsiFacade.getInstance(file.getProject());
         GlobalSearchScope scope = GlobalSearchScope.allScope(file.getProject());
         for (MniJavaTargetParser.Target target : MniJavaTargetParser.parse(source)) {

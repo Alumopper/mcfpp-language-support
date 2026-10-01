@@ -9,6 +9,40 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class McfppCommandIntegrationTest extends BasePlatformTestCase {
+    public void testInactiveBranchesDoNotProduceRawCommandDiagnostics() {
+        myFixture.configureByText(McfppFileType.INSTANCE, """
+                func main() {
+                #if MC >= 26.3
+                    /compute default float
+                #else
+                    /say legacy
+                #endif
+                }
+                """);
+        var input = new McfppCommandExternalAnnotator().collectInformation(myFixture.getFile());
+        assertNotNull(input);
+        assertEquals(1, input.commands().size());
+        assertEquals("say legacy", input.commands().getFirst().text());
+    }
+
+    public void testMinecraft263ProvidesNativeFloatCommandCompletionAndValidation() {
+        String previous = System.getProperty("mcfpp.minecraft.version");
+        System.setProperty("mcfpp.minecraft.version", "26.3");
+        McfppCommandService service = new McfppCommandService(getProject());
+        try {
+            assertTrue("The bundled command service must support the compiler's 26.3 target", service.warmUp());
+            assertTrue(service.complete("comp", 4).suggestions().stream()
+                    .anyMatch(suggestion -> suggestion.value().equals("compute")));
+            assertFalse(service.check("data modify storage demo:test result set compute default float " +
+                    "{type:\"minecraft:add\",inputs:[1.25,2.5]}").syntaxError());
+            assertTrue(service.check("compute default float").syntaxError());
+        } finally {
+            service.dispose();
+            if (previous == null) System.clearProperty("mcfpp.minecraft.version");
+            else System.setProperty("mcfpp.minecraft.version", previous);
+        }
+    }
+
     public void testBundledServiceProvidesStructuredMinecraftCompletionsAndChecks() {
         McfppCommandService service = McfppCommandService.getInstance(getProject());
 

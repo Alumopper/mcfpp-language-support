@@ -12,6 +12,8 @@ import org.eclipse.lsp4j.CallHierarchyPrepareParams
 import org.eclipse.lsp4j.Command
 import org.eclipse.lsp4j.CompletionItem
 import org.eclipse.lsp4j.CompletionItemKind
+import org.eclipse.lsp4j.InsertTextFormat
+import top.mcfpp.language.VersionPreprocessor
 import org.eclipse.lsp4j.CompletionList
 import org.eclipse.lsp4j.CompletionParams
 import org.eclipse.lsp4j.DeclarationParams
@@ -160,6 +162,28 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
 
     override fun completion(params: CompletionParams): CompletableFuture<Either<List<CompletionItem>, CompletionList>> {
         val analysis = analyses[params.textDocument.uri] ?: return CompletableFuture.completedFuture(Either.forLeft(emptyList()))
+        val directiveStart = VersionPreprocessor.directivePrefixStart(
+            analysis.text, MCFPPTextChanges.positionToOffset(analysis.text, params.position)
+        )
+        if (directiveStart >= 0) {
+            val start = offsetToPosition(analysis.text, directiveStart)
+            val items = listOf(
+                "#if" to "#if MC >= \${1:26.3}",
+                "#elif" to "#elif MC >= \${1:26.1}",
+                "#else" to "#else",
+                "#endif" to "#endif"
+            ).map { (label, snippet) ->
+                CompletionItem(label).apply {
+                    kind = CompletionItemKind.Keyword
+                    detail = "Minecraft version conditional compilation"
+                    insertTextFormat = InsertTextFormat.Snippet
+                    textEdit = Either.forLeft(TextEdit(
+                        Range(start, params.position), snippet
+                    ))
+                }
+            }
+            return CompletableFuture.completedFuture(Either.forLeft(items))
+        }
         val receiver = analysis.receiverBefore(params.position)
         val namespaceQualifier = namespaceQualifierBefore(analysis, params.position)
         val context = determineCompletionContext(analysis, params.position)
@@ -618,7 +642,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                 if (documentVersions[uri] != version || documents[uri] != text) {
                     return@schedule
                 }
-                val analysis = MCFPPDocumentIndex.analyze(uri, text)
+                val analysis = MCFPPDocumentIndex.analyze(uri, text, projectIndex.targetVersionForUri(uri))
                 if (documentVersions[uri] != version || documents[uri] != text) {
                     return@schedule
                 }
@@ -687,6 +711,13 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             pendingProjectRefresh = analysisExecutor.schedule({
                 try {
                     projectIndex.refresh(HashMap(documents))
+                    documents.forEach { (uri, text) ->
+                        val previous = analyses[uri] ?: return@forEach
+                        val targetVersion = projectIndex.targetVersionForUri(uri)
+                        if (previous.targetVersion != targetVersion) {
+                            analyses[uri] = MCFPPDocumentIndex.analyze(uri, text, targetVersion)
+                        }
+                    }
                     invalidateSemanticTokens()
                     invalidateWorkspaceSymbolCache()
                     analyses.keys.forEach { uri ->
@@ -1478,6 +1509,9 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     private fun semanticTokenEntries(analysis: MCFPPDocumentAnalysis): List<SemanticTokenEntry> {
         semanticTokenCache[analysis.uri]?.let { return it }
         val entriesByRange = linkedMapOf<String, SemanticTokenEntry>()
+        analysis.versionDirectives.forEach { range ->
+            entriesByRange[semanticRangeKey(range)] = SemanticTokenEntry(range, "macro", 0)
+        }
         analysis.symbols
             .asSequence()
             .filterNot { it.isExternal }

@@ -22,6 +22,7 @@ import com.intellij.util.indexing.FileBasedIndex;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.command.McfppCommandContext;
 import top.mcfpp.intellij.command.MinecraftCommandCompletionSupport;
+import top.mcfpp.language.VersionPreprocessor;
 
 import javax.swing.Icon;
 import java.util.HashSet;
@@ -62,6 +63,21 @@ public final class McfppCompletionContributor extends CompletionContributor impl
         int offset = parameters.getOffset();
         PsiFile originalFile = parameters.getOriginalFile();
         String originalSource = originalFile.getViewProvider().getContents().toString();
+        if (VersionPreprocessor.directivePrefixStart(originalSource, offset) >= 0) {
+            for (String directive : List.of("if", "elif", "else", "endif")) {
+                String condition = directive.equals("if") || directive.equals("elif") ? " MC >= 26.3" : "";
+                result.addElement(LookupElementBuilder.create(directive)
+                        .withPresentableText("#" + directive + condition)
+                        .withTypeText("Minecraft version", true)
+                        .withInsertHandler((context, item) -> {
+                            int tail = context.getTailOffset();
+                            context.getDocument().insertString(tail, condition);
+                            context.setTailOffset(tail + condition.length());
+                            context.getEditor().getCaretModel().moveToOffset(context.getTailOffset());
+                        }));
+            }
+            return;
+        }
         McfppCommandContext commandContext = McfppCommandContext.at(originalSource, offset);
         if (commandContext != null) {
             completeMinecraftCommand(position, result, commandContext, originalSource);

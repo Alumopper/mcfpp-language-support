@@ -3,6 +3,7 @@
   "name": "MCFPP",
   "scopeName": "source.mcfpp",
   "patterns": [
+    { "include": "#version-directives" },
     { "include": "#comments" },
     { "include": "#commands" },
     { "include": "#annotations" },
@@ -16,6 +17,28 @@
     { "include": "#punctuation" }
   ],
   "repository": {
+    "version-directives": {
+      "patterns": [
+        {
+          "name": "meta.preprocessor.mcfpp",
+          "match": "^[ \\t]*(#(?:if|elif|else|endif))(?=[ \\t]|$)(?:[ \\t]+(MC)[ \\t]+(==|!=|<=|>=|<|>)[ \\t]+([0-9]+(?:\\.[0-9]+)+))?.*$",
+          "captures": {
+            "1": {
+              "name": "keyword.control.directive.mcfpp"
+            },
+            "2": {
+              "name": "variable.language.mcfpp"
+            },
+            "3": {
+              "name": "keyword.operator.mcfpp"
+            },
+            "4": {
+              "name": "constant.numeric.mcfpp"
+            }
+          }
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
@@ -55,23 +78,12 @@
       "patterns": [
         {
           "name": "meta.embedded.block.mcfunction",
-          "begin": "^(\\s*)(/)",
+          "begin": "^([ \t]*)(/)",
           "beginCaptures": {
             "1": { "name": "punctuation.whitespace.leading.mcfpp" },
             "2": { "name": "punctuation.definition.command.mcfpp" }
           },
           "end": "$",
-          "patterns": [
-            { "include": "source.mcfunction" }
-          ]
-        },
-        {
-          "name": "meta.embedded.block.mcfunction.inline",
-          "begin": "(/)(?=[^\\s])",
-          "beginCaptures": {
-            "1": { "name": "punctuation.definition.command.mcfpp" }
-          },
-          "end": "(?=\\s*$)",
           "patterns": [
             { "include": "source.mcfunction" }
           ]
@@ -196,7 +208,7 @@
       "patterns": [
         {
           "name": "keyword.operator.mcfpp",
-          "match": "(==|!=|~=|<=|>=|->|=>|::|\\.\\.|&&|\\|\\||\\+\\+|--|\\+=|-=|\\*=|/=|%=|=|\\+|-|\\*|/|%|<|>|\\||&|!)"
+          "match": "(==|!=|~=|<=|>=|->|=>|::|\\.\\.|&&|\\|\\||\\+=|-=|\\*=|/=|%=|=|\\+|-|\\*|/|%|<|>|\\||&|!)"
         }
       ]
     },

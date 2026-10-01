@@ -36,6 +36,8 @@ The JetBrains LSP API is not available in IntelliJ IDEA open-source builds or An
 
 Minecraft command support runs in a separate, lazily started Java process and does not depend on IDEA's Java plugin. The profile comes from the top-level `version` in `mcfpp.json`; projects without one use `1.21.8`.
 
+The bundled service includes the `26.3` profile and native float `compute` commands. MCFPP version conditions, unary minus, and compound assignments are supported by the shared language server and native declaration model.
+
 Datapack Sandbox currently exposes command completion and command checking through its JSONL service. `.mcfunction` uses that semantic command tree directly; datapack JSON uses bundled path-sensitive JSON Schemas because DPS does not currently expose a JSON completion protocol.
 
 ## Build and run

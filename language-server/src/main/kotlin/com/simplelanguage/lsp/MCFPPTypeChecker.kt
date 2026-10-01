@@ -21,7 +21,7 @@ class MCFPPTypeChecker(
     private val inferredSymbolTypes = linkedMapOf<String, String>()
 
     fun collectDiagnostics(): List<Diagnostic> {
-        val lexer = mcfppLexer(CharStreams.fromString(document.text))
+        val lexer = mcfppLexer(CharStreams.fromString(document.analysisText))
         lexer.removeErrorListeners()
         lexer.addErrorListener(BaseErrorListener())
         val parser = mcfppParser(CommonTokenStream(lexer))
@@ -160,7 +160,7 @@ class MCFPPTypeChecker(
         override fun visitStatementExpression(ctx: mcfppParser.StatementExpressionContext) {
             val target = ctx.varWithSelector()
             val value = ctx.expression()
-            if (target != null && value != null && ctx.ASSIGNMENT() != null) {
+            if (target != null && value != null && ctx.assignmentOperator() != null) {
                 val expectedType = inferVarWithSelectorType(target)
                 val actualType = inferExpressionType(value)
                 if (!isAssignable(expectedType, actualType)) {
@@ -460,6 +460,9 @@ class MCFPPTypeChecker(
         }
         if (ctx.EXCL() != null) {
             return "bool"
+        }
+        if (ctx.SUB() != null) {
+            return inferUnaryType(ctx.unaryExpression())
         }
         return inferVarWithSelectorType(ctx.rightVarExpression()?.varWithSelector())
     }

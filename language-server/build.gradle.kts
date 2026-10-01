@@ -113,7 +113,7 @@ val generateAllGrammarSources by tasks.registering {
 sourceSets {
     main {
         java {
-            srcDirs("src/main/kotlin", "build/generated-src/antlr/antlr4")
+            srcDirs("src/main/kotlin", "build/generated-src/antlr/antlr4", "../shared/src/main/java")
         }
         kotlin {
             srcDirs("src/main/kotlin", "build/generated-src/antlr/antlr4")

@@ -47,12 +47,99 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.nio.file.Path
+import org.junit.jupiter.api.io.TempDir
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SimpleLanguageServerTest {
+    @Test
+    fun `target version changes refresh open document diagnostics and symbols`(@TempDir root: Path) {
+        val config = root.resolve("mcfpp.json")
+        config.writeText("""{"version":"26.3","compileArgs":["-ignoreStdLib"]}""")
+        val uri = root.resolve("versions.mcfpp").toUri().toString()
+        val analyzed = CountDownLatch(1)
+        val switched = CountDownLatch(1)
+        val switching = AtomicBoolean(false)
+        val latest = AtomicReference<List<Diagnostic>>()
+        val server = SimpleLanguageServer()
+        server.connect(RecordingLanguageClient(analyzed) { params ->
+            if (params.uri == uri) {
+                latest.set(params.diagnostics)
+                if (switching.get()) {
+                    val current = server.getTextDocumentService()
+                        .documentSymbol(DocumentSymbolParams(TextDocumentIdentifier(uri))).get()
+                        .firstOrNull { it.right.name == "selected" }
+                    if (current?.right?.selectionRange?.start?.line == 12) switched.countDown()
+                }
+                true
+            } else false
+        })
+        server.initialize(InitializeParams().apply { rootUri = root.toUri().toString() }).get()
+        val service = server.getTextDocumentService() as MCFPPTextDocumentService
+        val source = """
+            #if MC >= 26.3
+            func selected(value as float) -> float {
+                var negative = -value
+                var result as float = -negative
+                result += 2
+                result -= 1.0f
+                result *= 3
+                result /= 2
+                result %= 1.5f
+                return -result
+            }
+            #else
+            func selected() -> int { return 1; }
+            #endif
+        """.trimIndent()
+        try {
+            service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, source)))
+            assertTrue(analyzed.await(10, TimeUnit.SECONDS))
+            assertEquals(emptyList(), latest.get().map { it.message })
+            val symbols = service.documentSymbol(DocumentSymbolParams(TextDocumentIdentifier(uri))).get()
+                .filter { it.right.name == "selected" }
+            assertEquals(1, symbols.size)
+            assertEquals(1, symbols.single().right.selectionRange.start.line)
+            val tokens = decodeSemanticTokens(service.semanticTokensFull(SemanticTokensParams(TextDocumentIdentifier(uri))).get().data)
+            assertEquals(setOf(0, 11, 13), tokens.filter { it.type == "macro" }.map { it.line }.toSet())
+
+            config.writeText("""{"version":"26.2","compileArgs":["-ignoreStdLib"]}""")
+            switching.set(true)
+            service.refreshProjectIndex(listOf(config.toUri().toString()))
+            assertTrue(switched.await(10, TimeUnit.SECONDS))
+            assertEquals(emptyList(), latest.get().map { it.message })
+            val oldSymbols = service.documentSymbol(DocumentSymbolParams(TextDocumentIdentifier(uri))).get()
+                .filter { it.right.name == "selected" }
+            assertEquals(12, oldSymbols.single().right.selectionRange.start.line)
+        } finally {
+            server.shutdown().get()
+        }
+    }
+
+    @Test
+    fun `completes version directives with a replacement edit`() {
+        val analyzed = CountDownLatch(1)
+        val server = SimpleLanguageServer()
+        server.connect(RecordingLanguageClient(analyzed) { true })
+        server.initialize(InitializeParams()).get()
+        val service = server.getTextDocumentService()
+        val uri = "file:///directives.mcfpp"
+        try {
+            service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, "  #i")))
+            assertTrue(analyzed.await(5, TimeUnit.SECONDS))
+            val completions = service.completion(CompletionParams(TextDocumentIdentifier(uri), Position(0, 4))).get().left
+            assertEquals(listOf("#if", "#elif", "#else", "#endif"), completions.map { it.label })
+            val edit = completions.first().textEdit.left
+            assertEquals(Range(Position(0, 2), Position(0, 4)), edit.range)
+            assertEquals("#if MC >= \${1:26.3}", edit.newText)
+        } finally {
+            server.shutdown().get()
+        }
+    }
+
     @Test
     fun `advertises incremental synchronization with save text`() {
         val server = SimpleLanguageServer()

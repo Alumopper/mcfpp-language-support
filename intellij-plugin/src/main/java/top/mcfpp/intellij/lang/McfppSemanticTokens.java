@@ -386,7 +386,7 @@ final class McfppSemanticTokens {
             String text = source.subSequence(lexer.getTokenStart(), lexer.getTokenEnd()).toString();
             if (type == McfppTokenTypes.WHITE_SPACE) {
                 newline |= text.indexOf('\n') >= 0 || text.indexOf('\r') >= 0;
-            } else if (type != McfppTokenTypes.COMMENT && type != McfppTokenTypes.DOC_COMMENT) {
+            } else if (type != McfppTokenTypes.COMMENT && type != McfppTokenTypes.DOC_COMMENT && type != McfppTokenTypes.VERSION_DIRECTIVE) {
                 tokens.add(new Token(type, text, lexer.getTokenStart(), newline));
                 newline = false;
             }

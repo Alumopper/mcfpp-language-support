@@ -7,6 +7,17 @@ import top.mcfpp.intellij.lang.McfppFileType;
 import java.util.List;
 
 public final class McfppMniBindingInspectionTest extends LightJavaCodeInsightFixtureTestCase {
+    public void testInactiveNativeBindingsDoNotProduceJavaDiagnostics() {
+        myFixture.configureByText(McfppFileType.INSTANCE, """
+                #if MC >= 26.3
+                func modern() = missing.Bridge.modern;
+                #else
+                func legacy() {}
+                #endif
+                """);
+        assertNoMniProblems(myFixture.doHighlighting());
+    }
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();

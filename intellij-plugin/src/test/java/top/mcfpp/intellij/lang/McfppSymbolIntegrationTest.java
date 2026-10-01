@@ -13,12 +13,29 @@ import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import com.intellij.testFramework.IndexingTestUtil;
+import com.intellij.openapi.application.WriteAction;
+import com.intellij.openapi.vfs.VfsUtil;
 
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
+    public void testVersionChangeInvalidatesNativeModelWithExplicitNamespace() throws Exception {
+        var config = myFixture.addFileToProject("mcfpp.json", "{\"version\":\"26.3\"}");
+        var source = myFixture.addFileToProject("src/versions.mcfpp", """
+                namespace demo;
+                #if MC >= 26.3
+                func modern(){}
+                #else
+                func legacy(){}
+                #endif
+                """);
+        assertEquals("modern", McfppFileModels.get(source).symbols().getFirst().name());
+        WriteAction.run(() -> VfsUtil.saveText(config.getVirtualFile(), "{\"version\":\"26.2\"}"));
+        assertEquals("legacy", McfppFileModels.get(source).symbols().getFirst().name());
+    }
+
     public void testResolvesImportedTypeAcrossFiles() {
         myFixture.addFileToProject("src/models.mcfpp", """
                 namespace complete.models;

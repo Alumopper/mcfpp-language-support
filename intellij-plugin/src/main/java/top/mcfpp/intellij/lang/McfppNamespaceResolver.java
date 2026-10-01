@@ -5,6 +5,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import top.mcfpp.language.VersionPreprocessor;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -13,6 +14,7 @@ import java.util.regex.Pattern;
 final class McfppNamespaceResolver {
     private static final Pattern NAMESPACE = Pattern.compile("\\\"namespace\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
     private static final Pattern SOURCE_PATH = Pattern.compile("\\\"sourcePath\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+    private static final Pattern VERSION = Pattern.compile("\"version\"\\s*:\\s*\"([^\"]+)\"");
 
     private McfppNamespaceResolver() {
     }
@@ -32,18 +34,20 @@ final class McfppNamespaceResolver {
                 String text = VfsUtilCore.loadText(configuration);
                 String baseNamespace = match(NAMESPACE, text);
                 String sourcePath = match(SOURCE_PATH, text);
-                if (baseNamespace == null || sourcePath == null) return new Inference("", configuration);
+                String version = match(VERSION, text);
+                if (version == null) version = VersionPreprocessor.DEFAULT_VERSION;
+                if (baseNamespace == null || sourcePath == null) return new Inference("", configuration, version);
                 VirtualFile sourceRoot = directory.findFileByRelativePath(sourcePath.replace('\\', '/'));
                 if (sourceRoot == null || !VfsUtilCore.isAncestor(sourceRoot, virtualFile, false)) {
-                    return new Inference("", configuration);
+                    return new Inference("", configuration, version);
                 }
                 String relativeDirectory = VfsUtilCore.getRelativePath(virtualFile.getParent(), sourceRoot, '/');
                 String suffix = relativeDirectory == null || relativeDirectory.isEmpty()
                         ? ""
                         : "." + relativeDirectory.replace('/', '.');
-                return new Inference(baseNamespace + suffix, configuration);
+                return new Inference(baseNamespace + suffix, configuration, version);
             } catch (IOException ignored) {
-                return new Inference("", configuration);
+                return new Inference("", configuration, VersionPreprocessor.DEFAULT_VERSION);
             }
         }
         return Inference.NONE;
@@ -54,7 +58,7 @@ final class McfppNamespaceResolver {
         return matcher.find() ? matcher.group(1) : null;
     }
 
-    record Inference(@NotNull String namespace, @Nullable VirtualFile dependency) {
-        static final Inference NONE = new Inference("", null);
+    record Inference(@NotNull String namespace, @Nullable VirtualFile dependency, @NotNull String targetVersion) {
+        static final Inference NONE = new Inference("", null, VersionPreprocessor.DEFAULT_VERSION);
     }
 }

@@ -52,7 +52,7 @@ class SimpleLanguageServer : LanguageServer, LanguageClientAware {
             change = TextDocumentSyncKind.Incremental
             setSave(SaveOptions(true))
         })
-        capabilities.completionProvider = CompletionOptions(false, listOf(".", ":", "@", "/"))
+        capabilities.completionProvider = CompletionOptions(false, listOf(".", ":", "@", "/", "#"))
         capabilities.signatureHelpProvider = SignatureHelpOptions(listOf("(", "<", ","), listOf(","))
         capabilities.definitionProvider = Either.forLeft(true)
         capabilities.declarationProvider = Either.forLeft(true)

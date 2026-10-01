@@ -15,6 +15,8 @@ This repository provides an MCFPP language server built with Kotlin, ANTLR 4, an
 - Full-document and range formatting driven by syntax tokens
 - Inlay hints for inferred types and argument names
 - Full-document and range semantic tokens
+- Compiler-compatible arithmetic: unary minus, compound assignments (`+=`, `-=`, `*=`, `/=`, `%=`), and continuation after a trailing operator
+- Minecraft version directives (`#if`, `#elif`, `#else`, `#endif`), directive completion/highlighting, and diagnostics for invalid conditions or nesting
 - Minecraft command diagnostics, completion, selectors, resource locations, and semantic highlighting
 - Java/MNI navigation and completion when Java support is available; core MCFPP support does not require a Java editor plugin
 - Semantic diagnostics and quick fixes for calls, types, returns, visibility, unresolved members, and duplicate declarations
@@ -23,6 +25,7 @@ This repository provides an MCFPP language server built with Kotlin, ANTLR 4, an
 
 ```text
 language-server/                  Kotlin LSP server, ANTLR grammar, and tests
+shared/                           Version preprocessing shared by the LSP and IntelliJ
 vscode-extension/                 VS Code client, syntax highlighting, and bundled server
 intellij-plugin/                  IntelliJ IDEA plugin, LSP client, MNI support, and datapack editing
 examples/complete-mcfpp-project/  End-to-end MCFPP and Java/MNI sample project
@@ -77,7 +80,27 @@ The plugin archive is generated under `intellij-plugin/build/distributions`. Run
 
 ## Project detection
 
-The language server reads compiler-compatible project JSON settings, including `namespace`, `sourcePath`, `targetPath`, `include`/`includes`, `jar`/`jars`, and `-ignoreStdLib` in `compileArgs`. Without a project configuration, it treats the workspace or `src/main/mcfpp` as the source root.
+The language server reads compiler-compatible project JSON settings, including `namespace`, `sourcePath`, `targetPath`, `version`, `include`/`includes`, `jar`/`jars`, and `-ignoreStdLib` in `compileArgs`. Without a project configuration, it treats the workspace or `src/main/mcfpp` as the source root.
+
+Version conditions use the project's `version` (default `1.21.8`). Only the selected branches contribute declarations, imports, references, and semantic diagnostics. Saving a changed target version refreshes open documents and cached workspace files. IntelliJ's native declaration model uses the same version filtering. Conditions may be nested and compare integer version segments using `==`, `!=`, `<`, `<=`, `>`, or `>=`; logical combinations and abbreviated old versions such as `21.6` are rejected.
+
+```mcfpp
+#if MC >= 26.3
+func calculate(value as float) -> float {
+    value += 12 /
+        3;
+    value %= 2.5f;
+    return -value;
+}
+#else
+func calculate(value as float) -> float {
+    value += 4;
+    return -value;
+}
+#endif
+```
+
+The compiler selects its native NBT float backend for `26.3`. These editor features retain the same `float` type and support the new arithmetic syntax. Newlines terminate statements unless the preceding line ends with an operator. A leading `/` starts a Minecraft command; `++` and `--` are unsupported.
 
 ## License
 

@@ -11,6 +11,7 @@ import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import top.mcfpp.intellij.lang.McfppFile;
+import top.mcfpp.intellij.lang.McfppFileModels;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +26,7 @@ public final class McfppCommandExternalAnnotator
     public @Nullable Input collectInformation(@NotNull PsiFile file) {
         if (!(file instanceof McfppFile)) return null;
         List<McfppCommandContext.StaticCommand> commands = McfppCommandContext.staticCommands(
-                file.getViewProvider().getContents());
+                McfppFileModels.activeSource(file));
         if (commands.isEmpty()) return null;
         return new Input(file.getProject(), commands.size() <= MAX_COMMANDS_PER_FILE
                 ? commands : commands.subList(0, MAX_COMMANDS_PER_FILE));

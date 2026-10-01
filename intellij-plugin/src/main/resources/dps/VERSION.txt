@@ -1,4 +1,5 @@
-Datapack Sandbox 1.1.0
+Datapack Sandbox 1.1.1 (local 26.3 build, 2026-10-01)
 Source: https://github.com/Alumopper/DatapackSandbox
-Commit: 9c9f763cd1c9582f3458542fedbeff89b8628f70
-SHA-256: 4a37cde465abb5be238bda21727d053d231abbb14d4f8f89925af2cb3e8ce0c8
+Base commit: cc9ae9634813b0087be0d9d41384f679ec240ca5
+Includes the local working-tree Minecraft 26.3 profile and native float commands.
+SHA-256: 3f67acd6c0f145db962c814ae91f6b65f13564c531f56ec3ac45141954b1a46b

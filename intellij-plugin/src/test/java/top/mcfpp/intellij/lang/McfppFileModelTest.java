@@ -11,6 +11,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class McfppFileModelTest {
     @Test
+    void selectsVersionBranchesWithoutMovingDeclarationOffsets() {
+        String source = """
+                #if MC >= 26.3
+                import modern:*;
+                func selected() -> float { return -1.5f; }
+                #else
+                import legacy:*;
+                func selected() -> int { return 1; }
+                #endif
+                """;
+        McfppFileModel current = McfppFileModel.parse(source, "26.3");
+        McfppFileModel old = McfppFileModel.parse(source, "26.2");
+        assertEquals(1, current.symbols().size());
+        assertEquals(1, old.symbols().size());
+        assertEquals("modern", current.imports().getFirst().namespace());
+        assertEquals("legacy", old.imports().getFirst().namespace());
+        assertEquals(source.indexOf("selected"), current.symbols().getFirst().nameOffset());
+        assertEquals(source.lastIndexOf("selected"), old.symbols().getFirst().nameOffset());
+        // The persistent index retains both branches so changing version needs no reindex.
+        assertEquals(2, McfppFileModel.parse(source).symbols().size());
+    }
+
+    @Test
     void extractsNamespaceImportsDeclarationsMembersParametersAndDocumentation() {
         String source = """
                 namespace complete.app;

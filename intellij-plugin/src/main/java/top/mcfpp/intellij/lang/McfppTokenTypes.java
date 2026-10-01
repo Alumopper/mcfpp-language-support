@@ -6,6 +6,7 @@ import com.intellij.psi.tree.IElementType;
 public final class McfppTokenTypes {
     public static final IElementType WHITE_SPACE = TokenType.WHITE_SPACE;
     public static final IElementType COMMENT = new McfppTokenType("COMMENT");
+    public static final IElementType VERSION_DIRECTIVE = new McfppTokenType("VERSION_DIRECTIVE");
     public static final IElementType DOC_COMMENT = new McfppTokenType("DOC_COMMENT");
     public static final IElementType COMMAND = new McfppTokenType("COMMAND");
     public static final IElementType STRING = new McfppTokenType("STRING");

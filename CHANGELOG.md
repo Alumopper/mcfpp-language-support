@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Synchronize the parser with the compiler's compound assignment, unary minus, and newline rules.
+- Analyze active Minecraft version branches using `mcfpp.json`'s `version`, including nested conditions, original source ranges, directive diagnostics, and refresh after target version changes.
+- Share version preprocessing between the language server and IntelliJ's native declaration model.
+- Add version directive completion and highlighting in both editor integrations.
+- Update the bundled Datapack Sandbox service to support the compiler's `26.3` target, including native float `compute` command completion and validation.
+- Keep VS Code arithmetic `/3` and `/=` outside Minecraft command highlighting; commands begin at the start of a line.
+
 ## v0.4.1-preview.1 — 2026-08-17
 
 This is the first public preview of the unified MCFPP language tooling repository.

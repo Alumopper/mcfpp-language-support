@@ -4,6 +4,7 @@ import com.intellij.lexer.Lexer;
 import com.intellij.psi.tree.IElementType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import top.mcfpp.language.VersionPreprocessor;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -55,6 +56,15 @@ public final class McfppFileModel {
         for (Draft draft : drafts) symbols.add(draft.toSymbol(namespace));
         symbols.sort(Comparator.comparingInt(McfppSymbol::nameOffset).thenComparing(symbol -> symbol.kind().ordinal()));
         return new McfppFileModel(namespace, imports, symbols);
+    }
+
+    public static @NotNull McfppFileModel parse(@NotNull CharSequence source, @NotNull String targetVersion) {
+        try {
+            return parse(VersionPreprocessor.process(source.toString(), targetVersion));
+        } catch (VersionPreprocessor.Error error) {
+            // Keep incomplete files navigable; the language server reports directive errors.
+            return parse(source);
+        }
     }
 
     public @NotNull String namespace() {
@@ -697,7 +707,7 @@ public final class McfppFileModel {
             } else if (type == McfppTokenTypes.DOC_COMMENT) {
                 pendingDocumentation = normalizeDocumentation(text);
                 newline = true;
-            } else if (type != McfppTokenTypes.COMMENT) {
+            } else if (type != McfppTokenTypes.COMMENT && type != McfppTokenTypes.VERSION_DIRECTIVE) {
                 int tokenIndex = tokens.size();
                 tokens.add(new Token(type, text, start, end, newline));
                 if (pendingDocumentation != null) docs.put(tokenIndex, pendingDocumentation);

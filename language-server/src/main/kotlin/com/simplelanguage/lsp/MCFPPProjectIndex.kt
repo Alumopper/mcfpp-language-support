@@ -5,6 +5,7 @@ import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SymbolKind
 import top.mcfpp.io.LibBinReader
+import top.mcfpp.language.VersionPreprocessor
 import top.mcfpp.model.Generic
 import top.mcfpp.model.Namespace
 import top.mcfpp.model.compound.CompoundData
@@ -37,7 +38,8 @@ data class MCFPPProjectConfig(
     val includes: List<Path>,
     val jars: List<Path>,
     val targetPath: Path?,
-    val ignoreStdLib: Boolean
+    val ignoreStdLib: Boolean,
+    val targetVersion: String = VersionPreprocessor.DEFAULT_VERSION
 )
 
 data class MCFPPProjectSnapshot(
@@ -50,6 +52,7 @@ private data class CachedWorkspaceAnalysis(
     val modifiedAtMillis: Long,
     val size: Long,
     val projectNamespace: String,
+    val targetVersion: String,
     val analysis: MCFPPDocumentAnalysis
 )
 
@@ -97,12 +100,13 @@ class MCFPPProjectIndex {
                         cached != null &&
                         cached.modifiedAtMillis == attributes.lastModifiedTime().toMillis() &&
                         cached.size == attributes.size() &&
-                        cached.projectNamespace == projectNamespace
+                        cached.projectNamespace == projectNamespace &&
+                        cached.targetVersion == project.targetVersion
                     ) {
                         cached.analysis
                     } else {
                         withDefaultNamespace(
-                            MCFPPDocumentIndex.analyze(uri, normalizedFile.readText()),
+                            MCFPPDocumentIndex.analyze(uri, normalizedFile.readText(), project.targetVersion),
                             projectNamespace
                         )
                     }
@@ -111,6 +115,7 @@ class MCFPPProjectIndex {
                         modifiedAtMillis = attributes.lastModifiedTime().toMillis(),
                         size = attributes.size(),
                         projectNamespace = projectNamespace,
+                        targetVersion = project.targetVersion,
                         analysis = analysis
                     )
                 }
@@ -160,6 +165,14 @@ class MCFPPProjectIndex {
         return projectNamespace(project, path)
     }
 
+    fun targetVersionForUri(uri: String): String {
+        val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return VersionPreprocessor.DEFAULT_VERSION
+        return indexedProjects
+            .filter { path.startsWith(it.sourcePath.toAbsolutePath().normalize()) }
+            .maxByOrNull { it.sourcePath.nameCount }
+            ?.targetVersion ?: VersionPreprocessor.DEFAULT_VERSION
+    }
+
     fun isRelevantWorkspaceChange(uri: String): Boolean {
         val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return false
         return workspaceRoots.any { workspaceRoot ->
@@ -184,7 +197,7 @@ class MCFPPProjectIndex {
                 .filter { path ->
                     runCatching {
                         val text = path.readText()
-                        listOf("namespace", "targetPath", "sourcePath", "compileArgs", "include", "includes", "jar", "jars").any { key ->
+                        listOf("namespace", "targetPath", "sourcePath", "compileArgs", "include", "includes", "jar", "jars", "version").any { key ->
                             text.contains("\"$key\"")
                         }
                     }.getOrDefault(false)
@@ -237,7 +250,8 @@ class MCFPPProjectIndex {
             includes = includes,
             jars = jars,
             targetPath = json.get("targetPath")?.asString?.let { resolveProjectPath(root, it) },
-            ignoreStdLib = compileArgs.any { it == "-ignoreStdLib" }
+            ignoreStdLib = compileArgs.any { it == "-ignoreStdLib" },
+            targetVersion = json.get("version")?.asString ?: VersionPreprocessor.DEFAULT_VERSION
         )
     }
 

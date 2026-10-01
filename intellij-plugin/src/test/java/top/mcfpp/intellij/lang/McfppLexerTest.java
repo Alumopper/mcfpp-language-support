@@ -11,6 +11,33 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class McfppLexerTest {
     @Test
+    void recognizesVersionDirectivesAndKeepsArithmeticDistinctFromCommands() {
+        List<Token> tokens = tokens("""
+                #if MC >= 26.3
+                var x = -12 /3
+                x += 2
+                x -= 1
+                x *= 3
+                x /= 2
+                x %= 4
+                #elif MC >= 26.1
+                #else
+                #endif
+                #ifdef ordinary comment
+                /say hello
+                """);
+        for (String directive : List.of("#if MC >= 26.3", "#elif MC >= 26.1", "#else", "#endif")) {
+            assertEquals(McfppTokenTypes.VERSION_DIRECTIVE, typeOf(tokens, directive));
+        }
+        for (String operator : List.of("-", "/", "+=", "-=", "*=", "/=", "%=")) {
+            assertEquals(McfppTokenTypes.OPERATOR, typeOf(tokens, operator));
+        }
+        assertEquals(McfppTokenTypes.COMMENT, typeOf(tokens, "#ifdef ordinary comment"));
+        assertEquals(McfppTokenTypes.COMMAND, typeOf(tokens, "/say hello"));
+        assertEquals(McfppTokenTypes.DOC_COMMENT, typeOf(tokens("#{\n#if MC >= 26.3\n}#"), "#{\n#if MC >= 26.3\n}#"));
+    }
+
+    @Test
     void recognizesLanguageSpecificTokenCategories() {
         String source = """
                 #{ docs }#

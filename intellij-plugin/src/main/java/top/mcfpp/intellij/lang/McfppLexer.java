@@ -4,6 +4,7 @@ import com.intellij.lexer.LexerBase;
 import com.intellij.psi.tree.IElementType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import top.mcfpp.language.VersionPreprocessor;
 
 import java.util.Set;
 
@@ -96,6 +97,12 @@ public final class McfppLexer extends LexerBase {
         }
 
         if (current == '#') {
+            int lineEnd = consumeLine(tokenStart);
+            if (isAtLineStart(tokenStart) && VersionPreprocessor.isDirective(buffer.subSequence(tokenStart, lineEnd).toString())) {
+                tokenEnd = lineEnd;
+                tokenType = McfppTokenTypes.VERSION_DIRECTIVE;
+                return;
+            }
             tokenEnd = consumeComment(tokenStart);
             tokenType = startsWith(tokenStart, "#{") || startsWith(tokenStart, "###")
                     ? McfppTokenTypes.DOC_COMMENT

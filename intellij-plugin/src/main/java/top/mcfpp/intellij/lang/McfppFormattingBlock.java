@@ -107,6 +107,7 @@ final class McfppFormattingBlock extends AbstractBlock {
         CommonCodeStyleSettings common = settings.getCommonSettings(McfppLanguage.INSTANCE);
 
         if (leftType == McfppTokenTypes.COMMENT || leftType == McfppTokenTypes.DOC_COMMENT ||
+                leftType == McfppTokenTypes.VERSION_DIRECTIVE || rightType == McfppTokenTypes.VERSION_DIRECTIVE ||
                 leftType == McfppTokenTypes.COMMAND || rightType == McfppTokenTypes.COMMAND) {
             return null;
         }

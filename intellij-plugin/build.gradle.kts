@@ -35,6 +35,10 @@ java {
     }
 }
 
+sourceSets.main {
+    java.srcDir("../shared/src/main/java")
+}
+
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {

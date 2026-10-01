@@ -197,7 +197,7 @@ record McfppCallContext(
     private static boolean isTrivia(PsiElement element) {
         IElementType type = type(element);
         return type == McfppTokenTypes.WHITE_SPACE || type == McfppTokenTypes.COMMENT ||
-                type == McfppTokenTypes.DOC_COMMENT;
+                type == McfppTokenTypes.DOC_COMMENT || type == McfppTokenTypes.VERSION_DIRECTIVE;
     }
 
     private static @Nullable IElementType type(PsiElement element) {

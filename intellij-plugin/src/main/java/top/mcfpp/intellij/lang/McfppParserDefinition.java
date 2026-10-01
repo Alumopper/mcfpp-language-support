@@ -18,7 +18,7 @@ import org.jetbrains.annotations.NotNull;
 public final class McfppParserDefinition implements ParserDefinition {
     public static final IFileElementType FILE = new IFileElementType(McfppLanguage.INSTANCE);
 
-    private static final TokenSet COMMENTS = TokenSet.create(McfppTokenTypes.COMMENT, McfppTokenTypes.DOC_COMMENT);
+    private static final TokenSet COMMENTS = TokenSet.create(McfppTokenTypes.COMMENT, McfppTokenTypes.DOC_COMMENT, McfppTokenTypes.VERSION_DIRECTIVE);
     private static final TokenSet STRINGS = TokenSet.create(McfppTokenTypes.STRING);
     private static final TokenSet WHITE_SPACES = TokenSet.create(TokenType.WHITE_SPACE);
 

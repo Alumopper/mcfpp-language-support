@@ -2,12 +2,14 @@ package com.simplelanguage.lsp
 
 import org.eclipse.lsp4j.CompletionItemKind
 import org.eclipse.lsp4j.Diagnostic
+import org.eclipse.lsp4j.DiagnosticSeverity
 import org.eclipse.lsp4j.Location
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SymbolKind
 import org.eclipse.lsp4j.WorkspaceSymbol
 import org.eclipse.lsp4j.jsonrpc.messages.Either
+import top.mcfpp.language.VersionPreprocessor
 
 private enum class ContainerKind {
     TYPE,
@@ -127,7 +129,10 @@ data class MCFPPDocumentAnalysis(
     val declarationsByName: Map<String, List<MCFPPSymbol>> = emptyMap(),
     val referenceOccurrencesByName: Map<String, List<MCFPPReferenceOccurrence>> = emptyMap(),
     val scopeRegions: List<MCFPPScopeRegion> = emptyList(),
-    val parserDiagnostics: List<Diagnostic> = emptyList()
+    val parserDiagnostics: List<Diagnostic> = emptyList(),
+    val analysisText: String = text,
+    val targetVersion: String = VersionPreprocessor.DEFAULT_VERSION,
+    val versionDirectives: List<Range> = emptyList()
 ) {
     private val lines: List<String> = text.split("\n")
     private val scopesById: Map<String, MCFPPScopeRegion> = scopeRegions.associateBy { it.id }
@@ -315,13 +320,27 @@ object MCFPPDocumentIndex {
     private val memberFieldPattern = Regex("^\\s*(?:const\\s+)?(?:var\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*(?:as\\s+([^={]+?))?(?:\\s*(?:=|\\{|$))")
     private val enumMemberPattern = Regex("^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=|,|$)")
 
-    fun analyze(uri: String, text: String): MCFPPDocumentAnalysis {
+    fun analyze(uri: String, text: String, targetVersion: String = VersionPreprocessor.DEFAULT_VERSION): MCFPPDocumentAnalysis {
         val symbols = mutableListOf<MCFPPSymbol>()
         val imports = mutableListOf<MCFPPImport>()
         val variables = linkedMapOf<String, String?>()
         val typeMembers = linkedMapOf<String, MutableList<MCFPPSymbol>>()
         val topLevelSymbols = mutableListOf<MCFPPSymbol>()
-        val normalizedText = text.replace("\r\n", "\n")
+        val originalText = text.replace("\r\n", "\n")
+        val preprocessorDiagnostics = mutableListOf<Diagnostic>()
+        val preprocessed = try {
+            VersionPreprocessor.preprocess(originalText, targetVersion)
+        } catch (error: VersionPreprocessor.Error) {
+            val line = (error.line - 1).coerceAtLeast(0)
+            val content = originalText.split('\n').getOrElse(line) { "" }
+            val start = content.indexOf('#').coerceAtLeast(0)
+            preprocessorDiagnostics += Diagnostic(
+                Range(Position(line, start), Position(line, content.length.coerceAtLeast(start + 1))),
+                error.message, DiagnosticSeverity.Error, "mcfpp"
+            )
+            VersionPreprocessor.Result(originalText, emptyList())
+        }
+        val normalizedText = preprocessed.text()
         val lines = normalizedText.split("\n")
         val containers = ArrayDeque<ContainerFrame>()
 
@@ -511,7 +530,7 @@ object MCFPPDocumentIndex {
             .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character).joinToString("|") }
         return MCFPPDocumentAnalysis(
             uri = uri,
-            text = normalizedText,
+            text = originalText,
             namespaceName = namespaceName,
             imports = imports,
             symbols = mergedSymbols,
@@ -522,7 +541,12 @@ object MCFPPDocumentIndex {
             declarationsByName = mergedSymbols.groupBy { it.name },
             referenceOccurrencesByName = parserSemantic.referenceOccurrencesByName,
             scopeRegions = parserSemantic.scopeRegions,
-            parserDiagnostics = parserSemantic.diagnostics
+            parserDiagnostics = preprocessorDiagnostics + parserSemantic.diagnostics,
+            analysisText = normalizedText,
+            targetVersion = targetVersion,
+            versionDirectives = preprocessed.directives().map { directive ->
+                Range(offsetToPosition(originalText, directive.start()), offsetToPosition(originalText, directive.end()))
+            }
         )
     }
 
@@ -533,6 +557,12 @@ object MCFPPDocumentIndex {
         symbol.containerName.orEmpty(),
         symbol.receiverType.orEmpty()
     ).joinToString("|")
+
+    private fun offsetToPosition(text: String, offset: Int): Position {
+        val line = text.take(offset).count { it == '\n' }
+        val previousNewline = text.lastIndexOf('\n', (offset - 1).coerceAtLeast(0))
+        return Position(line, offset - previousNewline - 1)
+    }
 
     private fun updateContainerStack(
         line: String,

@@ -96,6 +96,7 @@ public final class McfppSyntaxHighlighter extends SyntaxHighlighterBase {
     @Override
     public TextAttributesKey @NotNull [] getTokenHighlights(IElementType tokenType) {
         if (tokenType == McfppTokenTypes.KEYWORD) return pack(KEYWORD);
+        if (tokenType == McfppTokenTypes.VERSION_DIRECTIVE) return pack(KEYWORD);
         if (tokenType == McfppTokenTypes.CONTROL_KEYWORD) return pack(CONTROL_KEYWORD);
         if (tokenType == McfppTokenTypes.DECLARATION_KEYWORD) return pack(DECLARATION_KEYWORD);
         if (tokenType == McfppTokenTypes.MODIFIER_KEYWORD) return pack(MODIFIER_KEYWORD);
