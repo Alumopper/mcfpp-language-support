@@ -1,0 +1,6 @@
+namespace validation.generic;
+
+# Generic declaration contexts remain LSP-owned; T must not be falsely marked as undefined.
+data Box<T as Type> {
+    var value as T;
+}

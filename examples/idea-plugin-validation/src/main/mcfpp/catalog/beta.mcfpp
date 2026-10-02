@@ -1,0 +1,12 @@
+namespace validation.beta;
+
+#{A different Counter with the same short name.}#
+data Counter {
+    var value as int = 10;
+    func decrement(amount as int) -> int {
+        value -= amount;
+        return value;
+    }
+}
+
+data CountDown {}

@@ -11,12 +11,22 @@ public final class McfppFileModels {
     }
 
     public static @NotNull String activeSource(@NotNull PsiFile file) {
-        String source = file.getViewProvider().getContents().toString();
-        try {
-            return VersionPreprocessor.process(source, McfppNamespaceResolver.infer(file).targetVersion());
-        } catch (VersionPreprocessor.Error error) {
-            return source;
-        }
+        return versionAnalysis(file).text();
+    }
+
+    public static @NotNull VersionPreprocessor.Result versionAnalysis(@NotNull PsiFile file) {
+        return CachedValuesManager.getCachedValue(file, () -> {
+            var inference = McfppNamespaceResolver.infer(file);
+            String source = file.getViewProvider().getContents().toString();
+            VersionPreprocessor.Result result;
+            try {
+                result = VersionPreprocessor.preprocess(source, inference.targetVersion());
+            } catch (VersionPreprocessor.Error error) {
+                result = new VersionPreprocessor.Result(source, java.util.List.of(), java.util.List.of());
+            }
+            return inference.dependency() == null ? CachedValueProvider.Result.create(result, file)
+                    : CachedValueProvider.Result.create(result, file, inference.dependency());
+        });
     }
 
     public static @NotNull McfppFileModel get(@NotNull PsiFile file) {

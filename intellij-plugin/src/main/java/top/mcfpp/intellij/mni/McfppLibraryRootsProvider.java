@@ -52,7 +52,7 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
                 System.getenv(HOME_ENVIRONMENT)
         );
         List<VirtualFile> roots = new ArrayList<>(virtualRoots(discovered));
-        if (discovered.stream().noneMatch(McfppLibraryRootsProvider::isStandardLibraryRoot)) {
+        if (roots.stream().noneMatch(root -> isStandardLibraryRoot(Path.of(root.getPath())))) {
             VirtualFile bundled = bundledStandardLibraryRoot();
             if (bundled != null) roots.add(bundled);
         }
@@ -69,7 +69,7 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
         List<VirtualFile> roots = new ArrayList<>(virtualRoots(discovered.stream()
                 .filter(path -> isMcfppSourceRoot(path) || !isConventionalJvmSourceRoot(path))
                 .toList()));
-        if (discovered.stream().noneMatch(McfppLibraryRootsProvider::isStandardLibraryRoot)) {
+        if (roots.stream().noneMatch(root -> isStandardLibraryRoot(Path.of(root.getPath())))) {
             VirtualFile bundled = bundledStandardLibraryRoot();
             if (bundled != null) roots.add(bundled);
         }
@@ -84,7 +84,8 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
         if (projectBasePath != null && !projectBasePath.isBlank()) {
             Path ancestor = Path.of(projectBasePath).toAbsolutePath().normalize();
             for (int level = 0; ancestor != null && level < 8; level++, ancestor = ancestor.getParent()) {
-                addConventionalSourceRoots(roots, ancestor);
+                // Project sources are indexed as project content, not attached again as external libraries.
+                if (level > 0) addConventionalSourceRoots(roots, ancestor);
                 addConventionalSourceRoots(roots, ancestor.resolve("MCFPP"));
             }
         }

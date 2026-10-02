@@ -1,0 +1,19 @@
+namespace validation.mni;
+
+# Ctrl+B on the declaration name and on the Java target should select the annotated Java overload.
+func announce(message as string) = validation.mni.ValidationMni.announce;
+func convert(value as int) = validation.mni.ValidationMni.convert;
+func convert(value as string) = validation.mni.ValidationMni.convert;
+
+# Ctrl+B on JavaBacked or ValidationMni also tests @From navigation.
+@From<"validation.mni.ValidationMni">
+data JavaBacked {}
+
+func useNativeBindings() {
+    announce("IDEA MNI navigation is ready");
+    convert(1);
+    convert("hello");
+}
+
+# To test the binding inspection, change a Java method name to a nonexistent name,
+# or remove static / change @MNIFunction normalParams, then undo the edit.

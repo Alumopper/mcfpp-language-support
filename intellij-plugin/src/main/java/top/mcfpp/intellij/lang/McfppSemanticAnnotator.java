@@ -16,6 +16,15 @@ import java.util.List;
 public final class McfppSemanticAnnotator implements Annotator, DumbAware {
     @Override
     public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
+        if (element instanceof McfppFile file) {
+            for (var range : McfppFileModels.versionAnalysis(file).inactiveRanges()) {
+                holder.newSilentAnnotation(HighlightSeverity.INFORMATION)
+                        .range(new TextRange(range.start(), range.end()))
+                        .textAttributes(com.intellij.openapi.editor.colors.CodeInsightColors.NOT_USED_ELEMENT_ATTRIBUTES)
+                        .create();
+            }
+            return;
+        }
         if (element.getFirstChild() != null || element.getNode() == null) {
             return;
         }
@@ -25,12 +34,14 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
         if (!identifier && !string && !command) return;
 
         PsiFile file = element.getContainingFile();
-        McfppSemanticTokens.Analysis analysis = CachedValuesManager.getCachedValue(file, () ->
-                CachedValueProvider.Result.create(
-                        McfppSemanticTokens.analyzeDetailed(file.getViewProvider().getContents()),
-                        file
-                )
-        );
+        if (McfppFileModels.versionAnalysis(file).inactiveRanges().stream().anyMatch(range ->
+                range.start() <= element.getTextOffset() && element.getTextOffset() < range.end())) return;
+        McfppSemanticTokens.Analysis analysis = CachedValuesManager.getCachedValue(file, () -> {
+            var dependency = McfppNamespaceResolver.infer(file).dependency();
+            var value = McfppSemanticTokens.analyzeDetailed(McfppFileModels.activeSource(file));
+            return dependency == null ? CachedValueProvider.Result.create(value, file)
+                    : CachedValueProvider.Result.create(value, file, dependency);
+        });
         if (identifier) {
             var key = analysis.attributes().get(element.getTextOffset());
             if (key == null) return;

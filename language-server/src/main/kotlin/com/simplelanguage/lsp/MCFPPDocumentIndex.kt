@@ -338,7 +338,7 @@ object MCFPPDocumentIndex {
                 Range(Position(line, start), Position(line, content.length.coerceAtLeast(start + 1))),
                 error.message, DiagnosticSeverity.Error, "mcfpp"
             )
-            VersionPreprocessor.Result(originalText, emptyList())
+            VersionPreprocessor.Result(originalText, emptyList(), emptyList())
         }
         val normalizedText = preprocessed.text()
         val lines = normalizedText.split("\n")

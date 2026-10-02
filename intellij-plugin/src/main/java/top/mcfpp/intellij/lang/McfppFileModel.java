@@ -46,7 +46,7 @@ public final class McfppFileModel {
         List<RangeOwner> typeOwners = ownerRanges(drafts, McfppSymbolKind.TYPE, McfppSymbolKind.ENUM);
         List<RangeOwner> functionOwners = ownerRanges(drafts, McfppSymbolKind.FUNCTION, McfppSymbolKind.CONSTRUCTOR);
         assignOwners(drafts, typeOwners);
-        parseFields(source, tokens, lexed.documentationBefore(), typeOwners, functionOwners, drafts);
+        parseFields(source, tokens, lexed.documentationBefore(), matches, typeOwners, functionOwners, drafts);
         parseForeachVariables(source, tokens, matches, typeOwners, functionOwners, drafts);
         parseImplicitFields(source, tokens, lexed.documentationBefore(), matches, drafts);
         parseParameters(source, tokens, matches, typeOwners, drafts);
@@ -329,6 +329,7 @@ public final class McfppFileModel {
             String source,
             List<Token> tokens,
             Map<Integer, String> documentation,
+            MatchData matches,
             List<RangeOwner> typeOwners,
             List<RangeOwner> functionOwners,
             List<Draft> drafts
@@ -345,6 +346,19 @@ public final class McfppFileModel {
             String typeOwner = innermostOwner(typeOwners, tokens.get(name).start());
             McfppSymbolKind kind = functionOwner == null ? McfppSymbolKind.FIELD : McfppSymbolKind.VARIABLE;
             RangeOwner scope = innermostRange(functionOwner == null ? typeOwners : functionOwners, tokens.get(name).start());
+            if (functionOwner != null) {
+                for (var brace : matches.braces().entrySet()) {
+                    int open = brace.getKey();
+                    int close = brace.getValue();
+                    if (open >= close || tokens.get(open).start() >= tokens.get(name).start() ||
+                            tokens.get(close).end() <= tokens.get(name).start()) continue;
+                    int start = tokens.get(open).start();
+                    int finish = tokens.get(close).end();
+                    if (scope == null || finish - start < scope.end() - scope.start()) {
+                        scope = new RangeOwner(functionOwner, start, finish);
+                    }
+                }
+            }
             int end = declarationEnd(tokens, name, source.length());
             drafts.add(new Draft(
                     kind,

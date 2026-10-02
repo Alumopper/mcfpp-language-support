@@ -16,7 +16,7 @@ public final class McfppCreateFunctionIntention extends McfppCreateDeclarationIn
 
     @Override
     public boolean isAvailable(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-        PsiElement identifier = unresolvedIdentifier(project, element);
+        PsiElement identifier = unresolvedIdentifier(project, editor, element);
         if (identifier == null || McfppCallContext.fromCallee(identifier) == null) return false;
         setText("Create MCFPP function '" + identifier.getText() + "'");
         return true;
@@ -24,7 +24,7 @@ public final class McfppCreateFunctionIntention extends McfppCreateDeclarationIn
 
     @Override
     public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-        PsiElement identifier = unresolvedIdentifier(project, element);
+        PsiElement identifier = unresolvedIdentifier(project, editor, element);
         if (identifier == null || !(identifier.getContainingFile() instanceof McfppFile file)) return;
         McfppCallContext call = McfppCallContext.fromCallee(identifier);
         if (call == null) return;

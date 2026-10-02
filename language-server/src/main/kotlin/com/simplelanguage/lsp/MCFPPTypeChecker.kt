@@ -16,7 +16,8 @@ class MCFPPTypeChecker(
     private val resolveLocalSymbol: (String, Position) -> MCFPPSymbol?,
     private val resolveGlobalSymbol: (String, Position) -> MCFPPSymbol?,
     private val resolveCallSymbol: (MCFPPReferenceOccurrence) -> MCFPPSymbol?,
-    private val resolveMemberSymbol: (String, String, Position) -> MCFPPSymbol?
+    private val resolveMemberSymbol: (String, String, Position) -> MCFPPSymbol?,
+    private val resolveImportedType: (String) -> String = { it }
 ) {
     private val inferredSymbolTypes = linkedMapOf<String, String>()
 
@@ -748,7 +749,8 @@ class MCFPPTypeChecker(
     }
 
     private fun normalizeDeclaredType(typeName: String?): String {
-        return typeName.orEmpty().substringBefore('?').substringBefore('<').substringAfterLast(':').trim()
+        val base = typeName.orEmpty().substringBefore('?').substringBefore('<').trim()
+        return resolveImportedType(base).substringAfterLast(':').trim()
     }
 
     private fun typeParameterSubstitutions(

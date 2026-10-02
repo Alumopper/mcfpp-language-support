@@ -1,0 +1,9 @@
+namespace validation.quickfixes;
+
+# Alt+Enter on missingHelper: create a function with int and string parameters.
+# Alt+Enter on MissingType: create a data declaration.
+# New declarations are formatted using Settings | Editor | Code Style | MCFPP.
+func tryQuickFixes() {
+    missingHelper(1, "hello");
+    var value as MissingType;
+}

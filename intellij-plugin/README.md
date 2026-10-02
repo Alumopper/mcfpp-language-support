@@ -11,6 +11,12 @@ The IntelliJ plugin provides first-class MCFPP support in IntelliJ IDEA by combi
 - First-class vanilla `.mcfunction` editing with DPS completion and diagnostics, line comments, function macros, and the same exact replacement behavior as embedded MCFPP commands
 - Path-sensitive vanilla datapack JSON completion and validation for `pack.mcmeta`, tags, advancements, recipes, predicates, loot tables, item modifiers, and data-driven registries through IDEA's optional JSON module
 - Background syntax diagnostics for static commands, plus command-specific highlighting for roots, subcommands, ordinary arguments, resource locations, selector fields/values, coordinates, macros, structured data, and `${...}` MCFPP interpolation
+- Declaration-specific completion with distinct namespace/type labels, function overload signatures, existing import aliases, and exact imports for the selected candidate
+- Alt+Enter import selection for ambiguous names; conflicting names use a namespace-qualified reference
+- Conservative **Code | Optimize Imports** sorting and deduplication inside comment/directive-separated blocks, retaining unused imports and aliases
+- Native unresolved-reference inspection with import and declaration-creation fixes; LSP diagnostics remain available for compiler-specific resolution and when the inspection is disabled
+- Unused import warnings with dimmed text and a quick fix that preserves surrounding comments and version directives
+- Dimmed, initially collapsed inactive Minecraft version branches, refreshed when `mcfpp.json` is saved
 - Indexed cross-file navigation and completion for functions, data types, aliases, members, parameters, and variables, including attached standard-library sources
 - Structure view, Navigate | Symbol/Class integration, code folding, Find Usages, in-place rename, and duplicate declaration inspection
 - Automatic brace/quote pairing, continuation indentation, generic/read-only angle formatting, configurable code style, file templates, and MCFPP live templates (`fn`, `nfn`, `data`, `object`, `enum`, `ctor`, `field`, `if`, `for`)
@@ -23,6 +29,8 @@ The IntelliJ plugin provides first-class MCFPP support in IntelliJ IDEA by combi
 - Automatic MNI and MCFPP standard-library source attachment from a nearby compiler checkout, `MCFPP_HOME`, or `-Dmcfpp.sources.path=...`
 - Implicit `mcfpp.lang`, `mcfpp.sys`, and `mcfpp` resolution, including navigation from built-ins such as `print` to standard-library source
 - The language server JAR is bundled with the plugin; users do not configure an external server
+
+The native unresolved-reference inspection handles complete, active code after indexing. Generic and inherited declaration contexts, qualified members, incomplete syntax, imports whose sources are unavailable, and projects with compiler archive/include dependencies continue to use LSP diagnostics. You can disable **MCFPP | Unresolved MCFPP reference** in **Settings | Editor | Inspections** to use LSP diagnostics throughout. Creating missing declarations follows the project's code style and only applies to unqualified references in the current file.
 
 `::jvm` is an MCFPP value conversion operator, not a Java fully-qualified name. It remains handled by the shared MCFPP language server rather than the Java PSI bridge.
 

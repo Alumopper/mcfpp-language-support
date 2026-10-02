@@ -26,12 +26,25 @@ public final class McfppDuplicateDeclarationInspection extends LocalInspectionTo
             public void visitFile(@NotNull PsiFile file) {
                 if (!(file instanceof McfppFile)) return;
                 Map<String, McfppSymbol> declarations = new HashMap<>();
-                for (McfppSymbol symbol : McfppFileModels.get(file).symbols()) {
+                McfppFileModel model = McfppFileModels.get(file);
+                for (McfppSymbol symbol : model.symbols()) {
                     if (!hasUniqueNameInScope(symbol.kind())) continue;
-                    String localScope = symbol.kind() == McfppSymbolKind.VARIABLE ||
-                            symbol.kind() == McfppSymbolKind.PARAMETER ? "|" + symbol.scopeStart() : "";
-                    String key = symbol.kind() + "|" + symbol.namespace() + "|" + symbol.owner() +
-                            localScope + "|" + symbol.name();
+                    boolean local = symbol.kind() == McfppSymbolKind.VARIABLE || symbol.kind() == McfppSymbolKind.PARAMETER;
+                    int scope = local ? symbol.scopeStart() : 0;
+                    if (symbol.kind() == McfppSymbolKind.PARAMETER) {
+                        scope = model.symbols().stream()
+                                .filter(container -> (container.kind() == McfppSymbolKind.FUNCTION ||
+                                        container.kind() == McfppSymbolKind.CONSTRUCTOR) &&
+                                        container.declarationStart() == symbol.scopeStart())
+                                .mapToInt(McfppSymbol::bodyStart).findFirst().orElse(scope);
+                    }
+                    if (!local) {
+                        scope = model.symbols().stream().filter(container -> container.kind().isType() &&
+                                container.nameOffset() != symbol.nameOffset() && container.contains(symbol.nameOffset()))
+                                .mapToInt(McfppSymbol::bodyStart).max().orElse(0);
+                    }
+                    String key = (local ? "local" : symbol.kind()) + "|" + symbol.namespace() + "|" +
+                            scope + "|" + symbol.name();
                     McfppSymbol previous = declarations.putIfAbsent(key, symbol);
                     if (previous == null) continue;
                     PsiElement target = file.findElementAt(symbol.nameOffset());

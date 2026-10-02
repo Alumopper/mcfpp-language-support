@@ -2114,7 +2114,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                     "Undefined symbol `${it.name}`",
                     DiagnosticSeverity.Error,
                     "mcfpp"
-                )
+                ).apply { setCode("mcfpp.undefined-symbol") }
             }
     }
 
@@ -2182,7 +2182,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             return false
         }
         val prefix = line.take(start).trimEnd()
-        if (prefix.endsWith(" as") || prefix.endsWith(" from") || prefix.endsWith("namespace") || prefix.endsWith("import")) {
+        if (prefix.endsWith(" from") || prefix.endsWith("namespace") || prefix.endsWith("import")) {
             return false
         }
         if (line.trimStart().startsWith("import ")) {
@@ -2200,7 +2200,8 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             resolveCallSymbol = { occurrence -> resolveCallTarget(document, occurrence) },
             resolveMemberSymbol = { ownerType, name, position ->
                 accessibleMemberSymbolsForType(document, ownerType, position).firstOrNull { it.name == name }
-            }
+            },
+            resolveImportedType = { typeName -> resolveImportedTypeName(document, typeName) ?: typeName }
         ).collectDiagnostics()
     }
 

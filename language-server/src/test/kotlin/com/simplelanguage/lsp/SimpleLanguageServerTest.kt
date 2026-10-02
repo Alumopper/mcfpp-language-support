@@ -56,6 +56,69 @@ import kotlin.test.assertTrue
 
 class SimpleLanguageServerTest {
     @Test
+    fun `imported type aliases are assignable in declarations arguments and returns`(@TempDir root: Path) {
+        root.resolve("mcfpp.json").writeText("""{"compileArgs":["-ignoreStdLib"]}""")
+        root.resolve("library.mcfpp").writeText("namespace library;\ndata Counter {}\ndata Other {}\n")
+        val uri = root.resolve("consumer.mcfpp").toUri().toString()
+        val analyzed = CountDownLatch(1)
+        val diagnostics = AtomicReference<List<Diagnostic>>(emptyList())
+        val server = SimpleLanguageServer()
+        server.connect(RecordingLanguageClient(analyzed) { params ->
+            if (params.uri == uri) { diagnostics.set(params.diagnostics); true } else false
+        })
+        server.initialize(InitializeParams().apply { rootUri = root.toUri().toString() }).get()
+        val source = """
+            namespace consumer;
+            import library:Counter as AlphaCounter;
+            import library:Other;
+            func accept(value as AlphaCounter) {}
+            func make() -> AlphaCounter { return AlphaCounter(); }
+            func main() {
+                var counter as AlphaCounter = AlphaCounter();
+                accept(counter);
+                var wrong as AlphaCounter = Other();
+                accept(Other());
+            }
+        """.trimIndent()
+        try {
+            server.getTextDocumentService().didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, source)))
+            assertTrue(analyzed.await(10, TimeUnit.SECONDS))
+            val messages = diagnostics.get().map { it.message }
+            assertFalse(messages.any { "found `Counter`" in it }, "Diagnostics: $messages")
+            assertFalse(messages.any { "Return type mismatch" in it }, "Diagnostics: $messages")
+            assertTrue(messages.any { "Type mismatch for `wrong`" in it && "found `Other`" in it }, "Diagnostics: $messages")
+            assertTrue(messages.any { "Argument type mismatch for `accept`" in it && "found `Other`" in it }, "Diagnostics: $messages")
+        } finally { server.shutdown().get() }
+    }
+
+    @Test
+    fun `undefined arguments functions and declared types all produce diagnostics`(@TempDir root: Path) {
+        root.resolve("mcfpp.json").writeText("""{"compileArgs":["-ignoreStdLib"]}""")
+        val uri = root.resolve("unresolved.mcfpp").toUri().toString()
+        val analyzed = CountDownLatch(1)
+        val diagnostics = AtomicReference<List<Diagnostic>>(emptyList())
+        val server = SimpleLanguageServer()
+        server.connect(RecordingLanguageClient(analyzed) { params ->
+            if (params.uri == uri) { diagnostics.set(params.diagnostics); true } else false
+        })
+        server.initialize(InitializeParams().apply { rootUri = root.toUri().toString() }).get()
+        try {
+            val source = """
+                func convert(value as int) -> int { return value; }
+                func main() {
+                    var result = convert(w);
+                    missingHelper(1, "hello");
+                    var value as MissingType;
+                }
+            """.trimIndent()
+            server.getTextDocumentService().didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, source)))
+            assertTrue(analyzed.await(10, TimeUnit.SECONDS))
+            assertEquals(setOf("Undefined symbol `w`", "Undefined symbol `missingHelper`", "Undefined symbol `MissingType`"),
+                diagnostics.get().filter { it.code?.left == "mcfpp.undefined-symbol" }.map { it.message }.toSet())
+        } finally { server.shutdown().get() }
+    }
+
+    @Test
     fun `target version changes refresh open document diagnostics and symbols`(@TempDir root: Path) {
         val config = root.resolve("mcfpp.json")
         config.writeText("""{"version":"26.3","compileArgs":["-ignoreStdLib"]}""")
@@ -904,6 +967,8 @@ class SimpleLanguageServerTest {
 
             assertTrue("Undefined symbol `missing`" in messages, "Diagnostics: $messages")
             assertTrue("Undefined symbol `absent`" in messages, "Diagnostics: $messages")
+            assertTrue(publishedDiagnostics.get().filter { it.message.startsWith("Undefined symbol `") }
+                .all { it.code?.left == "mcfpp.undefined-symbol" })
             assertEquals(1, messages.count { it.contains("`hidden`") }, "Diagnostics: $messages")
             assertTrue(messages.single { it.contains("`hidden`") }.startsWith("Private member"))
         } finally {
@@ -1228,8 +1293,9 @@ class SimpleLanguageServerTest {
         val analyzed = CountDownLatch(3)
         val analyzedUris = ConcurrentHashMap.newKeySet<String>()
         val mainDiagnostics = AtomicReference<List<Diagnostic>>(emptyList())
+        val logs = java.util.concurrent.CopyOnWriteArrayList<String>()
         val server = SimpleLanguageServer()
-        server.connect(RecordingLanguageClient(analyzed) { params ->
+        server.connect(RecordingLanguageClient(analyzed, onLogMessage = { logs += it.message }) { params ->
             if (params.uri == mainUri) mainDiagnostics.set(params.diagnostics)
             params.uri in setOf(counterUri, mathUri, mainUri) && analyzedUris.add(params.uri)
         })
@@ -1240,7 +1306,7 @@ class SimpleLanguageServerTest {
             service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(counterUri, "mcfpp", 1, counterText)))
             service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(mathUri, "mcfpp", 1, mathText)))
             service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(mainUri, "mcfpp", 1, mainText)))
-            assertTrue(analyzed.await(5, TimeUnit.SECONDS), "Fixture analysis did not finish")
+            assertTrue(analyzed.await(15, TimeUnit.SECONDS), "Fixture analysis did not finish: $analyzedUris; logs: $logs")
             assertEquals(emptyList(), mainDiagnostics.get().map { it.message })
 
             val memberLine = mainText.lines().indexOfFirst { "counter.increment" in it }

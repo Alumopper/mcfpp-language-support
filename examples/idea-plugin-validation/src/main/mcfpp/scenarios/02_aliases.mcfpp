@@ -1,0 +1,17 @@
+namespace validation.aliases;
+
+import validation.alpha:Counter as AlphaCounter;
+import validation.alpha:* as alpha;
+
+# Complete Alpha to AlphaCounter. The existing alias must be reused without another import.
+func completeAlias() {
+    var value as AlphaCounter;
+}
+
+# Ctrl+B on increment or alpha:convert should navigate to catalog/alpha.mcfpp.
+# Delete increment, type inc and invoke completion to check member completion with an aliased type.
+func navigateAliases() {
+    var counter as AlphaCounter = AlphaCounter();
+    var result = counter.increment(1);
+    var converted = alpha:convert(result);
+}

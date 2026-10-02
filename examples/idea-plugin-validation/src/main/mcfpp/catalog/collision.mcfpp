@@ -1,0 +1,4 @@
+namespace validation.crossfile;
+
+# This same-namespace declaration lives in another file.
+data Counter {}

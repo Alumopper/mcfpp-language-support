@@ -15,6 +15,14 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
     }
 
     @Override
+    public @NotNull com.intellij.platform.lsp.api.customization.LspCustomization getLspCustomization() {
+        return new com.intellij.platform.lsp.api.customization.LspCustomization() {
+            @Override public @NotNull com.intellij.platform.lsp.api.customization.LspDiagnosticsCustomizer
+            getDiagnosticsCustomizer() { return new McfppLspDiagnosticsSupport(); }
+        };
+    }
+
+    @Override
     public boolean isSupportedFile(@NotNull VirtualFile file) {
         return "mcfpp".equalsIgnoreCase(file.getExtension());
     }

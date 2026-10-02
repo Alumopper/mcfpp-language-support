@@ -88,10 +88,10 @@ public final class McfppCompletionContributor extends CompletionContributor impl
         Set<String> seen = new HashSet<>();
         if (completionContext.kind() == McfppCompletionContext.Kind.GLOBAL) addKeywords(result, seen);
 
-        for (McfppSymbol symbol : model.symbols()) {
-            if (!isVisible(symbol, offset, completionContext) || !seen.add(symbol.name())) continue;
-            result.addElement(PrioritizedLookupElement.withPriority(symbolLookup(symbol), 500));
-        }
+        model.symbols().stream().sorted(java.util.Comparator.comparingInt(McfppSymbol::nameOffset).reversed())
+                .filter(symbol -> isVisible(symbol, offset, completionContext, model))
+                .forEach(symbol -> addSymbol(result, seen, symbol, symbol.name(),
+                        completionContext.kind() == McfppCompletionContext.Kind.GLOBAL, 500));
 
         if (DumbService.isDumb(position.getProject())) return;
         if (completionContext.kind() != McfppCompletionContext.Kind.GLOBAL) {
@@ -99,33 +99,48 @@ public final class McfppCompletionContributor extends CompletionContributor impl
             return;
         }
 
-        int[] count = {0};
+        Set<String> names = new java.util.LinkedHashSet<>();
         FileBasedIndex.getInstance().processAllKeys(McfppSymbolIndex.NAME, key -> {
             ProgressManager.checkCanceled();
-            if (McfppSymbolIndex.isInternalKey(key)) return true;
-            String name = key;
-            if (!result.getPrefixMatcher().prefixMatches(name) || !seen.add(name)) return true;
-            LookupElementBuilder lookup = LookupElementBuilder.create(name)
-                    .withIcon(McfppIcons.FILE)
-                    .withTypeText(indexTypeText(completionContext), true);
-            lookup = lookup.withInsertHandler(McfppCompletionInsertHandler.projectSymbol(name));
-            result.addElement(PrioritizedLookupElement.withPriority(
-                    lookup,
-                    100
-            ));
-            return ++count[0] < PROJECT_RESULT_LIMIT;
+            if (!McfppSymbolIndex.isInternalKey(key) && result.getPrefixMatcher().prefixMatches(key)) names.add(key);
+            return true;
         }, position.getProject());
-        if (count[0] >= PROJECT_RESULT_LIMIT) return;
         for (String name : McfppExternalLibraryIndex.names(position.getProject())) {
-            ProgressManager.checkCanceled();
-            if (!result.getPrefixMatcher().prefixMatches(name) || !seen.add(name)) continue;
-            LookupElementBuilder lookup = LookupElementBuilder.create(name)
-                    .withIcon(McfppIcons.FILE)
-                    .withTypeText("MCFPP library symbol", true)
-                    .withInsertHandler(McfppCompletionInsertHandler.projectSymbol(name));
-            result.addElement(PrioritizedLookupElement.withPriority(lookup, 90));
-            if (++count[0] >= PROJECT_RESULT_LIMIT) return;
+            if (result.getPrefixMatcher().prefixMatches(name)) names.add(name);
         }
+        for (McfppImport imported : model.imports()) {
+            if (!imported.isWildcard() && imported.alias() != null &&
+                    result.getPrefixMatcher().prefixMatches(imported.alias())) names.add(imported.importedName());
+        }
+        int count = 0;
+        for (String name : names) {
+            ProgressManager.checkCanceled();
+            for (PsiElement element : McfppSymbolResolver.findProjectSymbols(position.getProject(), name, true)) {
+                if (!(element.getContainingFile() instanceof McfppFile candidateFile)) continue;
+                McfppSymbol symbol = McfppFileModels.get(candidateFile).declarationAt(element.getTextOffset());
+                if (symbol == null || !symbol.isTopLevel()) continue;
+                String exposed = McfppImportManager.exposedName(model, symbol);
+                if (!result.getPrefixMatcher().prefixMatches(exposed)) continue;
+                int priority = symbol.namespace().equals(model.namespace()) ? 400
+                        : model.importExposes(symbol.namespace(), symbol.name(), exposed) ? 350
+                        : McfppStandardLibrary.isImplicitNamespace(symbol.namespace()) ? 300 : 100;
+                if (addSymbol(result, seen, symbol, exposed, true, priority) && ++count >= PROJECT_RESULT_LIMIT) return;
+            }
+        }
+    }
+
+    private static boolean addSymbol(CompletionResultSet result, Set<String> seen, McfppSymbol symbol,
+                                     String exposedName, boolean unqualified, int priority) {
+        boolean local = symbol.kind() == McfppSymbolKind.PARAMETER || symbol.kind() == McfppSymbolKind.VARIABLE;
+        String identity = local ? "local:" + exposedName
+                : symbol.kind() + "|" + symbol.qualifiedName() + "|" + symbol.signature() + "|" + exposedName;
+        if (!seen.add(identity)) return false;
+        LookupElementBuilder lookup = LookupElementBuilder.create(identity, exposedName)
+                .withIcon(icon(symbol.kind())).withTypeText(symbol.qualifiedName(), true)
+                .withInsertHandler(McfppCompletionInsertHandler.projectSymbol(symbol, unqualified));
+        if (!symbol.signature().equals(symbol.name())) lookup = lookup.withTailText("  " + symbol.signature(), true);
+        result.addElement(PrioritizedLookupElement.withPriority(lookup, priority));
+        return true;
     }
 
     private static void completeMinecraftCommand(
@@ -159,21 +174,24 @@ public final class McfppCompletionContributor extends CompletionContributor impl
         FileBasedIndex index = FileBasedIndex.getInstance();
         PsiManager psiManager = PsiManager.getInstance(position.getProject());
         int count = 0;
-        for (VirtualFile virtualFile : index.getContainingFiles(
-                McfppSymbolIndex.NAME,
-                bucketKey,
-                GlobalSearchScope.allScope(position.getProject())
-        )) {
+        Set<VirtualFile> files = new java.util.LinkedHashSet<>(index.getContainingFiles(
+                McfppSymbolIndex.NAME, bucketKey, GlobalSearchScope.allScope(position.getProject())));
+        for (String name : McfppExternalLibraryIndex.names(position.getProject())) {
+            ProgressManager.checkCanceled();
+            if (result.getPrefixMatcher().prefixMatches(name)) {
+                files.addAll(McfppExternalLibraryIndex.filesForName(position.getProject(), name));
+            }
+        }
+        for (VirtualFile virtualFile : files) {
             ProgressManager.checkCanceled();
             PsiFile indexedFile = psiManager.findFile(virtualFile);
             if (!(indexedFile instanceof McfppFile)) continue;
             for (McfppSymbol symbol : McfppFileModels.get(indexedFile).symbols()) {
-                if (!isVisible(symbol, Integer.MAX_VALUE, context) ||
-                        !result.getPrefixMatcher().prefixMatches(symbol.name()) || !seen.add(symbol.name())) {
+                if (!isVisible(symbol, Integer.MAX_VALUE, context, McfppFileModels.get(indexedFile)) ||
+                        !result.getPrefixMatcher().prefixMatches(symbol.name())) {
                     continue;
                 }
-                result.addElement(PrioritizedLookupElement.withPriority(symbolLookup(symbol), 100));
-                if (++count >= PROJECT_RESULT_LIMIT) return;
+                if (addSymbol(result, seen, symbol, symbol.name(), false, 100) && ++count >= PROJECT_RESULT_LIMIT) return;
             }
         }
     }
@@ -187,7 +205,7 @@ public final class McfppCompletionContributor extends CompletionContributor impl
         }
     }
 
-    private static boolean isVisible(McfppSymbol symbol, int offset, McfppCompletionContext context) {
+    private static boolean isVisible(McfppSymbol symbol, int offset, McfppCompletionContext context, McfppFileModel model) {
         if (context.kind() == McfppCompletionContext.Kind.MEMBER) {
             return context.qualifier().equals(symbol.owner()) &&
                     (symbol.kind() == McfppSymbolKind.FUNCTION || symbol.kind() == McfppSymbolKind.FIELD ||
@@ -201,24 +219,11 @@ public final class McfppCompletionContributor extends CompletionContributor impl
                 symbol.kind() == McfppSymbolKind.FIELD) {
             return symbol.nameOffset() < offset && symbol.scopeContains(offset);
         }
-        return symbol.kind().isProjectSymbol() || symbol.kind() == McfppSymbolKind.ENUM_MEMBER;
-    }
-
-    private static String indexTypeText(McfppCompletionContext context) {
-        return switch (context.kind()) {
-            case GLOBAL -> "MCFPP project symbol";
-            case MEMBER -> "member of " + context.qualifier();
-            case NAMESPACE -> context.qualifier();
-        };
-    }
-
-    static LookupElementBuilder symbolLookup(McfppSymbol symbol) {
-        LookupElementBuilder builder = LookupElementBuilder.create(symbol.name())
-                .withIcon(icon(symbol.kind()))
-                .withTypeText(symbol.qualifiedName(), true)
-                .withInsertHandler(McfppCompletionInsertHandler.symbol(symbol));
-        if (!symbol.signature().equals(symbol.name())) builder = builder.withTailText("  " + symbol.signature(), true);
-        return builder;
+        if (symbol.owner() != null) {
+            return model.symbols().stream().anyMatch(owner -> owner.kind().isType() &&
+                    owner.name().equals(symbol.owner()) && owner.contains(offset));
+        }
+        return symbol.kind().isProjectSymbol();
     }
 
     static Icon icon(McfppSymbolKind kind) {

@@ -39,6 +39,9 @@ record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
             String declaredType = McfppTypes.declaredType(variables.getFirst());
             if (declaredType != null) owner = declaredType;
         }
+        for (McfppImport imported : model.imports()) {
+            if (!imported.isWildcard() && owner.equals(imported.alias())) owner = imported.importedName();
+        }
         return new McfppCompletionContext(Kind.MEMBER, owner);
     }
 

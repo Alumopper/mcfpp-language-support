@@ -1,0 +1,18 @@
+namespace validation.alpha;
+
+#{Counter from the alpha namespace.}#
+data Counter {
+    var value as int = 0;
+    func increment(amount as int) -> int {
+        value += amount;
+        return value;
+    }
+}
+
+data CounterTools {}
+
+#{Convert an integer without changing its type.}#
+func convert(value as int) -> int { return value; }
+
+#{Convert a string without changing its type.}#
+func convert(value as string) -> string { return value; }

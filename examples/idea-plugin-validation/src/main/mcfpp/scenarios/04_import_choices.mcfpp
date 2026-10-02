@@ -1,0 +1,8 @@
+namespace validation.importchoices;
+
+# Alt+Enter on Counter offers multiple namespace-specific import choices.
+# Choose validation.beta:Counter, then use Ctrl+B to confirm the chosen declaration.
+import validation.conflicts:Counter;
+func chooseImport() {
+    var value as Counter;
+}

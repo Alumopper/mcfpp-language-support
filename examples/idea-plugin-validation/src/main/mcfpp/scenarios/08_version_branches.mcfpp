@@ -1,0 +1,18 @@
+namespace validation.versions;
+
+# With version 26.3 only missingModern should be diagnosed.
+# Change mcfpp.json version to 1.21.8, save, and expect only missingLegacy instead.
+#if MC >= 26.3
+func selectedBranch() { missingModern(); }
+#else
+func selectedBranch() { missingLegacy(); }
+#endif
+
+# Arithmetic slash remains arithmetic; the next line is a raw Minecraft command.
+func arithmeticAndCommands(value as float) -> float {
+    value += 12 /
+        3;
+    value %= 2.5f;
+    /say Version-aware command editing
+    return -value;
+}

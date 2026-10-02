@@ -1,0 +1,11 @@
+namespace validation.qualified;
+
+import validation.alpha:Counter;
+
+# Both missing calls are intentionally unresolved and remain diagnosed by the LSP.
+# Alt+Enter must not offer creation of a same-file top-level function for either call.
+func qualifiedFailures() {
+    var counter as Counter = Counter();
+    counter.missingMember();
+    validation.alpha:missingQualified();
+}

@@ -1,0 +1,6 @@
+{
+  "namespace": "validation",
+  "sourcePath": "src/main/mcfpp",
+  "targetPath": "build/datapack",
+  "version": "26.3"
+}

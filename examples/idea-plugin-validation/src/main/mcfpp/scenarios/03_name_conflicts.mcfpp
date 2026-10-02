@@ -1,0 +1,10 @@
+namespace validation.conflicts;
+
+data Counter {}
+
+# Complete Coun and explicitly select validation.beta:Counter.
+# Expect validation.beta:Counter, with no ambiguous import added.
+func conflictWithLocalName() {
+    var Counter as int = 1;
+    var value as Coun;
+}

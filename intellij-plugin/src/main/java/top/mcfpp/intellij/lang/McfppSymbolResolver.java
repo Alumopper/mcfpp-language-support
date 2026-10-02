@@ -31,13 +31,13 @@ final class McfppSymbolResolver {
         String usedName = usage.getText();
         int offset = usage.getTextOffset();
 
+        UsageContext context = UsageContext.create(currentFile.getViewProvider().getContents(), usage);
         List<McfppSymbol> locals = currentModel.visibleLocalSymbols(usedName, offset);
-        if (!locals.isEmpty()) {
+        if (context.namespaceQualifier() == null && context.ownerQualifier() == null && !locals.isEmpty()) {
             PsiElement target = elementFor(currentFile, locals.getFirst());
             return target == null ? List.of() : List.of(target);
         }
 
-        UsageContext context = UsageContext.create(currentFile.getViewProvider().getContents(), usage);
         Project project = usage.getProject();
         if (DumbService.isDumb(project)) {
             List<PsiElement> sameFile = sameFileSymbols(currentFile, currentModel, usedName, usage);
@@ -60,9 +60,7 @@ final class McfppSymbolResolver {
         for (String indexedName : indexedNames) {
             LinkedHashSet<VirtualFile> sourceFiles = new LinkedHashSet<>(
                     index.getContainingFiles(McfppSymbolIndex.NAME, indexedName, scope));
-            if (sourceFiles.isEmpty()) {
-                sourceFiles.addAll(McfppExternalLibraryIndex.filesForName(project, indexedName));
-            }
+            sourceFiles.addAll(McfppExternalLibraryIndex.filesForName(project, indexedName));
             for (VirtualFile virtualFile : sourceFiles) {
                 ProgressManager.checkCanceled();
                 PsiFile file = psiManager.findFile(virtualFile);
@@ -184,9 +182,7 @@ final class McfppSymbolResolver {
         List<PsiElement> result = new ArrayList<>();
         LinkedHashSet<VirtualFile> sourceFiles = new LinkedHashSet<>(FileBasedIndex.getInstance()
                 .getContainingFiles(McfppSymbolIndex.NAME, indexKey, scope));
-        if (sourceFiles.isEmpty()) {
-            sourceFiles.addAll(McfppExternalLibraryIndex.filesForName(project, name));
-        }
+        sourceFiles.addAll(McfppExternalLibraryIndex.filesForName(project, name));
         for (VirtualFile virtualFile : sourceFiles) {
             PsiFile file = psiManager.findFile(virtualFile);
             if (!(file instanceof McfppFile)) continue;
@@ -227,7 +223,8 @@ final class McfppSymbolResolver {
                 ? null
                 : resolveOwnerQualifier(context.ownerQualifier(), currentModel, usageOffset);
         boolean ownerImported = expectedOwner != null && symbol.owner() != null &&
-                currentModel.importExposes(symbol.namespace(), symbol.owner(), expectedOwner);
+                (currentModel.importExposes(symbol.namespace(), symbol.owner(), expectedOwner) ||
+                        currentModel.importExposes(symbol.namespace(), symbol.owner(), context.ownerQualifier()));
         if (context.namespaceQualifier() != null) {
             String expectedNamespace = resolveNamespaceQualifier(context.namespaceQualifier(), currentModel);
             if (!symbol.namespace().equals(expectedNamespace)) return -1;
@@ -252,7 +249,7 @@ final class McfppSymbolResolver {
             String enclosingType = enclosingType(currentModel, usageOffset);
             if (symbol.owner() == null) score += 100;
             else if (symbol.owner().equals(enclosingType)) score += 400;
-            else score -= 100;
+            else return -1;
         }
 
         if (context.typePosition() && symbol.kind().isType()) score += 300;
@@ -296,7 +293,15 @@ final class McfppSymbolResolver {
         List<McfppSymbol> variables = model.visibleLocalSymbols(qualifier, usageOffset);
         if (!variables.isEmpty()) {
             String declaredType = McfppTypes.declaredType(variables.getFirst());
-            if (declaredType != null) return declaredType;
+            if (declaredType != null) {
+                for (McfppImport imported : model.imports()) {
+                    if (!imported.isWildcard() && declaredType.equals(imported.alias())) return imported.importedName();
+                }
+                return declaredType;
+            }
+        }
+        for (McfppImport imported : model.imports()) {
+            if (!imported.isWildcard() && qualifier.equals(imported.alias())) return imported.importedName();
         }
         return qualifier;
     }

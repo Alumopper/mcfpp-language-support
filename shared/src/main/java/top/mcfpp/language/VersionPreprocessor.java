@@ -23,7 +23,8 @@ public final class VersionPreprocessor {
     }
 
     public record Directive(int start, int end) {}
-    public record Result(String text, List<Directive> directives) {}
+    public record InactiveRange(int start, int end) {}
+    public record Result(String text, List<Directive> directives, List<InactiveRange> inactiveRanges) {}
 
     private static final class Branch {
         final int startLine;
@@ -72,6 +73,7 @@ public final class VersionPreprocessor {
         int[] target = parseVersion(targetVersion, 1);
         ArrayDeque<Branch> branches = new ArrayDeque<>();
         List<Directive> directives = new ArrayList<>();
+        List<InactiveRange> inactiveRanges = new ArrayList<>();
         StringBuilder result = new StringBuilder(source.length());
         State state = State.CODE;
         int offset = 0;
@@ -85,6 +87,8 @@ public final class VersionPreprocessor {
             if (state == State.CODE && match.matches()) {
                 String name = match.group(1);
                 String argument = match.group(2).trim();
+                boolean nestedInactive = name.equals("if") ? !active
+                        : !branches.isEmpty() && !branches.peekLast().parentActive;
                 switch (name) {
                     case "if" -> branches.addLast(new Branch(lineNumber, active, evaluate(argument, target, lineNumber)));
                     case "elif" -> {
@@ -112,9 +116,16 @@ public final class VersionPreprocessor {
                 }
                 directives.add(new Directive(offset + line.indexOf('#'), end));
                 appendBlank(result, line);
+                // Keep nested directives inside an inactive outer branch in the same fold.
+                if (nestedInactive) {
+                    addInactiveRange(inactiveRanges, offset, end < source.length() ? end + 1 : end);
+                }
             } else {
                 if (active) result.append(line);
-                else appendBlank(result, line);
+                else {
+                    appendBlank(result, line);
+                    addInactiveRange(inactiveRanges, offset, end < source.length() ? end + 1 : end);
+                }
                 state = scanState(line, state);
             }
             if (end < source.length()) result.append('\n');
@@ -122,7 +133,15 @@ public final class VersionPreprocessor {
             lineNumber++;
         }
         if (!branches.isEmpty()) throw new Error(branches.peekLast().startLine, "Missing #endif");
-        return new Result(result.toString(), List.copyOf(directives));
+        return new Result(result.toString(), List.copyOf(directives), List.copyOf(inactiveRanges));
+    }
+
+    private static void addInactiveRange(List<InactiveRange> ranges, int start, int end) {
+        if (start == end) return;
+        if (!ranges.isEmpty() && ranges.getLast().end() == start) {
+            start = ranges.removeLast().start();
+        }
+        ranges.add(new InactiveRange(start, end));
     }
 
     private static void appendBlank(StringBuilder result, String line) {

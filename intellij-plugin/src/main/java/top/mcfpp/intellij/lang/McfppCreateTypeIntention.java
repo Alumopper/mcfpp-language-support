@@ -13,7 +13,7 @@ public final class McfppCreateTypeIntention extends McfppCreateDeclarationIntent
 
     @Override
     public boolean isAvailable(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-        PsiElement identifier = unresolvedIdentifier(project, element);
+        PsiElement identifier = unresolvedIdentifier(project, editor, element);
         if (identifier == null || !looksLikeType(identifier)) return false;
         setText("Create MCFPP data type '" + identifier.getText() + "'");
         return true;
@@ -21,8 +21,8 @@ public final class McfppCreateTypeIntention extends McfppCreateDeclarationIntent
 
     @Override
     public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-        PsiElement identifier = unresolvedIdentifier(project, element);
-        if (identifier == null || !(identifier.getContainingFile() instanceof McfppFile file)) return;
+        PsiElement identifier = unresolvedIdentifier(project, editor, element);
+        if (identifier == null || !looksLikeType(identifier) || !(identifier.getContainingFile() instanceof McfppFile file)) return;
         String declaration = "data " + identifier.getText() + " {\n    \n}\n";
         insertTopLevelDeclaration(project, editor, file, declaration, declaration.indexOf("    \n") + 4);
     }

@@ -1,0 +1,14 @@
+namespace validation.completion;
+
+# Place the caret after Coun and invoke completion; select a Counter by its namespace.
+import validation.beta:CountDown;
+import validation.mni:convert;
+func typeCompletion() {
+    var value as CountDown;
+}
+
+# Place the caret after conv and invoke completion; both convert overloads should appear.
+# Selecting convert inserts parentheses and import validation.alpha:convert.
+func functionCompletion() {
+    var result = convert(w);
+}

@@ -33,4 +33,12 @@ class McfppLibraryRootsProviderTest {
 
         assertEquals(List.of(sources), roots);
     }
+
+    @Test
+    void doesNotAttachProjectSourcesAsExternalLibraries() throws Exception {
+        Path project = Files.createDirectories(temporaryDirectory.resolve("project"));
+        Files.createDirectories(project.resolve("src/main/mcfpp"));
+        Files.createDirectories(project.resolve("src/main/java"));
+        assertEquals(List.of(), McfppLibraryRootsProvider.discoverSourceRoots(project.toString(), null, null));
+    }
 }

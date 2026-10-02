@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Fix IDEA validation issues: keep LSP undefined-symbol diagnostics when native inspection cannot run, diagnose missing declared types, and offer native declaration/import fixes on LSP errors and at identifier ends.
+- Resolve imported type aliases in assignment, argument, and return checks, and prevent unrelated members from resolving as unqualified names.
+- Warn and dim unused imports; remove individual unused imports without losing attached comments or version directives.
+- Dim and initially fold inactive Minecraft version branches, including nested conditions; refresh open editors after configuration saves.
+- Avoid attaching project sources as external libraries and retain the packaged standard library when discovered sources are not yet available in the VFS.
+
+- Make IDEA completion candidates declaration-specific, retaining namespace collisions and overload signatures, reusing aliases, and importing exactly the selected symbol.
+- Offer multiple Alt+Enter import candidates and use qualified references for name conflicts.
+- Add conservative IDEA Optimize Imports support that preserves unused imports, aliases, comments, and conditional branches.
+- Add native unresolved-reference inspection with import/create fixes and stable `mcfpp.undefined-symbol` LSP diagnostic codes for selective deduplication and fallback.
+- Respect nested local scopes in IDEA resolution and duplicate checks; guard declaration creation for qualified references and apply project code style.
+
 - Synchronize the parser with the compiler's compound assignment, unary minus, and newline rules.
 - Analyze active Minecraft version branches using `mcfpp.json`'s `version`, including nested conditions, original source ranges, directive diagnostics, and refresh after target version changes.
 - Share version preprocessing between the language server and IntelliJ's native declaration model.

@@ -95,6 +95,15 @@
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.lang.McfppFoldingBuilder"/>
         <colorSettingsPage implementation="top.mcfpp.intellij.lang.McfppColorSettingsPage"/>
+        <lang.importOptimizer language="MCFPP" implementationClass="top.mcfpp.intellij.lang.McfppImportOptimizer"/>
+        <localInspection language="MCFPP" shortName="McfppUnusedImport"
+                         displayName="Unused MCFPP import" groupName="MCFPP"
+                         enabledByDefault="true" level="WARNING"
+                         implementationClass="top.mcfpp.intellij.lang.McfppUnusedImportInspection"/>
+        <localInspection language="MCFPP" shortName="McfppUnresolvedReference"
+                displayName="Unresolved MCFPP reference" groupName="MCFPP"
+                enabledByDefault="true" level="ERROR"
+                implementationClass="top.mcfpp.intellij.lang.McfppUnresolvedReferenceInspection"/>
         <lang.formatter
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.lang.McfppFormattingModelBuilder"/>
@@ -134,6 +143,11 @@
             <skipBeforeAfter>true</skipBeforeAfter>
         </intentionAction>
     </extensions>
+
+    <projectListeners>
+        <listener class="top.mcfpp.intellij.lang.McfppConfigurationListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
 
     <extensions defaultExtensionNs="com.intellij.platform.backend.documentation">
         <targetProvider implementation="top.mcfpp.intellij.lang.McfppDocumentationTargetProvider"/>

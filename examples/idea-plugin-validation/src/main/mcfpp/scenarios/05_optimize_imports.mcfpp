@@ -1,0 +1,26 @@
+namespace validation.imports;
+
+import validation.beta:Counter as BetaCounter;
+import validation.alpha:convert;
+import validation.alpha:Counter as AlphaCounter;
+import validation.alpha:convert;
+
+# This comment belongs to CountDown; the commented import must stay in place.
+import validation.beta:CountDown;
+import validation.beta:Counter as SpareCounter;
+import validation.alpha:Counter as SpareAlpha;
+
+#if MC >= 26.3
+import validation.beta:CountDown as ModernCountDown;
+import validation.alpha:Counter as ModernCounter;
+#else
+import validation.beta:Counter as LegacyCounter;
+#endif
+
+# Code | Optimize Imports: sort and deduplicate within each safe block.
+# Unused aliases, CountDown and imports in separate version branches must remain.
+func useImports() {
+    var first as AlphaCounter = AlphaCounter();
+    var second as BetaCounter = BetaCounter();
+    var number = convert(1);
+}
