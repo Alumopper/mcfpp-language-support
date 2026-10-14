@@ -223,27 +223,27 @@ class MCFPPTypeChecker(
         }
 
         override fun visitIfStatement(ctx: mcfppParser.IfStatementContext) {
-            checkCondition(ctx.bucketExpression())
+            checkCondition(ctx.expression())
             super.visitIfStatement(ctx)
         }
 
         override fun visitElseIfStatement(ctx: mcfppParser.ElseIfStatementContext) {
-            checkCondition(ctx.bucketExpression())
+            checkCondition(ctx.expression())
             super.visitElseIfStatement(ctx)
         }
 
         override fun visitWhileStatement(ctx: mcfppParser.WhileStatementContext) {
-            checkCondition(ctx.bucketExpression())
+            checkCondition(ctx.expression())
             super.visitWhileStatement(ctx)
         }
 
         override fun visitDoWhileStatement(ctx: mcfppParser.DoWhileStatementContext) {
-            checkCondition(ctx.bucketExpression())
+            checkCondition(ctx.expression())
             super.visitDoWhileStatement(ctx)
         }
 
-        private fun checkCondition(ctx: mcfppParser.BucketExpressionContext?) {
-            val expression = ctx?.expression() ?: return
+        private fun checkCondition(expression: mcfppParser.ExpressionContext?) {
+            if (expression == null) return
             val actualType = inferExpressionType(expression)
             if (!isAssignable("bool", actualType)) {
                 diagnostics += Diagnostic(

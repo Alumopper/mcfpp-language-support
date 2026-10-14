@@ -13,9 +13,9 @@ class MCFPPDocumentIndexTest {
             """
                 namespace test
                 data Test {
-                    a as int;
-                    const ROWS as int = 20;
-                    var value as nbt;
+                    var a: int;
+                    const ROWS: int = 20;
+                    var value: nbt;
                 }
             """.trimIndent()
         )
@@ -34,7 +34,7 @@ class MCFPPDocumentIndexTest {
         val analysis = MCFPPDocumentIndex.analyze(
             "file:///function-parameters.mcfpp",
             """
-                func choose<limit as int = 1>(static value as int, fallback as int = 0) -> int {
+                func choose<limit: int = 1>(static value: int, fallback: int = 0) : int {
                     return value;
                 }
             """.trimIndent()
@@ -42,16 +42,16 @@ class MCFPPDocumentIndexTest {
 
         val function = analysis.topLevelSymbols.single { it.name == "choose" }
         assertEquals(3, function.parameters.size)
-        assertEquals("limit as int = 1", function.parameters[0].label())
+        assertEquals("limit: int = 1", function.parameters[0].label())
         assertTrue(function.parameters[0].isReadOnly)
-        assertEquals("static value as int", function.parameters[1].label())
+        assertEquals("static value: int", function.parameters[1].label())
         assertTrue(function.parameters[1].isStatic)
-        assertEquals("fallback as int = 0", function.parameters[2].label())
+        assertEquals("fallback: int = 0", function.parameters[2].label())
         assertTrue(function.parameters[2].hasDefault)
 
         val genericAnalysis = MCFPPDocumentIndex.analyze(
             "file:///type-parameter.mcfpp",
-            "func identity<T as Type, count as int>(value as T) -> T { return value; }"
+            "func identity<T, count: int>(value: T) : T { return value; }"
         )
         assertEquals(SymbolKind.TypeParameter, genericAnalysis.declarationsByName.getValue("T").single().kind)
         assertEquals(SymbolKind.Variable, genericAnalysis.declarationsByName.getValue("count").single().kind)
@@ -81,7 +81,7 @@ class MCFPPDocumentIndexTest {
             "file:///native-and-alias.mcfpp",
             """
                 typealias int as Count;
-                func nativeAdd(value as Count) -> Count = example.NativeBridge.add;
+                func nativeAdd(value: Count) : Count = example.NativeBridge.add;
             """.trimIndent()
         )
 
@@ -102,8 +102,8 @@ class MCFPPDocumentIndexTest {
             "file:///operators.mcfpp",
             """
                 data Vector {
-                    operator + (other as Vector) -> Vector { return other; }
-                    operator - (other as Vector) -> Vector = example.NativeBridge.minus;
+                    operator + (other: Vector) : Vector { return other; }
+                    operator - (other: Vector) : Vector = example.NativeBridge.minus;
                 }
             """.trimIndent()
         )
@@ -126,7 +126,7 @@ class MCFPPDocumentIndexTest {
                 data Empty {}
                 data Wrapped as int;
                 data Explicit {
-                    constructor(value as string) {}
+                    constructor(value: string) {}
                 }
             """.trimIndent()
         )
@@ -158,38 +158,38 @@ class MCFPPDocumentIndexTest {
         val analysis = MCFPPDocumentIndex.analyze(
             "file:///generic-constructors.mcfpp",
             """
-                data Box<T as Type> {
-                    constructor(value as T) {}
+                data Box<T> {
+                    constructor(value: T) {}
                 }
-                data EmptyBox<T as Type> {}
-                data Wrapped<T as Type> as T;
+                data EmptyBox<T> {}
+                data Wrapped<T> as T;
             """.trimIndent()
         )
 
         assertEquals(emptyList(), analysis.parserDiagnostics.map { it.message })
         assertEquals(
-            listOf("T as Type", "value as T"),
+            listOf("T", "value: T"),
             analysis.typeMembers.getValue("Box")
                 .single { it.kind == SymbolKind.Constructor }
                 .parameters
                 .map { it.label() }
         )
         assertEquals(
-            listOf("T as Type"),
+            listOf("T"),
             analysis.typeMembers.getValue("EmptyBox")
                 .single { it.kind == SymbolKind.Constructor }
                 .parameters
                 .map { it.label() }
         )
         assertEquals(
-            listOf("T as Type", "value as T"),
+            listOf("T", "value: T"),
             analysis.typeMembers.getValue("Wrapped")
                 .single { it.kind == SymbolKind.Constructor }
                 .parameters
                 .map { it.label() }
         )
         assertEquals(
-            listOf("T as Type"),
+            listOf("T"),
             analysis.topLevelSymbols.single { it.name == "Box" }.parameters.map { it.label() }
         )
     }
@@ -200,9 +200,9 @@ class MCFPPDocumentIndexTest {
             "file:///access-modifiers.mcfpp",
             """
                 data Example {
-                    private var hidden as int;
+                    private var hidden: int;
                     protected func inherited() {}
-                    public var visible as string;
+                    public var visible: string;
                 }
             """.trimIndent()
         )
@@ -218,7 +218,7 @@ class MCFPPDocumentIndexTest {
         val analysis = MCFPPDocumentIndex.analyze(
             "file:///syntactic-identifiers.mcfpp",
             """
-                func use(value as root.models:Thing, left as int, right as int) {
+                func use(value: root.models:Thing, left: int, right: int) {
                     root.utils:make();
                     left combine right;
                     value[key = left];
@@ -227,7 +227,8 @@ class MCFPPDocumentIndexTest {
         )
 
         val references = analysis.referenceOccurrencesByName
-        assertTrue("root" !in references)
+        assertEquals(emptyList(), analysis.parserDiagnostics.map { it.message })
+        assertTrue("root" !in references, references.toString())
         assertTrue("models" !in references)
         assertTrue("utils" !in references)
         assertTrue("combine" !in references)

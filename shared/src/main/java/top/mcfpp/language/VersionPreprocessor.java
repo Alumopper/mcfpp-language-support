@@ -41,7 +41,7 @@ public final class VersionPreprocessor {
         }
     }
 
-    private enum State { CODE, SINGLE_STRING, DOUBLE_STRING, MULTILINE_STRING, BLOCK_COMMENT, DOC_COMMENT, TRIPLE_DOC_COMMENT }
+    private enum State { CODE, SINGLE_STRING, DOUBLE_STRING, MULTILINE_STRING }
 
     private VersionPreprocessor() {}
 
@@ -187,23 +187,13 @@ public final class VersionPreprocessor {
             switch (state) {
                 case CODE -> {
                     if (line.startsWith("\"\"\"", i)) { state = State.MULTILINE_STRING; i += 2; }
-                    else if (line.startsWith("#{", i)) { state = State.DOC_COMMENT; i++; }
-                    else if (line.startsWith("###", i)) {
-                        int end = line.endsWith("\r") ? line.length() - 1 : line.length();
-                        if (i + 3 != end) return State.CODE;
-                        state = State.TRIPLE_DOC_COMMENT; i += 2;
-                    }
-                    else if (line.startsWith("##", i)) { state = State.BLOCK_COMMENT; i++; }
-                    else if (line.charAt(i) == '#') return State.CODE;
+                    else if (line.startsWith("//", i)) return State.CODE;
                     else if (line.charAt(i) == '"') state = State.DOUBLE_STRING;
                     else if (line.charAt(i) == '\'') state = State.SINGLE_STRING;
                 }
                 case SINGLE_STRING -> { if (line.charAt(i) == '\'') state = State.CODE; }
                 case DOUBLE_STRING -> { if (line.charAt(i) == '"') state = State.CODE; }
                 case MULTILINE_STRING -> { if (line.startsWith("\"\"\"", i)) { state = State.CODE; i += 2; } }
-                case BLOCK_COMMENT -> { if (line.startsWith("##", i)) { state = State.CODE; i++; } }
-                case DOC_COMMENT -> { if (line.startsWith("}#", i)) { state = State.CODE; i++; } }
-                case TRIPLE_DOC_COMMENT -> { if (line.startsWith("###", i)) { state = State.CODE; i += 2; } }
             }
         }
         return state;

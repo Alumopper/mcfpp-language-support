@@ -45,12 +45,12 @@ returnStatement
 
 // 变量声明语句 - 支持类型推断和显式类型声明
 varStatement
-    : VAR IDENTIFIER (AS type)? (ASSIGN expression)? SEMICOLON?
+    : (VAR | CONST | DYNAMIC) IDENTIFIER (COLON type)? (ASSIGN expression)? SEMICOLON?
     ;
 
-// 数据成员声明 - 类似变量声明但可省略var
+// 数据成员声明
 memberDeclaration
-    : (VAR)? IDENTIFIER (AS type)? (ASSIGN expression)? SEMICOLON?
+    : (VAR | CONST) IDENTIFIER (COLON type)? (ASSIGN expression)? SEMICOLON?
     ;
 
 assignmentStatement
@@ -58,17 +58,17 @@ assignmentStatement
     ;
 
 ifStatement
-    : IF LPAREN expression RPAREN block (ELSE block)?
+    : IF expression block (ELSE block)?
     ;
 
 // while语句
 whileStatement
-    : WHILE LPAREN expression RPAREN block
+    : WHILE expression block
     ;
 
 // do-while语句
 doWhileStatement
-    : DO block WHILE LPAREN expression RPAREN SEMICOLON?
+    : DO block WHILE expression SEMICOLON?
     ;
 
 printStatement
@@ -77,7 +77,7 @@ printStatement
 
 // 函数声明 - 支持有返回值和无返回值
 functionDeclaration
-    : FUNC IDENTIFIER LPAREN parameterList? RPAREN (ARROW type)? block SEMICOLON?
+    : FUNC IDENTIFIER LPAREN parameterList? RPAREN (COLON type)? block SEMICOLON?
     ;
 
 // 参数列表 - 支持参数类型声明
@@ -87,7 +87,7 @@ parameterList
 
 // 参数定义
 parameter
-    : IDENTIFIER AS type
+    : IDENTIFIER COLON type
     ;
 
 // 数据模板声明
@@ -158,7 +158,8 @@ PRINT : 'print';
 FUNC : 'func';
 RETURN : 'return';
 AS : 'as';
-ARROW : '->';
+CONST : 'const';
+DYNAMIC : 'dynamic';
 DATA : 'data'; // 数据模板关键字
 DOT : '.'; // 点运算符
 WHILE : 'while'; // while关键字

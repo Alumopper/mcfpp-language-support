@@ -26,7 +26,7 @@ public final class McfppIndentOptionsProvider implements FileTypeIndentOptionsPr
     public @NotNull String getPreviewText() {
         return """
                 data Example {
-                    func update(value as int) -> bool {
+                    func update(value: int): bool {
                         if (value > 0) {
                             return true
                         }

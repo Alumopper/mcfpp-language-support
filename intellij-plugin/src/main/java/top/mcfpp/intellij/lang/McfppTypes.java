@@ -12,9 +12,12 @@ final class McfppTypes {
 
     static @Nullable String declaredType(McfppSymbol symbol) {
         String signature = symbol.signature();
-        int as = wordIndex(signature, "as");
-        if (as < 0) return null;
-        int cursor = as + 2;
+        int assignment = signature.indexOf('=');
+        if (assignment >= 0) signature = signature.substring(0, assignment).stripTrailing();
+        int annotation = signature.indexOf(':');
+        if (annotation < 0) return symbol.kind() == McfppSymbolKind.PARAMETER &&
+                signature.matches("[A-Za-z_$][A-Za-z0-9_$]*(?:\\s*=.*)?") ? "type" : null;
+        int cursor = annotation + 1;
         while (cursor < signature.length() && Character.isWhitespace(signature.charAt(cursor))) cursor++;
         int start = cursor;
         while (cursor < signature.length()) {
@@ -41,8 +44,8 @@ final class McfppTypes {
         String parameter = range.substring(signature).strip();
         int assignment = parameter.indexOf('=');
         if (assignment >= 0) parameter = parameter.substring(0, assignment).stripTrailing();
-        int as = wordIndex(parameter, "as");
-        String type = as < 0 ? parameter : parameter.substring(as + 2).strip();
+        int annotation = parameter.indexOf(':');
+        String type = annotation < 0 ? parameter : parameter.substring(annotation + 1).strip();
         int space = type.lastIndexOf(' ');
         if (space >= 0) type = type.substring(space + 1);
         int colon = type.lastIndexOf(':');

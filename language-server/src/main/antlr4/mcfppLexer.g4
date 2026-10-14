@@ -45,7 +45,6 @@ SUB_ASSIGNMENT: '-=' ;
 MULT_ASSIGNMENT: '*=' ;
 DIV_ASSIGNMENT: '/=' ;
 MOD_ASSIGNMENT: '%=' ;
-ARROW: '->' ;
 DOUBLE_ARROW: '=>' ;
 RANGE: '..' ;
 COLONCOLON: '::' ;
@@ -123,6 +122,8 @@ FUNCTION:'func';
 ENUM:'enum';
 OPERATOR:'operator';
 TYPEALIAS: 'typealias';
+OUT: 'out';
+IN: 'in';
 
 CONSTRUCTOR:'constructor';
 
@@ -149,6 +150,7 @@ NBT:        'nbt';
 ANY:        'any';
 VOID:       'void';
 LIST:       'list';
+IMMUTABLE_LIST: 'ImmutableList';
 MAP:        'map';
 DICT:       'dict';
 TYPE:       'Type';
@@ -234,7 +236,10 @@ BooleanConstant
     |   FALSE
     ;
 
-LineString: ('"' .*? '"' )|( '\'' .*? '\'' );
+LineString
+    : '"' ('\\' ["\\] | ~["\\\r\n])* '"'
+    | '\'' ('\\' ['\\] | ~['\\\r\n])* '\''
+    ;
 
 NL
     :   ('\r'? '\n')+ {afterNewline = true;}
@@ -244,20 +249,11 @@ WS  :  [ \t\u000C]+ -> skip
     ;
 
 DOC_COMMENT
-    :   '#{' .*? '}#'
-    |   '###' NL+ .*? NL+ '###'
-    ;
-
-SIMPLE_DOC_COMMENT
-    :   '###'.*? '\n'
-    ;
-
-BLOCK_COMMENT
-    :   '##' .*? '##' -> skip
+    :   '///' ~[\r\n]* ('\r'? '\n' [ \t]* '///' ~[\r\n]*)*
     ;
 
 LINE_COMMENT
-    :   '#' ~[\r\n]* -> skip
+    :   '//' ~[\r\n]* -> skip
     ;
 
 mode OrgCommand ;

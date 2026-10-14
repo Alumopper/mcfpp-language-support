@@ -151,7 +151,7 @@ internal object MCFPPCallContextFinder {
             while (keywordIndex >= 0 && isIdentifierPart(text[keywordIndex])) {
                 keywordIndex -= 1
             }
-            if (previousWordEnd > keywordIndex + 1 && text.substring(keywordIndex + 1, previousWordEnd) in nonCallKeywords) {
+            if (previousWordEnd > keywordIndex + 1 && text.substring(keywordIndex + 1, previousWordEnd) in setOf("func", "data", "interface", "enum", "namespace", "import")) {
                 return null
             }
         }
@@ -246,12 +246,7 @@ internal object MCFPPCallContextFinder {
                 text.startsWith("\"\"\"", index) -> index = skipDelimited(text, index, end, "\"\"\"")
                 text[index] == '"' -> index = skipQuoted(text, index, end, '"')
                 text[index] == '\'' -> index = skipQuoted(text, index, end, '\'')
-                text.startsWith("#{", index) -> index = skipUntil(text, index, end, "}#")
-                text.startsWith("###", index) -> {
-                    while (index < end && text[index] != '\r' && text[index] != '\n') index += 1
-                }
-                text.startsWith("##", index) -> index = skipUntil(text, index, end, "##", 2)
-                text[index] == '#' -> {
+                text.startsWith("//", index) || text[index] == '#' -> {
                     while (index < end && text[index] != '\r' && text[index] != '\n') index += 1
                 }
                 else -> {

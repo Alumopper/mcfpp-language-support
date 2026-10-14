@@ -86,15 +86,29 @@ public final class McfppCompletionContributor extends CompletionContributor impl
         McfppFileModel model = McfppFileModels.get(originalFile instanceof McfppFile ? originalFile : file);
         McfppCompletionContext completionContext = McfppCompletionContext.create(parameters, result, model);
         Set<String> seen = new HashSet<>();
-        if (completionContext.kind() == McfppCompletionContext.Kind.GLOBAL) addKeywords(result, seen);
+        if (completionContext.kind() == McfppCompletionContext.Kind.GLOBAL) {
+            int prefixStart = Math.min(offset, originalSource.length());
+            while (prefixStart > 0 && Character.isUnicodeIdentifierPart(originalSource.charAt(prefixStart - 1))) prefixStart--;
+            String before = originalSource.substring(0, Math.min(prefixStart, originalSource.length())).stripTrailing();
+            addKeywords(result, seen, before.matches("(?s).*\\b(?:const|dynamic)$"),
+                    McfppDeclarationSyntax.endsWithValueDeclarationName(before));
+        } else if (completionContext.kind() == McfppCompletionContext.Kind.TYPE) {
+            for (String type : List.of("int", "bool", "byte", "short", "long", "float", "double", "string",
+                    "entity", "selector", "text", "nbt", "any", "list", "map", "dict", "type", "vec",
+                    "void", "ByteArray", "IntArray", "LongArray")) {
+                result.addElement(LookupElementBuilder.create(type));
+            }
+        }
 
         model.symbols().stream().sorted(java.util.Comparator.comparingInt(McfppSymbol::nameOffset).reversed())
                 .filter(symbol -> isVisible(symbol, offset, completionContext, model))
                 .forEach(symbol -> addSymbol(result, seen, symbol, symbol.name(),
-                        completionContext.kind() == McfppCompletionContext.Kind.GLOBAL, 500));
+                        completionContext.kind() == McfppCompletionContext.Kind.GLOBAL ||
+                                completionContext.kind() == McfppCompletionContext.Kind.TYPE, 500));
 
         if (DumbService.isDumb(position.getProject())) return;
-        if (completionContext.kind() != McfppCompletionContext.Kind.GLOBAL) {
+        if (completionContext.kind() == McfppCompletionContext.Kind.MEMBER ||
+                completionContext.kind() == McfppCompletionContext.Kind.NAMESPACE) {
             addContextualIndexedSymbols(position, result, seen, completionContext);
             return;
         }
@@ -119,6 +133,7 @@ public final class McfppCompletionContributor extends CompletionContributor impl
                 if (!(element.getContainingFile() instanceof McfppFile candidateFile)) continue;
                 McfppSymbol symbol = McfppFileModels.get(candidateFile).declarationAt(element.getTextOffset());
                 if (symbol == null || !symbol.isTopLevel()) continue;
+                if (completionContext.kind() == McfppCompletionContext.Kind.TYPE && !symbol.kind().isType()) continue;
                 String exposed = McfppImportManager.exposedName(model, symbol);
                 if (!result.getPrefixMatcher().prefixMatches(exposed)) continue;
                 int priority = symbol.namespace().equals(model.namespace()) ? 400
@@ -196,8 +211,11 @@ public final class McfppCompletionContributor extends CompletionContributor impl
         }
     }
 
-    private static void addKeywords(CompletionResultSet result, Set<String> seen) {
+    private static void addKeywords(CompletionResultSet result, Set<String> seen, boolean directDeclaration,
+                                    boolean declarationName) {
         for (String keyword : KEYWORDS) {
+            if (directDeclaration && keyword.equals("var")) continue;
+            if (declarationName && keyword.equals("as")) continue;
             if (seen.add(keyword)) result.addElement(PrioritizedLookupElement.withPriority(
                     LookupElementBuilder.create(keyword).bold(),
                     50
@@ -206,6 +224,8 @@ public final class McfppCompletionContributor extends CompletionContributor impl
     }
 
     private static boolean isVisible(McfppSymbol symbol, int offset, McfppCompletionContext context, McfppFileModel model) {
+        if (context.kind() == McfppCompletionContext.Kind.TYPE && !symbol.kind().isType() &&
+                !(symbol.kind() == McfppSymbolKind.PARAMETER && "type".equals(McfppTypes.declaredType(symbol)))) return false;
         if (context.kind() == McfppCompletionContext.Kind.MEMBER) {
             return context.qualifier().equals(symbol.owner()) &&
                     (symbol.kind() == McfppSymbolKind.FUNCTION || symbol.kind() == McfppSymbolKind.FIELD ||

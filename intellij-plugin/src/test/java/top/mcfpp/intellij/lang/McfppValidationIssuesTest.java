@@ -22,7 +22,7 @@ public final class McfppValidationIssuesTest extends BasePlatformTestCase {
         myFixture.addFileToProject("mcfpp.json", Files.readString(root.resolve("mcfpp.json")));
         try (var paths = Files.walk(root.resolve("src/main/mcfpp"))) {
             for (var path : paths.filter(Files::isRegularFile).toList()) {
-                myFixture.addFileToProject(root.relativize(path).toString(), Files.readString(path));
+                myFixture.addFileToProject(root.relativize(path).toString().replace('\\', '/'), Files.readString(path));
             }
         }
         myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
@@ -35,7 +35,7 @@ public final class McfppValidationIssuesTest extends BasePlatformTestCase {
         assertEquals(List.of("Undefined symbol `missingHelper`", "Undefined symbol `MissingType`"), undefinedMessages());
         myFixture.getEditor().getCaretModel().moveToOffset(myFixture.getFile().getText().indexOf("missingHelper(1"));
         assertNotEmpty(myFixture.filterAvailableIntentions("Create MCFPP function 'missingHelper'"));
-        myFixture.getEditor().getCaretModel().moveToOffset(myFixture.getFile().getText().indexOf("MissingType;"));
+        myFixture.getEditor().getCaretModel().moveToOffset(myFixture.getFile().getText().lastIndexOf("MissingType"));
         assertNotEmpty(myFixture.filterAvailableIntentions("Create MCFPP data type 'MissingType'"));
     }
 
@@ -43,14 +43,14 @@ public final class McfppValidationIssuesTest extends BasePlatformTestCase {
         myFixture.configureByText(McfppFileType.INSTANCE, "func main() { missingHelper<caret>(1, \"hello\"); }");
         ready();
         assertNotEmpty(myFixture.filterAvailableIntentions("Create MCFPP function 'missingHelper'"));
-        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var value as MissingType<caret>; }");
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var value: MissingType<caret>; }");
         assertNotEmpty(myFixture.filterAvailableIntentions("Create MCFPP data type 'MissingType'"));
         myFixture.launchAction(myFixture.findSingleIntention("Create MCFPP data type 'MissingType'"));
         assertTrue(myFixture.getEditor().getDocument().getText().contains("data MissingType {"));
     }
 
     public void testUnrelatedMembersDoNotResolveUnqualifiedVariables() {
-        myFixture.configureByText(McfppFileType.INSTANCE, "data Other { var w as int; }\nfunc main() { var result = w; }");
+        myFixture.configureByText(McfppFileType.INSTANCE, "data Other { var w: int; }\nfunc main() { var result = w; }");
         myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
         ready();
         assertEquals(List.of("Undefined symbol `w`"), undefinedMessages());
@@ -87,7 +87,7 @@ public final class McfppValidationIssuesTest extends BasePlatformTestCase {
     }
 
     public void testUnusedImportsRespectAliasesWildcardUsesAndShadowing() {
-        myFixture.addFileToProject("library.mcfpp", "namespace library; data Counter {} data Unused {} func convert(value as int) -> int { return value; }");
+        myFixture.addFileToProject("library.mcfpp", "namespace library; data Counter {} data Unused {} func convert(value: int) : int { return value; }");
         myFixture.enableInspections(McfppUnusedImportInspection.class);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 import library:Counter as Alpha;
@@ -95,11 +95,11 @@ public final class McfppValidationIssuesTest extends BasePlatformTestCase {
                 import library:Unused;
                 import library:convert as shadowed;
                 func main() {
-                    var counter as Alpha = Alpha();
+                    var counter: Alpha = Alpha();
                     var shadowed = 1;
                     var result = alpha:convert(shadowed);
                     var text = "Unused";
-                    # Unused is mentioned only in a comment.
+                    // Unused is mentioned only in a comment.
                 }
                 """);
         ready();
@@ -113,16 +113,16 @@ public final class McfppValidationIssuesTest extends BasePlatformTestCase {
         myFixture.enableInspections(McfppUnusedImportInspection.class);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 #if MC >= 1.21.8
-                # attached documentation
-                import library:Un<caret>used; # inline documentation
+                // attached documentation
+                import library:Un<caret>used; // inline documentation
                 #endif
                 func main() {}
                 """);
         ready();
         myFixture.launchAction(myFixture.findSingleIntention("Remove unused import"));
         assertFalse(myFixture.getFile().getText().contains("import "));
-        assertTrue(myFixture.getFile().getText().contains("# inline documentation"));
-        assertTrue(myFixture.getFile().getText().contains("# attached documentation"));
+        assertTrue(myFixture.getFile().getText().contains("// inline documentation"));
+        assertTrue(myFixture.getFile().getText().contains("// attached documentation"));
         assertTrue(myFixture.getFile().getText().contains("#endif"));
         myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO);
         com.intellij.psi.PsiDocumentManager.getInstance(getProject()).commitAllDocuments();

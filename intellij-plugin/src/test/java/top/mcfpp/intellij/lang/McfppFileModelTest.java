@@ -15,10 +15,10 @@ class McfppFileModelTest {
         String source = """
                 #if MC >= 26.3
                 import modern:*;
-                func selected() -> float { return -1.5f; }
+                func selected() : float { return -1.5f; }
                 #else
                 import legacy:*;
-                func selected() -> int { return 1; }
+                func selected() : int { return 1; }
                 #endif
                 """;
         McfppFileModel current = McfppFileModel.parse(source, "26.3");
@@ -41,11 +41,11 @@ class McfppFileModelTest {
                 import complete.math:doubled as twice;
                 import complete.math:* as math;
 
-                #{Increments a counter.}#
+                /// Increments a counter.
                 data Counter {
-                    var value as int = 0;
-                    func increment(amount as int) -> int {
-                        var next as int = value + amount;
+                    var value: int = 0;
+                    func increment(amount: int) : int {
+                        var next: int = value + amount;
                         return next;
                     }
                 }
@@ -66,7 +66,7 @@ class McfppFileModelTest {
         McfppSymbol function = symbol(model, McfppSymbolKind.FUNCTION, "increment");
         assertEquals("Counter", function.owner());
         assertEquals("complete.app:Counter.increment", function.qualifiedName());
-        assertEquals("func increment(amount as int) -> int", function.signature());
+        assertEquals("func increment(amount: int) : int", function.signature());
 
         assertEquals("Counter", symbol(model, McfppSymbolKind.FIELD, "value").owner());
         McfppSymbol parameter = symbol(model, McfppSymbolKind.PARAMETER, "amount");
@@ -85,7 +85,7 @@ class McfppFileModelTest {
                 namespace demo;
                 object data Service { constructor() {} }
                 enum Direction { North, South = 2 }
-                func bridge(value as int) = example.mni.Bridge.invoke;
+                func bridge(value: int) = example.mni.Bridge.invoke;
                 """;
 
         McfppFileModel model = McfppFileModel.parse(source);
@@ -94,16 +94,16 @@ class McfppFileModelTest {
         assertEquals("Service", symbol(model, McfppSymbolKind.CONSTRUCTOR, "constructor").owner());
         assertEquals("Direction", symbol(model, McfppSymbolKind.ENUM_MEMBER, "North").owner());
         assertEquals("Direction", symbol(model, McfppSymbolKind.ENUM_MEMBER, "South").owner());
-        assertEquals("func bridge(value as int)", symbol(model, McfppSymbolKind.FUNCTION, "bridge").signature());
+        assertEquals("func bridge(value: int)", symbol(model, McfppSymbolKind.FUNCTION, "bridge").signature());
     }
 
     @Test
     void extractsUnmodifiedAndAnnotatedStandardLibraryFields() {
         String source = """
                 data PlayerData {
-                    private id as string;
-                    @Name<"Score"> score as int;
-                    func read(fallback as int) -> int { return score; }
+                    private var id: string;
+                    @Name<"Score"> var score: int;
+                    func read(fallback: int) : int { return score; }
                 }
                 """;
 
@@ -112,7 +112,7 @@ class McfppFileModelTest {
         assertEquals("PlayerData", symbol(model, McfppSymbolKind.FIELD, "id").owner());
         McfppSymbol score = symbol(model, McfppSymbolKind.FIELD, "score");
         assertEquals("PlayerData", score.owner());
-        assertTrue(score.signature().contains("score as int"));
+        assertTrue(score.signature().contains("score: int"));
         assertEquals(1, model.symbols().stream()
                 .filter(value -> value.kind() == McfppSymbolKind.FIELD && value.name().equals("score"))
                 .count());
@@ -121,7 +121,7 @@ class McfppFileModelTest {
     @Test
     void extractsReadOnlyParametersAndScopesForeachVariables() {
         String source = """
-                func visit<player as Player = currentPlayer()>(values as list<int>) {
+                func visit<player: Player = currentPlayer()>(values: list<int>) {
                     for (entry : values) {
                         player.notify(entry);
                     }
@@ -132,10 +132,10 @@ class McfppFileModelTest {
         McfppFileModel model = McfppFileModel.parse(source);
 
         McfppSymbol function = symbol(model, McfppSymbolKind.FUNCTION, "visit");
-        assertTrue(function.signature().startsWith("func visit<player as Player"));
-        assertEquals("player as Player = currentPlayer()",
+        assertTrue(function.signature().startsWith("func visit<player: Player"));
+        assertEquals("player: Player = currentPlayer()",
                 symbol(model, McfppSymbolKind.PARAMETER, "player").signature());
-        assertEquals("values as list<int>",
+        assertEquals("values: list<int>",
                 symbol(model, McfppSymbolKind.PARAMETER, "values").signature());
 
         McfppSymbol entry = symbol(model, McfppSymbolKind.VARIABLE, "entry");

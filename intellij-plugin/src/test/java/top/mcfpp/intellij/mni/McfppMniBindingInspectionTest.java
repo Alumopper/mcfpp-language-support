@@ -44,7 +44,7 @@ public final class McfppMniBindingInspectionTest extends LightJavaCodeInsightFix
                 """);
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "func convert<kind as type>(value as int, text as string) = example.mni.Bridge.convert;"
+                "func convert<kind>(value: int, text: string) = example.mni.Bridge.convert;"
         );
 
         assertNoMniProblems(myFixture.doHighlighting());
@@ -61,7 +61,7 @@ public final class McfppMniBindingInspectionTest extends LightJavaCodeInsightFix
                 """);
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "func convert(value as int) = example.mni.Bridge.convert;"
+                "func convert(value: int) = example.mni.Bridge.convert;"
         );
 
         assertMniProblem("No @MNIFunction overload matches MCFPP parameters (int)");
@@ -95,13 +95,13 @@ public final class McfppMniBindingInspectionTest extends LightJavaCodeInsightFix
 
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "func nonStatic(value as int) = example.mni.Bridge.nonStatic;"
+                "func nonStatic(value: int) = example.mni.Bridge.nonStatic;"
         );
         assertMniProblem("MNI Java method must be static");
 
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "func returnsValue(value as int) -> int = example.mni.Bridge.returnsValue;"
+                "func returnsValue(value: int) : int = example.mni.Bridge.returnsValue;"
         );
         assertMniProblem("this binding passes 2");
     }

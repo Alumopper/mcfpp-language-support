@@ -23,7 +23,7 @@ class McfppLexerTest {
                 #elif MC >= 26.1
                 #else
                 #endif
-                #ifdef ordinary comment
+                // #ifdef ordinary comment
                 /say hello
                 """);
         for (String directive : List.of("#if MC >= 26.3", "#elif MC >= 26.1", "#else", "#endif")) {
@@ -32,25 +32,25 @@ class McfppLexerTest {
         for (String operator : List.of("-", "/", "+=", "-=", "*=", "/=", "%=")) {
             assertEquals(McfppTokenTypes.OPERATOR, typeOf(tokens, operator));
         }
-        assertEquals(McfppTokenTypes.COMMENT, typeOf(tokens, "#ifdef ordinary comment"));
+        assertEquals(McfppTokenTypes.COMMENT, typeOf(tokens, "// #ifdef ordinary comment"));
         assertEquals(McfppTokenTypes.COMMAND, typeOf(tokens, "/say hello"));
-        assertEquals(McfppTokenTypes.DOC_COMMENT, typeOf(tokens("#{\n#if MC >= 26.3\n}#"), "#{\n#if MC >= 26.3\n}#"));
+        assertEquals(McfppTokenTypes.DOC_COMMENT, typeOf(tokens("/// #if MC >= 26.3\n/// #endif"), "/// #if MC >= 26.3\n/// #endif"));
     }
 
     @Test
     void recognizesLanguageSpecificTokenCategories() {
         String source = """
-                #{ docs }#
+                /// docs
                 public data Example {
-                    @From<\"top.mcfpp.Mni\">
-                    var enabled as bool = true
+                    @From<"top.mcfpp.Mni">
+                    var enabled: bool = true
                     /execute as @a run say hello
                 }
                 """;
 
         List<Token> tokens = tokens(source);
 
-        assertEquals(McfppTokenTypes.DOC_COMMENT, typeOf(tokens, "#{ docs }#"));
+        assertEquals(McfppTokenTypes.DOC_COMMENT, typeOf(tokens, "/// docs"));
         assertEquals(McfppTokenTypes.MODIFIER_KEYWORD, typeOf(tokens, "public"));
         assertEquals(McfppTokenTypes.DECLARATION_KEYWORD, typeOf(tokens, "data"));
         assertEquals(McfppTokenTypes.ANNOTATION, typeOf(tokens, "@From"));

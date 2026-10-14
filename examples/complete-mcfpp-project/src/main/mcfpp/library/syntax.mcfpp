@@ -1,0 +1,18 @@
+namespace complete.syntax
+
+data SizedBox<T, N: int> {
+    const capacity: int = N
+    var value: T
+    constructor(value: T) { this.value = value }
+}
+
+func identity<T>(value: T): T { return value }
+
+func countTo<limit: int>(): int {
+    dynamic count: int = 0
+    while count < limit {
+        count += 1
+    }
+    if count == limit { return count }
+    return 0
+}

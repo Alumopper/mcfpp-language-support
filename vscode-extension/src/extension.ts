@@ -222,7 +222,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const extractCommandLines = (text: string): CommandLineEntry[] => {
         return text.split(/\r?\n/).flatMap((line, index) => {
-            const match = line.match(/^(\s*)\/(.*)$/);
+            const match = line.match(/^(\s*)\/(?!\/)(.*)$/);
             if (!match) {
                 return [];
             }
@@ -339,7 +339,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         bridgeDoc: CommandBridgeDocument
     ): CommandPositionMapping | undefined => {
         const lineText = document.lineAt(position.line).text;
-        const match = lineText.match(/^(\s*)\/(.*)$/);
+        const match = lineText.match(/^(\s*)\/(?!\/)(.*)$/);
         if (!match) {
             return undefined;
         }

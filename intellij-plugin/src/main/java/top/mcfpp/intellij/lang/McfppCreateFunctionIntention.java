@@ -34,7 +34,8 @@ public final class McfppCreateFunctionIntention extends McfppCreateDeclarationIn
                 file, call.readOnlyArguments(), "readOnly", usedNames);
         List<McfppArgumentInference.Parameter> normal = McfppArgumentInference.infer(
                 file, call.arguments(), "arg", usedNames);
-        String readOnlyParameters = declarations(readOnly);
+        String readOnlyParameters = readOnly.stream().map(McfppArgumentInference.Parameter::readOnlyDeclaration)
+                .collect(java.util.stream.Collectors.joining(", "));
         String header = "func " + identifier.getText() +
                 (readOnlyParameters.isEmpty() ? "" : '<' + readOnlyParameters + '>') +
                 '(' + declarations(normal) + ") {\n    \n}\n";

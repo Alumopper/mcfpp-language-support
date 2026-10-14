@@ -87,7 +87,7 @@ final class McfppImportManager {
         }
         String newline = source.contains("\r\n") ? "\r\n" : "\n";
         String prefix = offset > 0 && source.charAt(offset - 1) != '\n' ? newline : "";
-        document.insertString(offset, prefix + "import " + namespace + ':' + name + ';' + newline);
+        document.insertString(offset, prefix + "import " + namespace + ':' + name + newline);
         return offset;
     }
 

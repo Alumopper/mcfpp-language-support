@@ -18,6 +18,7 @@ public record McfppCommandContext(
         int lineStart = lineStart(source, boundedCaret);
         int slash = firstNonWhitespace(source, lineStart, boundedCaret);
         if (slash >= boundedCaret || source.charAt(slash) != '/') return null;
+        if (slash + 1 < source.length() && source.charAt(slash + 1) == '/') return null;
         if (insideInterpolation(source, slash + 1, boundedCaret)) return null;
 
         int base = slash + 1;
@@ -37,6 +38,7 @@ public record McfppCommandContext(
             int lineEnd = lineEnd(source, lineStart);
             int slash = firstNonWhitespace(source, lineStart, lineEnd);
             if (slash < lineEnd && source.charAt(slash) == '/' &&
+                    (slash + 1 >= lineEnd || source.charAt(slash + 1) != '/') &&
                     !containsInterpolation(source, slash + 1, lineEnd)) {
                 int commandStart = slash + 1;
                 while (commandStart < lineEnd && Character.isWhitespace(source.charAt(commandStart))) commandStart++;

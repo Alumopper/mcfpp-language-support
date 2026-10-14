@@ -16,7 +16,7 @@ import java.util.Set;
 
 final class McfppSemanticTokens {
     private static final Set<String> TYPE_DECLARATIONS = Set.of("data", "enum", "typealias");
-    private static final Set<String> VARIABLE_DECLARATIONS = Set.of("var", "global");
+    private static final Set<String> VARIABLE_DECLARATIONS = Set.of("var", "const", "dynamic");
     private static final Set<String> TYPE_OPERATORS = Set.of("<", ">", "!", "?", "&", "|", "*");
 
     private McfppSemanticTokens() {
@@ -28,6 +28,7 @@ final class McfppSemanticTokens {
 
     static Analysis analyzeDetailed(CharSequence source) {
         List<Token> tokens = lex(source);
+        Set<Integer> annotationColons = McfppDeclarationSyntax.annotationColons(source);
         Map<Integer, TextAttributesKey> attributes = new HashMap<>();
         McfppFileModel model = McfppFileModel.parse(source);
         Set<String> declaredTypes = model.symbols().stream()
@@ -43,7 +44,9 @@ final class McfppSemanticTokens {
             if ((token.text().equals("as") && aliasKind(tokens, index) == AliasKind.NONE) || token.text().equals("extends")) {
                 classifyTypeAfter(tokens, index, attributes);
             }
-            if (token.type() == McfppTokenTypes.OPERATOR && token.text().equals("->")) {
+            int previous = previousSignificant(tokens, index - 1);
+            if (token.type() == McfppTokenTypes.COLON &&
+                    annotationColons.contains(token.start())) {
                 classifyTypeAfter(tokens, index, attributes);
             }
         }
@@ -61,11 +64,6 @@ final class McfppSemanticTokens {
                     int alias = nextIdentifier(tokens, index + 1, tokens.size());
                     if (alias >= 0) attributes.put(tokens.get(alias).start(), aliasKind.attributesKey());
                     continue;
-                }
-                if (previous >= 0 && tokens.get(previous).type() == McfppTokenTypes.IDENTIFIER) {
-                    attributes.putIfAbsent(tokens.get(previous).start(), parenthesisDepth > 0
-                            ? McfppSyntaxHighlighter.PARAMETER
-                            : McfppSyntaxHighlighter.VARIABLE);
                 }
             }
 
@@ -216,7 +214,8 @@ final class McfppSemanticTokens {
         Map<Integer, McfppSymbol> declarations = new HashMap<>();
         Map<String, List<McfppSymbol>> locals = new LinkedHashMap<>();
         for (McfppSymbol symbol : model.symbols()) {
-            TextAttributesKey key = attributesFor(symbol.kind());
+            TextAttributesKey key = symbol.kind() == McfppSymbolKind.PARAMETER &&
+                    "type".equals(McfppTypes.declaredType(symbol)) ? McfppSyntaxHighlighter.TYPE_NAME : attributesFor(symbol.kind());
             if (key != null) {
                 declarations.put(symbol.nameOffset(), symbol);
                 attributes.put(symbol.nameOffset(), key);
@@ -239,7 +238,8 @@ final class McfppSemanticTokens {
             if (candidates == null) continue;
             for (McfppSymbol candidate : candidates) {
                 if (candidate.nameOffset() < token.start() && candidate.scopeContains(token.start())) {
-                    attributes.put(token.start(), attributesFor(candidate.kind()));
+                    attributes.put(token.start(), candidate.kind() == McfppSymbolKind.PARAMETER &&
+                            "type".equals(McfppTypes.declaredType(candidate)) ? McfppSyntaxHighlighter.TYPE_NAME : attributesFor(candidate.kind()));
                     break;
                 }
             }

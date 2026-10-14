@@ -45,11 +45,15 @@ data class MCFPPFunctionParameter(
 ) {
     fun label(): String = buildString {
         if (isStatic) append("static ")
-        if (name != null) {
+        if (isReadOnly && name != null && typeName.equals("type", ignoreCase = true)) {
             append(name)
-            append(" as ")
+        } else {
+            if (name != null) {
+                append(name)
+                append(": ")
+            }
+            append(typeName)
         }
-        append(typeName)
         if (hasDefault) {
             append(" = ")
             append(defaultValue ?: "...")
@@ -316,8 +320,8 @@ object MCFPPDocumentIndex {
     private val enumPattern = Regex("^\\s*enum\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
     private val functionPattern = Regex("^\\s*(?:inline\\s+|const\\s+)?func\\s+(?:([A-Za-z_][A-Za-z0-9_<>!?|:&\\[\\]]*)\\s*\\.\\s*)?([A-Za-z_][A-Za-z0-9_]*)\\s*(?:<[^>]*>\\s*)?\\(")
     private val constructorPattern = Regex("^\\s*constructor\\s*\\(")
-    private val variablePattern = Regex("^\\s*(?:(?:const|dynamic|import)\\s+)?var\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?:as\\s+([^=]+?))?(?:\\s*=.*)?$")
-    private val memberFieldPattern = Regex("^\\s*(?:const\\s+)?(?:var\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*(?:as\\s+([^={]+?))?(?:\\s*(?:=|\\{|$))")
+    private val variablePattern = Regex("^\\s*(?:var|const|dynamic|import\\s+var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^=;]+?))?(?:\\s*=.*)?;?$")
+    private val memberFieldPattern = Regex("^\\s*(?:(?:public|protected|private)\\s+)?(?:var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^={;]+?))?(?:\\s*(?:=|\\{|;|$))")
     private val enumMemberPattern = Regex("^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=|,|$)")
 
     fun analyze(uri: String, text: String, targetVersion: String = VersionPreprocessor.DEFAULT_VERSION): MCFPPDocumentAnalysis {
@@ -346,41 +350,9 @@ object MCFPPDocumentIndex {
 
         var namespaceName: String? = null
         var pendingContainer: PendingContainer? = null
-        var inTripleComment = false
-        var inDoubleComment = false
-        var inBraceDocComment = false
 
         lines.forEachIndexed { lineIndex, rawLine ->
             var line = rawLine
-            val trimmed = rawLine.trim()
-
-            if (trimmed.startsWith("###")) {
-                inTripleComment = !inTripleComment
-                return@forEachIndexed
-            }
-            if (inTripleComment) {
-                return@forEachIndexed
-            }
-            if (trimmed.startsWith("##")) {
-                inDoubleComment = !inDoubleComment
-                return@forEachIndexed
-            }
-            if (inDoubleComment) {
-                return@forEachIndexed
-            }
-            if (trimmed.startsWith("#{") && !trimmed.contains("}#")) {
-                inBraceDocComment = true
-                return@forEachIndexed
-            }
-            if (inBraceDocComment) {
-                if (trimmed.contains("}#")) {
-                    inBraceDocComment = false
-                }
-                return@forEachIndexed
-            }
-            if (trimmed.startsWith("#{") && trimmed.contains("}#")) {
-                return@forEachIndexed
-            }
 
             line = stripInlineComment(line)
             if (line.isBlank()) {
@@ -626,16 +598,13 @@ object MCFPPDocumentIndex {
     }
 
     private fun extractReturnType(line: String): String? {
-        val arrow = line.indexOf("->")
-        if (arrow < 0) {
-            return null
-        }
-        val bodyStart = line.indexOf('{').let { if (it < 0) line.length else it }
-        return line.substring(arrow + 2, bodyStart).trim().takeIf { it.isNotBlank() }
+        val lexer = mcfppLexer(org.antlr.v4.runtime.CharStreams.fromString(line)).apply { removeErrorListeners() }
+        val parser = mcfppParser(org.antlr.v4.runtime.CommonTokenStream(lexer)).apply { removeErrorListeners() }
+        return parser.functionDeclarationPart().functionReturnType()?.text
     }
 
     private fun stripInlineComment(line: String): String {
-        if (line.trimStart().startsWith("/")) {
+        if (line.trimStart().startsWith("/") && !line.trimStart().startsWith("//")) {
             return line
         }
 
@@ -647,7 +616,7 @@ object MCFPPDocumentIndex {
             when {
                 char == '\'' && !escaped && !inDouble -> inSingle = !inSingle
                 char == '"' && !escaped && !inSingle -> inDouble = !inDouble
-                char == '#' && !inSingle && !inDouble -> return line.substring(0, index)
+                line.startsWith("//", index) && !inSingle && !inDouble -> return line.substring(0, index)
             }
         }
         return line

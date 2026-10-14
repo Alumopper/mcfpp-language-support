@@ -339,11 +339,13 @@ final class McfppSymbolResolver {
             int right = nextNonWhitespace(source, end);
             String namespace = null;
             String owner = null;
-            if (left >= 0 && source.charAt(left) == ':') namespace = identifierBefore(source, left - 1, true);
+            boolean annotation = left >= 0 && source.charAt(left) == ':' &&
+                    McfppDeclarationSyntax.isAnnotationColon(source, left);
+            if (left >= 0 && source.charAt(left) == ':' && !annotation) namespace = identifierBefore(source, left - 1, true);
             else if (left >= 0 && source.charAt(left) == '.') owner = identifierBefore(source, left - 1, false);
             boolean call = right < source.length() && source.charAt(right) == '(';
             String previousWord = identifierBefore(source, left, false);
-            boolean type = "as".equals(previousWord) || "extends".equals(previousWord) ||
+            boolean type = annotation || "as".equals(previousWord) || "extends".equals(previousWord) ||
                     left >= 1 && source.charAt(left) == '>' && source.charAt(left - 1) == '-';
             List<String> argumentTypes = List.of();
             if (call && element.getContainingFile() instanceof McfppFile file) {

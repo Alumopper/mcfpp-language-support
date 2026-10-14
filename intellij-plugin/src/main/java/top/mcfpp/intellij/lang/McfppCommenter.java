@@ -6,17 +6,17 @@ import org.jetbrains.annotations.Nullable;
 public final class McfppCommenter implements Commenter {
     @Override
     public @Nullable String getLineCommentPrefix() {
-        return "#";
+        return "//";
     }
 
     @Override
     public @Nullable String getBlockCommentPrefix() {
-        return "##";
+        return null;
     }
 
     @Override
     public @Nullable String getBlockCommentSuffix() {
-        return "##";
+        return null;
     }
 
     @Override

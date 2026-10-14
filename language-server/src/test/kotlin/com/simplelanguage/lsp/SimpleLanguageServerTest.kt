@@ -71,12 +71,12 @@ class SimpleLanguageServerTest {
             namespace consumer;
             import library:Counter as AlphaCounter;
             import library:Other;
-            func accept(value as AlphaCounter) {}
-            func make() -> AlphaCounter { return AlphaCounter(); }
+            func accept(value: AlphaCounter) {}
+            func make() : AlphaCounter { return AlphaCounter(); }
             func main() {
-                var counter as AlphaCounter = AlphaCounter();
+                var counter: AlphaCounter = AlphaCounter();
                 accept(counter);
-                var wrong as AlphaCounter = Other();
+                var wrong: AlphaCounter = Other();
                 accept(Other());
             }
         """.trimIndent()
@@ -104,11 +104,11 @@ class SimpleLanguageServerTest {
         server.initialize(InitializeParams().apply { rootUri = root.toUri().toString() }).get()
         try {
             val source = """
-                func convert(value as int) -> int { return value; }
+                func convert(value: int) : int { return value; }
                 func main() {
                     var result = convert(w);
                     missingHelper(1, "hello");
-                    var value as MissingType;
+                    var value: MissingType;
                 }
             """.trimIndent()
             server.getTextDocumentService().didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, source)))
@@ -144,9 +144,9 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService() as MCFPPTextDocumentService
         val source = """
             #if MC >= 26.3
-            func selected(value as float) -> float {
+            func selected(value: float) : float {
                 var negative = -value
-                var result as float = -negative
+                var result: float = -negative
                 result += 2
                 result -= 1.0f
                 result *= 3
@@ -155,7 +155,7 @@ class SimpleLanguageServerTest {
                 return -result
             }
             #else
-            func selected() -> int { return 1; }
+            func selected() : int { return 1; }
             #endif
         """.trimIndent()
         try {
@@ -318,9 +318,9 @@ class SimpleLanguageServerTest {
         })
         server.initialize(InitializeParams()).get()
         val service = server.getTextDocumentService()
-        val declarationV1 = "namespace demo; func convert(value as string) -> string { return value; }"
-        val declarationV2 = "namespace demo; func convert(value as int) -> int { return value; }"
-        val dependent = "namespace demo; func main() { var value as string = convert(\"ok\"); }"
+        val declarationV1 = "namespace demo; func convert(value: string) : string { return value; }"
+        val declarationV2 = "namespace demo; func convert(value: int) : int { return value; }"
+        val dependent = "namespace demo; func main() { var value: string = convert(\"ok\"); }"
 
         try {
             service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(declarationUri, "mcfpp", 1, declarationV1)))
@@ -390,9 +390,9 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val uri = "file:///signature-help.mcfpp"
         val text = """
-            func add(a as int, b as int) -> int { return a + b; }
-            func add(a as string, b as string) -> string { return a + b; }
-            func generic<limit as int>(value as int, fallback as int = 0) -> int { return value; }
+            func add(a: int, b: int) : int { return a + b; }
+            func add(a: string, b: string) : string { return a + b; }
+            func generic<limit: int>(value: int, fallback: int = 0) : int { return value; }
             func main(){
                 add("x", );
                 generic<5>(1, );
@@ -409,19 +409,19 @@ class SimpleLanguageServerTest {
             assertEquals(2, overloadHelp.signatures.size)
             assertEquals(1, overloadHelp.activeSignature)
             assertEquals(1, overloadHelp.activeParameter)
-            assertTrue(overloadHelp.signatures[1].label.startsWith("add(a as string, b as string)"))
+            assertTrue(overloadHelp.signatures[1].label.startsWith("add(a: string, b: string)"))
 
             val readonlyHelp = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), Position(5, 13))
             ).get()
             assertEquals(0, readonlyHelp.activeParameter)
-            assertTrue(readonlyHelp.signatures.single().label.startsWith("generic<limit as int>"))
+            assertTrue(readonlyHelp.signatures.single().label.startsWith("generic<limit: int>"))
 
             val normalHelp = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), Position(5, 18))
             ).get()
             assertEquals(2, normalHelp.activeParameter)
-            assertTrue(normalHelp.signatures.single().label.contains("fallback as int = 0"))
+            assertTrue(normalHelp.signatures.single().label.contains("fallback: int = 0"))
         } finally {
             server.shutdown().get()
         }
@@ -444,16 +444,16 @@ class SimpleLanguageServerTest {
         server.initialize(InitializeParams()).get()
         val service = server.getTextDocumentService()
         val text = """
-            func choose<limit as int>(value as int, fallback as int = 0) -> int { return value; }
-            func convert(value as int) -> int { return value; }
-            func convert(value as string) -> string { return value; }
-            func makeString() -> string { return "x"; }
-            func wrap(value as int) -> int { return value; }
-            func wrap(value as string) -> string { return value; }
+            func choose<limit: int>(value: int, fallback: int = 0) : int { return value; }
+            func convert(value: int) : int { return value; }
+            func convert(value: string) : string { return value; }
+            func makeString() : string { return "x"; }
+            func wrap(value: int) : int { return value; }
+            func wrap(value: string) : string { return value; }
             func main() {
-                var chosen as int = choose<"wrong">(1);
-                var converted as string = convert("x");
-                var nested as string = wrap(makeString());
+                var chosen: int = choose<"wrong">(1);
+                var converted: string = convert("x");
+                var nested: string = wrap(makeString());
             }
         """.trimIndent()
 
@@ -491,10 +491,10 @@ class SimpleLanguageServerTest {
         server.initialize(InitializeParams()).get()
         val service = server.getTextDocumentService()
         val text = """
-            func identity<T as Type>(value as T) -> T { return value; }
+            func identity<T>(value: T) : T { return value; }
             func main() {
-                var valid as int = identity<int>(1);
-                var invalid as int = identity<int>("wrong");
+                var valid: int = identity<int>(1);
+                var invalid: int = identity<int>("wrong");
             }
         """.trimIndent()
 
@@ -514,7 +514,7 @@ class SimpleLanguageServerTest {
             val help = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), position)
             ).get()
-            assertEquals("identity<T as Type>(value as T) -> T", help.signatures.single().label)
+            assertEquals("identity<T>(value: T): T", help.signatures.single().label)
             assertEquals(1, help.activeParameter)
         } finally {
             server.shutdown().get()
@@ -530,8 +530,8 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val uri = "file:///generic-type-completion.mcfpp"
         val text = """
-            func identity<T as Type>(value as T) -> T {
-                var copy as T = value;
+            func identity<T>(value: T) : T {
+                var copy: T = value;
                 return copy;
             }
         """.trimIndent()
@@ -569,9 +569,9 @@ class SimpleLanguageServerTest {
         server.initialize(InitializeParams()).get()
         val service = server.getTextDocumentService()
         val text = """
-            func duplicate(value as int) {}
-            func duplicate(other as int) {}
-            func duplicate(value as string) {}
+            func duplicate(value: int) {}
+            func duplicate(other: int) {}
+            func duplicate(value: string) {}
         """.trimIndent()
 
         try {
@@ -603,13 +603,13 @@ class SimpleLanguageServerTest {
         server.initialize(InitializeParams()).get()
         val service = server.getTextDocumentService()
         val text = """
-            func missing(flag as bool) -> int {
+            func missing(flag: bool) : int {
                 if(flag) { return 1; }
             }
-            func complete(flag as bool) -> int {
+            func complete(flag: bool) : int {
                 if(flag) { return 1; } else { return 2; }
             }
-            func needsValue() -> int { return; }
+            func needsValue() : int { return; }
             func noValue() { return 1; }
         """.trimIndent()
 
@@ -647,11 +647,11 @@ class SimpleLanguageServerTest {
             data Base {}
             data Middle: Base {}
             data Leaf: Middle {}
-            func choose(value as string) -> string { return value; }
-            func choose(value as Base) -> int { return 1; }
-            func upcast(value as Leaf) -> Base { return value; }
-            func main(value as Leaf) {
-                var result as int = choose(value);
+            func choose(value: string) : string { return value; }
+            func choose(value: Base) : int { return 1; }
+            func upcast(value: Leaf) : Base { return value; }
+            func main(value: Leaf) {
+                var result: int = choose(value);
             }
         """.trimIndent()
 
@@ -685,10 +685,10 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val text = """
             typealias int as Count;
-            func nativeAdd(value as Count) -> Count = example.NativeBridge.add;
+            func nativeAdd(value: Count) : Count = example.NativeBridge.add;
             func main() {
-                var count as Count = 1;
-                var result as Count = nativeAdd(count);
+                var count: Count = 1;
+                var result: Count = nativeAdd(count);
             }
         """.trimIndent()
 
@@ -721,12 +721,12 @@ class SimpleLanguageServerTest {
             data Empty {}
             data Wrapped as int;
             data Explicit {
-                constructor(value as string) {}
+                constructor(value: string) {}
             }
             func main() {
-                var empty as Empty = Empty();
-                var wrapped as Wrapped = Wrapped(1);
-                var explicit as Explicit = Explicit("x");
+                var empty: Empty = Empty();
+                var wrapped: Wrapped = Wrapped(1);
+                var explicit: Explicit = Explicit("x");
             }
         """.trimIndent()
 
@@ -740,7 +740,7 @@ class SimpleLanguageServerTest {
             val signature = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), helpPosition)
             ).get()
-            assertEquals("Wrapped(value as int)", signature.signatures.single().label)
+            assertEquals("Wrapped(value: int)", signature.signatures.single().label)
         } finally {
             server.shutdown().get()
         }
@@ -763,12 +763,12 @@ class SimpleLanguageServerTest {
         server.initialize(InitializeParams()).get()
         val service = server.getTextDocumentService()
         val text = """
-            data Box<T as Type> {
-                constructor(value as T) {}
+            data Box<T> {
+                constructor(value: T) {}
             }
             func main() {
-                var valid as Box = Box<int>(1);
-                var invalid as Box = Box<int>("wrong");
+                var valid: Box = Box<int>(1);
+                var invalid: Box = Box<int>("wrong");
             }
         """.trimIndent()
 
@@ -787,14 +787,14 @@ class SimpleLanguageServerTest {
             val readOnlyHelp = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), readOnlyPosition)
             ).get()
-            assertEquals("Box<T as Type>(value as T)", readOnlyHelp.signatures.single().label)
+            assertEquals("Box<T>(value: T)", readOnlyHelp.signatures.single().label)
             assertEquals(0, readOnlyHelp.activeParameter)
 
             val normalPosition = Position(4, readOnlyLine.indexOf("(1") + "(1".length)
             val normalHelp = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), normalPosition)
             ).get()
-            assertEquals("Box<T as Type>(value as T)", normalHelp.signatures.single().label)
+            assertEquals("Box<T>(value: T)", normalHelp.signatures.single().label)
             assertEquals(1, normalHelp.activeParameter)
         } finally {
             server.shutdown().get()
@@ -819,13 +819,13 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val text = """
             data Base {
-                var field as int;
-                func value() -> int { return this.field; }
+                var field: int;
+                func value() : int { return this.field; }
             }
             data Middle: Base {}
             data Leaf: Middle {}
-            func main(leaf as Leaf) {
-                var fieldValue as int = leaf.field;
+            func main(leaf: Leaf) {
+                var fieldValue: int = leaf.field;
                 leaf.value("wrong");
             }
         """.trimIndent()
@@ -885,25 +885,25 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val text = """
             data Base {
-                private var hidden as int;
-                protected var inherited as int;
-                public var visible as int;
-                func own(other as Base) { var allowed as int = other.hidden; }
+                private var hidden: int;
+                protected var inherited: int;
+                public var visible: int;
+                func own(other: Base) { var allowed: int = other.hidden; }
             }
             data Child: Base {
-                func ownChild(other as Child) {
-                    var allowed as int = other.inherited;
-                    var denied as int = other.hidden;
+                func ownChild(other: Child) {
+                    var allowed: int = other.inherited;
+                    var denied: int = other.hidden;
                 }
             }
             data Secret {
                 private constructor() {}
             }
-            func main(base as Base, child as Child) {
-                var publicValue as int = base.visible;
-                var privateValue as int = base.hidden;
-                var protectedValue as int = child.inherited;
-                var secret as Secret = Secret();
+            func main(base: Base, child: Child) {
+                var publicValue: int = base.visible;
+                var privateValue: int = base.hidden;
+                var protectedValue: int = child.inherited;
+                var secret: Secret = Secret();
             }
         """.trimIndent()
 
@@ -952,8 +952,8 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val text = """
             namespace sample;
-            data Item { private var hidden as int; }
-            func main(item as Item) {
+            data Item { private var hidden: int; }
+            func main(item: Item) {
                 var first = item.missing;
                 var second = item.hidden;
                 sample:absent();
@@ -1054,13 +1054,13 @@ class SimpleLanguageServerTest {
         val consumerText = """
             namespace consumer;
             import library:secret as convert;
-            func main() { var result as string = convert(); }
+            func main() { var result: string = convert(); }
         """.trimIndent()
 
         try {
             service.didOpen(
                 DidOpenTextDocumentParams(
-                    TextDocumentItem(libraryUri, "mcfpp", 1, "namespace library; func secret() -> string { return \"ok\"; }")
+                    TextDocumentItem(libraryUri, "mcfpp", 1, "namespace library; func secret() : string { return \"ok\"; }")
                 )
             )
             assertTrue(libraryAnalyzed.await(5, TimeUnit.SECONDS), "Library analysis did not finish")
@@ -1119,12 +1119,12 @@ class SimpleLanguageServerTest {
         val library = """
             namespace models;
             data Child {
-                var name as string;
+                var name: string;
             }
             data Factory {
-                func create() -> Child { return Child(); }
+                func create() : Child { return Child(); }
             }
-            func makeFactory() -> Factory { return Factory(); }
+            func makeFactory() : Factory { return Factory(); }
             func unrelated() {}
         """.trimIndent()
         val consumer = """
@@ -1133,7 +1133,7 @@ class SimpleLanguageServerTest {
             import models:Factory;
             import models:makeFactory;
             func main() {
-                var factory as Factory;
+                var factory: Factory;
                 factory.
                 makeFactory().
                 makeFactory().create().
@@ -1346,7 +1346,7 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val uri = "file:///call-hierarchy.mcfpp"
         val text = """
-            func leaf(value as int) {
+            func leaf(value: int) {
             }
             func middle() {
                 leaf(1);
@@ -1441,13 +1441,13 @@ class SimpleLanguageServerTest {
         val uri = "file:///method-implementations.mcfpp"
         val text = """
             data Base {
-                func process(value as int) {}
-                func process(value as string) {}
+                func process(value: int) {}
+                func process(value: string) {}
             }
             data Middle: Base {}
             data Leaf: Middle {
-                override func process(item as int) {}
-                override func process(item as string) {}
+                override func process(item: int) {}
+                override func process(item: string) {}
             }
         """.trimIndent()
 
@@ -1476,7 +1476,7 @@ class SimpleLanguageServerTest {
             data Item {
             }
             func main() {
-                var item as Item;
+                var item: Item;
                 item;
             }
         """.trimIndent()
@@ -1503,8 +1503,8 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val uri = "file:///semantic-tokens.mcfpp"
         val text = """
-            func helper(value as int) {
-                var local as int = value;
+            func helper(value: int) {
+                var local: int = value;
             }
             func main() {
                 helper(1);
@@ -1548,7 +1548,7 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val uri = "file:///inlay-hints.mcfpp"
         val text = """
-            func mix<limit as int>(value as int, label as string) {
+            func mix<limit: int>(value: int, label: string) {
             }
             func main() {
                 var inferred = 5;
@@ -1564,7 +1564,7 @@ class SimpleLanguageServerTest {
                 InlayHintParams(TextDocumentIdentifier(uri), Range(Position(0, 0), Position(6, 0)))
             ).get()
             assertTrue(hints.any {
-                it.position == Position(3, 16) && it.label.left == " as int" && it.kind == InlayHintKind.Type
+                it.position == Position(3, 16) && it.label.left == ": int" && it.kind == InlayHintKind.Type
             }, "Inlay hints: $hints")
             assertEquals(
                 listOf("limit:", "value:", "label:"),

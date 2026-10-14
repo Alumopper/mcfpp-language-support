@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MniJavaTargetParserTest {
     @Test
     void parsesNativeFunctionOwnerAndMethod() {
-        String source = "func announce(message as string) = example.mni.ProjectMni.announce;";
+        String source = "func announce(message: string) = example.mni.ProjectMni.announce;";
 
         List<MniJavaTargetParser.Target> targets = MniJavaTargetParser.parse(source);
 
@@ -26,11 +26,11 @@ class MniJavaTargetParserTest {
     void parsesMultilineNativeFunctionsOperatorsAndAccessors() {
         String source = """
                 func announce(
-                    message as string
-                ) -> void = example.mni.ProjectMni.announce
+                    message: string
+                ) : void = example.mni.ProjectMni.announce
 
-                operator + (other as Vector) -> Vector = example.mni.VectorMni.plus
-                var value as int {
+                operator + (other: Vector) : Vector = example.mni.VectorMni.plus
+                var value: int {
                     get = example.mni.ValueMni.read;
                     set = example.mni.ValueMni.write;
                 }
@@ -65,7 +65,7 @@ class MniJavaTargetParserTest {
     @Test
     void ignoresOrdinaryAssignmentsAndJvmValueAccess() {
         String source = """
-                var value as int = project.value;
+                var value: int = project.value;
                 var raw = value::jvm;
                 """;
 
@@ -75,7 +75,7 @@ class MniJavaTargetParserTest {
 
     @Test
     void detectsIncompleteNativeCompletionContext() {
-        String source = "func announce(message as string) = example.mni.Pro";
+        String source = "func announce(message: string) = example.mni.Pro";
 
         MniJavaTargetParser.CompletionContext context = MniJavaTargetParser
                 .completionAt(source, source.length())
@@ -90,8 +90,8 @@ class MniJavaTargetParserTest {
     void detectsMultilineOperatorCompletionContext() {
         String source = """
                 operator + (
-                    other as Vector
-                ) -> Vector = example.mni.VectorMni.pl""";
+                    other: Vector
+                ): Vector = example.mni.VectorMni.pl""";
 
         MniJavaTargetParser.CompletionContext context = MniJavaTargetParser
                 .completionAt(source, source.length())

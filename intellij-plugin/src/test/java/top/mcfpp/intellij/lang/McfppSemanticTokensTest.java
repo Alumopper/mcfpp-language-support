@@ -14,8 +14,8 @@ class McfppSemanticTokensTest {
         String source = """
                 namespace demo.example
                 data Player {
-                    var score as int = 0
-                    func update(target as entity) -> bool {
+                    var score: int = 0
+                    func update(target: entity) : bool {
                         update(target)
                         return true
                     }
@@ -64,8 +64,8 @@ class McfppSemanticTokensTest {
         String source = """
                 @From<example.mni.Base>
                 data Child {
-                    var count as int = 0
-                    func visit<player as Player>(values as list<int>) {
+                    var count: int = 0
+                    func visit<player: Player>(values: list<int>) {
                         for (entry : values) {
                             player.notify(entry)
                             count++
@@ -73,7 +73,7 @@ class McfppSemanticTokensTest {
                     }
                 }
                 enum Direction { NORTH, SOUTH }
-                func bridge(value as string) = example.mni.Bridge.invoke;
+                func bridge(value: string) = example.mni.Bridge.invoke;
                 """;
 
         Map<Integer, TextAttributesKey> attributes = McfppSemanticTokens.analyze(source);
@@ -98,7 +98,7 @@ class McfppSemanticTokensTest {
                 import complete.models:Counter
                 import complete.math:* as math
                 func main() {
-                    var counter as Counter = Counter()
+                    var counter: Counter = Counter()
                     counter.value = math:doubled(counter.value)
                 }
                 """;

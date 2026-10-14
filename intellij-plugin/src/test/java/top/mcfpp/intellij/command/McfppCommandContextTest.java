@@ -32,6 +32,10 @@ class McfppCommandContextTest {
 
     @Test
     void doesNotTreatDivisionOrInterpolationBodyAsACommandCompletionContext() {
+        for (String comment : new String[]{"// /say ignored", "/// # Heading"}) {
+            assertNull(McfppCommandContext.at(comment, comment.length()));
+            assertEquals(0, McfppCommandContext.staticCommands(comment).size());
+        }
         String division = "func main() { var half = total / 2<caret> }";
         assertNull(McfppCommandContext.at(division, division.indexOf("<caret>")));
 

@@ -38,7 +38,8 @@ final class McfppCommandSyntax {
             int lineEnd = lineEnd(source, lineStart);
             int content = firstNonWhitespace(source, lineStart, lineEnd);
             if (content < lineEnd && source.charAt(content) != '#') {
-                if (requireSlash && source.charAt(content) == '/') {
+                if (requireSlash && source.charAt(content) == '/' &&
+                        (content + 1 >= lineEnd || source.charAt(content + 1) != '/')) {
                     highlightLine(source, content + 1, lineEnd, ranges);
                 } else if (!requireSlash) {
                     if (source.charAt(content) == '$') {

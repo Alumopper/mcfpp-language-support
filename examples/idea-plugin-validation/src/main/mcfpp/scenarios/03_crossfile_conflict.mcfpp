@@ -1,7 +1,7 @@
-namespace validation.crossfile;
+namespace validation.crossfile
 
-# Complete Coun and choose validation.beta:Counter.
-# The Counter in catalog/collision.mcfpp also requires a fully qualified insertion.
+// Complete Coun and choose validation.beta:Counter.
+// The Counter in catalog/collision.mcfpp also requires a fully qualified insertion.
 func conflictWithAnotherFile() {
-    var value as validation.beta:Counter;
+    var value: validation.beta:Counter
 }

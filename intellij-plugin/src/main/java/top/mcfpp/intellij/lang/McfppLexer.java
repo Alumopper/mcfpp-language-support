@@ -14,21 +14,21 @@ public final class McfppLexer extends LexerBase {
     );
     private static final Set<String> DECLARATION_KEYWORDS = Set.of(
             "import", "object", "data", "func", "enum", "operator", "typealias", "constructor",
-            "global", "var", "get", "set", "namespace"
+            "global", "var", "const", "dynamic", "get", "set", "namespace"
     );
     private static final Set<String> MODIFIER_KEYWORDS = Set.of(
             "static", "extends", "native", "concrete", "final", "public", "protected", "private", "override",
-            "abstract", "impl", "const", "dynamic", "inline"
+            "abstract", "impl", "inline"
     );
     private static final Set<String> TYPE_KEYWORDS = Set.of(
             "vec", "int", "entity", "bool", "byte", "short", "long", "float", "double", "selector", "string",
-            "text", "nbt", "any", "void", "list", "map", "dict", "Type", "ByteArray", "IntArray", "LongArray"
+            "text", "nbt", "any", "void", "list", "map", "dict", "type", "Type", "ByteArray", "IntArray", "LongArray"
     );
     private static final Set<String> KEYWORDS = Set.of(
             "this", "super", "as", "from"
     );
     private static final String[] MULTI_CHARACTER_OPERATORS = {
-            "...", "++", "--", "&&", "||", "+=", "-=", "*=", "/=", "%=", "->", "=>", "..", "::",
+            "...", "++", "--", "&&", "||", "+=", "-=", "*=", "/=", "%=", "=>", "..", "::",
             "<=", ">=", "!=", "==", "~="
     };
 
@@ -103,10 +103,23 @@ public final class McfppLexer extends LexerBase {
                 tokenType = McfppTokenTypes.VERSION_DIRECTIVE;
                 return;
             }
-            tokenEnd = consumeComment(tokenStart);
-            tokenType = startsWith(tokenStart, "#{") || startsWith(tokenStart, "###")
-                    ? McfppTokenTypes.DOC_COMMENT
-                    : McfppTokenTypes.COMMENT;
+        }
+
+        if (startsWith(tokenStart, "//")) {
+            tokenEnd = consumeLine(tokenStart + 2);
+            tokenType = startsWith(tokenStart, "///") ? McfppTokenTypes.DOC_COMMENT : McfppTokenTypes.COMMENT;
+            if (tokenType == McfppTokenTypes.DOC_COMMENT) {
+                int next = tokenEnd;
+                while (next < bufferEnd) {
+                    if (buffer.charAt(next) == '\r') next++;
+                    if (next >= bufferEnd || buffer.charAt(next) != '\n') break;
+                    next++;
+                    while (next < bufferEnd && (buffer.charAt(next) == ' ' || buffer.charAt(next) == '\t')) next++;
+                    if (!startsWith(next, "///")) break;
+                    tokenEnd = consumeLine(next + 3);
+                    next = tokenEnd;
+                }
+            }
             return;
         }
 
@@ -195,20 +208,6 @@ public final class McfppLexer extends LexerBase {
             if (character != ' ' && character != '\t' && character != '\f') return false;
         }
         return true;
-    }
-
-    private int consumeComment(int start) {
-        if (startsWith(start, "#{")) {
-            return consumeUntil(start + 2, "}#");
-        }
-        if (startsWith(start, "###")) {
-            int closing = indexOf("###", start + 3);
-            return closing >= 0 ? closing + 3 : consumeLine(start + 3);
-        }
-        if (startsWith(start, "##")) {
-            return consumeUntil(start + 2, "##");
-        }
-        return consumeLine(start + 1);
     }
 
     private int consumeNumber(int start) {

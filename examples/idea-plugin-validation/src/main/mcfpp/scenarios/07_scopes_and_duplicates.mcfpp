@@ -1,22 +1,22 @@
-namespace validation.scopes;
+namespace validation.scopes
 
-# Intentional duplicate: the second declaration should be reported.
+// Intentional duplicate: the second declaration should be reported.
 data Duplicate {}
 data Duplicate {}
 
-# Same member name in different types: neither should be reported as a duplicate.
-data First { var value as int; }
-data Second { var value as int; }
+// Same member name in different types: neither should be reported as a duplicate.
+data First { var value: int }
+data Second { var value: int }
 
-# Intentional parameter/local collision; inner block declarations may shadow the name.
-func duplicateLocal(value as int) {
-    var value as int = 1;
-    if (true) { var value as string = "inner"; print(value); }
-    if (false) { var value as string = "other block"; print(value); }
+// Intentional parameter/local collision; inner block declarations may shadow the name.
+func duplicateLocal(value: int) {
+    var value: int = 1
+    if true { var value: string = "inner"; print(value) }
+    if false { var value: string = "other block"; print(value) }
 }
 
-# Ctrl+B on the last value must resolve to the parameter, not the inner variable.
-func nestedScope(value as int) {
-    if (true) { var value as string = "inner"; print(value); }
-    print(value);
+// Ctrl+B on the last value must resolve to the parameter, not the inner variable.
+func nestedScope(value: int) {
+    if true { var value: string = "inner"; print(value) }
+    print(value)
 }

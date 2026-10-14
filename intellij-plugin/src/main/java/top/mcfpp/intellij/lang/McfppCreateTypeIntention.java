@@ -33,6 +33,8 @@ public final class McfppCreateTypeIntention extends McfppCreateDeclarationIntent
         CharSequence source = identifier.getContainingFile().getViewProvider().getContents();
         int cursor = identifier.getTextOffset() - 1;
         while (cursor >= 0 && Character.isWhitespace(source.charAt(cursor))) cursor--;
+        if (cursor >= 0 && source.charAt(cursor) == ':' &&
+                McfppDeclarationSyntax.isAnnotationColon(source, cursor)) return true;
         int end = cursor + 1;
         while (cursor >= 0 && Character.isUnicodeIdentifierPart(source.charAt(cursor))) cursor--;
         return "as".contentEquals(source.subSequence(cursor + 1, end));

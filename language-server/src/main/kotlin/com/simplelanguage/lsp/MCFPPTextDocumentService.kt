@@ -1184,7 +1184,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             }
             .trim()
         val inferredType = inferArgumentType(analysis, initializer, symbol.selectionRange.start) ?: return null
-        return InlayHint(symbol.selectionRange.end, Either.forLeft(" as $inferredType")).apply {
+        return InlayHint(symbol.selectionRange.end, Either.forLeft(": $inferredType")).apply {
             kind = InlayHintKind.Type
             paddingLeft = false
             paddingRight = true
@@ -1346,7 +1346,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         append(')')
         symbol.typeName
             ?.takeIf { it.isNotBlank() && it != "void" && symbol.kind != SymbolKind.Constructor }
-            ?.let { append(" -> ").append(it) }
+            ?.let { append(": ").append(it) }
     }
 
     private fun parameterDocumentation(documentation: String?, parameterName: String): String? {
@@ -2217,10 +2217,10 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         val line = analysis.line(position.line)
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
         val trimmed = prefix.trimEnd()
-        if (Regex("(?:\\bas|->)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
+        if (Regex("(?:\\bas|\\)\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
-        if (Regex("(?:\\bvar\\s+[A-Za-z_][A-Za-z0-9_]*\\s+as|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*<[^>]*>??\\s*\\([^)]*\\)\\s*->|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\([^)]*\\)\\s*->)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
+        if (Regex("(?:\\b(?:var|const|dynamic)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*:|[<(,]\\s*(?:static\\s+)?[A-Za-z_][A-Za-z0-9_]*\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
         return CompletionContext.DEFAULT
@@ -2229,7 +2229,13 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     private fun namespaceQualifierBefore(analysis: MCFPPDocumentAnalysis, position: Position): String? {
         val line = analysis.line(position.line)
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
-        return NAMESPACE_QUALIFIER_AT_CURSOR.find(prefix)?.groupValues?.get(1)
+        val match = NAMESPACE_QUALIFIER_AT_CURSOR.find(prefix) ?: return null
+        val beforeQualifier = prefix.substring(0, match.range.first).trimEnd()
+        if (Regex("\\b(?:var|const|dynamic|static)\\s*$").containsMatchIn(beforeQualifier) ||
+            beforeQualifier.lastOrNull() in setOf('(', '<', ',')) {
+            return null
+        }
+        return match.groupValues[1]
     }
 
     private fun resolveNamespaceQualifier(analysis: MCFPPDocumentAnalysis, qualifier: String): String {

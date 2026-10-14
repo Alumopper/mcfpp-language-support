@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
-    enum Kind { GLOBAL, MEMBER, NAMESPACE }
+    enum Kind { GLOBAL, TYPE, MEMBER, NAMESPACE }
 
     static @NotNull McfppCompletionContext create(
             @NotNull CompletionParameters parameters,
@@ -22,6 +22,9 @@ record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
 
         char value = source.charAt(separator);
         if (value != '.' && value != ':') return new McfppCompletionContext(Kind.GLOBAL, null);
+        if (value == ':' && McfppDeclarationSyntax.isAnnotationColon(source, separator)) {
+            return new McfppCompletionContext(Kind.TYPE, null);
+        }
         String qualifier = identifierBefore(source, separator - 1, value == ':');
         if (qualifier.isEmpty()) return new McfppCompletionContext(Kind.GLOBAL, null);
         if (value == ':') {

@@ -41,7 +41,7 @@
         "scopeName": "source.mcfpp",
         "path": "./syntaxes/simple.tmLanguage.json",
         "embeddedLanguages": {
-          "meta.embedded.block.mcfunction": "mcfunction"
+          "meta.embedded.line.mcfunction": "mcfunction"
         }
       }
     ],

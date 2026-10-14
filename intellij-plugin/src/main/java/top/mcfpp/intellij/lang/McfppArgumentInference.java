@@ -34,10 +34,12 @@ final class McfppArgumentInference {
         return java.util.stream.IntStream.range(0, arguments.size())
                 .mapToObj(index -> {
                     McfppCallContext.Argument argument = arguments.get(index);
-                    String preferred = preferredName(argument.text());
+                    String type = inferType(argument, model);
+                    String preferred = fallbackPrefix.equals("readOnly") && type.equals("type")
+                            ? "T" : preferredName(argument.text());
                     String fallback = fallbackPrefix + (index + 1);
                     String name = uniqueName(preferred == null ? fallback : preferred, usedNames);
-                    return new Parameter(name, inferType(argument, model));
+                    return new Parameter(name, type);
                 })
                 .toList();
     }
@@ -72,6 +74,12 @@ final class McfppArgumentInference {
                 String declaredType = McfppTypes.declaredType(symbol);
                 if (declaredType != null) return declaredType;
             }
+        }
+        McfppLexer lexer = new McfppLexer();
+        lexer.start(text);
+        if (lexer.getTokenType() == McfppTokenTypes.TYPE_KEYWORD ||
+                model.symbols().stream().anyMatch(symbol -> symbol.kind().isType() && symbol.name().equals(text))) {
+            return "type";
         }
         String constructedType = constructedType(text);
         return constructedType == null ? "any" : constructedType;
@@ -128,7 +136,11 @@ final class McfppArgumentInference {
 
     record Parameter(@NotNull String name, @NotNull String type) {
         String declaration() {
-            return name + " as " + type;
+            return name + ": " + type;
+        }
+
+        String readOnlyDeclaration() {
+            return type.equals("type") ? name : declaration();
         }
     }
 }

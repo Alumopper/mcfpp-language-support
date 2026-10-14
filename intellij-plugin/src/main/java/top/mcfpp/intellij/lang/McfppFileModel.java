@@ -48,7 +48,6 @@ public final class McfppFileModel {
         assignOwners(drafts, typeOwners);
         parseFields(source, tokens, lexed.documentationBefore(), matches, typeOwners, functionOwners, drafts);
         parseForeachVariables(source, tokens, matches, typeOwners, functionOwners, drafts);
-        parseImplicitFields(source, tokens, lexed.documentationBefore(), matches, drafts);
         parseParameters(source, tokens, matches, typeOwners, drafts);
         parseEnumMembers(source, tokens, matches, drafts);
 
@@ -171,7 +170,7 @@ public final class McfppFileModel {
             }
             int declarationStart = modifierStart(tokens, index);
             int headerEnd = body < 0 ? end : tokens.get(body).start();
-            drafts.add(new Draft(
+            Draft type = new Draft(
                     kind,
                     tokens.get(name).text(),
                     null,
@@ -184,7 +183,21 @@ public final class McfppFileModel {
                     end,
                     signature(source, declarationStart, headerEnd),
                     documentationFor(tokens, documentation, index)
-            ));
+            );
+            int angle = nextCode(tokens, name + 1);
+            if (angle >= 0 && "<".equals(tokens.get(angle).text())) {
+                int depth = 0;
+                for (int cursor = angle; cursor < tokens.size(); cursor++) {
+                    if ("<".equals(tokens.get(cursor).text())) depth++;
+                    else if (">".equals(tokens.get(cursor).text()) && --depth == 0) {
+                        type.openReadOnlyParameters = angle;
+                        type.closeReadOnlyParameters = cursor;
+                        break;
+                    }
+                    if (tokens.get(cursor).type() == McfppTokenTypes.LEFT_BRACE) break;
+                }
+            }
+            drafts.add(type);
         }
     }
 
@@ -336,12 +349,16 @@ public final class McfppFileModel {
     ) {
         for (int index = 0; index < tokens.size(); index++) {
             String keyword = tokens.get(index).text();
-            if (!("var".equals(keyword) || "global".equals(keyword) || "dynamic".equals(keyword) ||
-                    "const".equals(keyword))) continue;
+            if (!List.of("var", "const", "dynamic").contains(keyword)) continue;
+            int previous = previousCode(tokens, index - 1);
+            if (previous >= 0 && "var".equals(keyword) &&
+                    List.of("const", "dynamic").contains(tokens.get(previous).text())) continue;
             int next = nextCode(tokens, index + 1);
             if (next >= 0 && "func".equals(tokens.get(next).text())) continue;
-            int name = nextIdentifier(tokens, index + 1, 16);
-            if (name < 0) continue;
+            int name = next;
+            if (name < 0 || tokens.get(name).type() != McfppTokenTypes.IDENTIFIER) continue;
+            int afterName = nextCode(tokens, name + 1);
+            if (afterName >= 0 && "as".equals(tokens.get(afterName).text())) continue;
             String functionOwner = innermostOwner(functionOwners, tokens.get(name).start());
             String typeOwner = innermostOwner(typeOwners, tokens.get(name).start());
             McfppSymbolKind kind = functionOwner == null ? McfppSymbolKind.FIELD : McfppSymbolKind.VARIABLE;
@@ -364,14 +381,14 @@ public final class McfppFileModel {
                     kind,
                     tokens.get(name).text(),
                     typeOwner,
-                    tokens.get(index).start(),
+                    modifierStart(tokens, index),
                     tokens.get(name).start(),
                     end,
                     -1,
                     end,
                     scope == null ? 0 : scope.start(),
                     scope == null ? source.length() : scope.end(),
-                    signature(source, tokens.get(index).start(), end),
+                    signature(source, modifierStart(tokens, index), end),
                     documentationFor(tokens, documentation, index)
             ));
         }
@@ -385,7 +402,8 @@ public final class McfppFileModel {
             List<Draft> drafts
     ) {
         List<Draft> containers = new ArrayList<>(drafts.stream()
-                .filter(draft -> draft.kind == McfppSymbolKind.FUNCTION || draft.kind == McfppSymbolKind.CONSTRUCTOR)
+                .filter(draft -> draft.kind == McfppSymbolKind.FUNCTION || draft.kind == McfppSymbolKind.CONSTRUCTOR ||
+                        draft.kind == McfppSymbolKind.TYPE && draft.openReadOnlyParameters >= 0)
                 .toList());
         for (Draft container : containers) {
             parseParameterRange(source, tokens, container,
@@ -423,7 +441,8 @@ public final class McfppFileModel {
 
             if (index == close || type == McfppTokenTypes.COMMA &&
                     parentheses == 0 && brackets == 0 && braces == 0 && angles == 0) {
-                addParameter(source, tokens, container, segmentStart, index, drafts);
+                addParameter(source, tokens, container, segmentStart, index,
+                        open == container.openReadOnlyParameters, drafts);
                 segmentStart = index + 1;
             }
         }
@@ -435,11 +454,18 @@ public final class McfppFileModel {
             Draft container,
             int start,
             int end,
+            boolean readOnly,
             List<Draft> drafts
     ) {
-        int as = findTextInRange(tokens, start, end, "as");
-        int name = as < 0 ? -1 : firstIdentifier(tokens, start, as);
-        if (name < 0) return;
+        int name = nextCode(tokens, start);
+        while (name >= 0 && name < end && List.of("static", "var").contains(tokens.get(name).text())) {
+            name = nextCode(tokens, name + 1);
+        }
+        if (name < 0 || name >= end || tokens.get(name).type() != McfppTokenTypes.IDENTIFIER) return;
+        int afterName = nextCode(tokens, name + 1);
+        boolean annotation = afterName >= 0 && afterName < end && tokens.get(afterName).type() == McfppTokenTypes.COLON;
+        boolean implicitType = readOnly && (afterName < 0 || afterName >= end || "=".equals(tokens.get(afterName).text()));
+        if (!annotation && !implicitType) return;
         int first = nextCode(tokens, start);
         int last = previousCode(tokens, end - 1);
         String parameterSignature = first < 0 || last < first
@@ -448,7 +474,7 @@ public final class McfppFileModel {
         drafts.add(new Draft(
                 McfppSymbolKind.PARAMETER,
                 tokens.get(name).text(),
-                container.owner,
+                container.kind == McfppSymbolKind.TYPE ? container.name : container.owner,
                 tokens.get(name).start(),
                 tokens.get(name).start(),
                 tokens.get(name).end(),
@@ -504,65 +530,6 @@ public final class McfppFileModel {
                     tokens.get(name).text(),
                     null
             ));
-        }
-    }
-
-    private static void parseImplicitFields(
-            String source,
-            List<Token> tokens,
-            Map<Integer, String> documentation,
-            MatchData matches,
-            List<Draft> drafts
-    ) {
-        List<Draft> containers = drafts.stream()
-                .filter(draft -> draft.kind == McfppSymbolKind.TYPE && draft.bodyStart >= 0)
-                .toList();
-        List<RangeOwner> callableRanges = ownerRanges(
-                drafts, McfppSymbolKind.FUNCTION, McfppSymbolKind.CONSTRUCTOR);
-        java.util.Set<Integer> existingOffsets = drafts.stream()
-                .filter(draft -> draft.kind == McfppSymbolKind.FIELD)
-                .map(draft -> draft.nameOffset)
-                .collect(java.util.stream.Collectors.toSet());
-        for (Draft container : containers) {
-            int open = tokenAtOffset(tokens, container.bodyStart);
-            Integer close = open < 0 ? null : matches.braces().get(open);
-            if (open < 0 || close == null) continue;
-            int braces = 0;
-            int parentheses = 0;
-            int brackets = 0;
-            for (int index = open + 1; index < close; index++) {
-                Token token = tokens.get(index);
-                IElementType type = token.type();
-                if (type == McfppTokenTypes.LEFT_BRACE) braces++;
-                else if (type == McfppTokenTypes.RIGHT_BRACE) braces--;
-                else if (type == McfppTokenTypes.LEFT_PARENTHESIS) parentheses++;
-                else if (type == McfppTokenTypes.RIGHT_PARENTHESIS) parentheses--;
-                else if (type == McfppTokenTypes.LEFT_BRACKET) brackets++;
-                else if (type == McfppTokenTypes.RIGHT_BRACKET) brackets--;
-                if (braces != 0 || parentheses != 0 || brackets != 0 ||
-                        type != McfppTokenTypes.IDENTIFIER || existingOffsets.contains(token.start()) ||
-                        innermostRange(callableRanges, token.start()) != null) continue;
-                int next = nextCode(tokens, index + 1);
-                if (next < 0 || !"as".equals(tokens.get(next).text())) continue;
-
-                int declarationStartIndex = lineStartToken(tokens, index, open + 1);
-                int end = declarationEnd(tokens, next, source.length());
-                drafts.add(new Draft(
-                        McfppSymbolKind.FIELD,
-                        token.text(),
-                        container.name,
-                        tokens.get(declarationStartIndex).start(),
-                        token.start(),
-                        end,
-                        -1,
-                        end,
-                        container.declarationStart,
-                        container.endOffset,
-                        signature(source, tokens.get(declarationStartIndex).start(), end),
-                        documentationInRange(documentation, declarationStartIndex, index)
-                ));
-                existingOffsets.add(token.start());
-            }
         }
     }
 
@@ -630,6 +597,8 @@ public final class McfppFileModel {
         List<McfppImport> result = new ArrayList<>();
         for (int index = 0; index < tokens.size(); index++) {
             if (!"import".equals(tokens.get(index).text())) continue;
+            int next = nextCode(tokens, index + 1);
+            if (next >= 0 && "var".equals(tokens.get(next).text())) continue;
             StringBuilder namespace = new StringBuilder();
             String importedName = null;
             String alias = null;
@@ -734,12 +703,10 @@ public final class McfppFileModel {
     }
 
     private static String normalizeDocumentation(String text) {
-        String value = text;
-        if (value.startsWith("#{") && value.endsWith("}#")) value = value.substring(2, value.length() - 2);
-        else if (value.startsWith("###") && value.endsWith("###") && value.length() >= 6) {
-            value = value.substring(3, value.length() - 3);
-        } else if (value.startsWith("###")) value = value.substring(3);
-        return value.strip();
+        return text.lines().map(line -> {
+            String content = line.stripLeading().substring(3);
+            return content.startsWith(" ") ? content.substring(1) : content;
+        }).collect(java.util.stream.Collectors.joining("\n"));
     }
 
     private static String documentationFor(
@@ -756,25 +723,6 @@ public final class McfppFileModel {
             if (value != null) return value;
         }
         return null;
-    }
-
-    private static String documentationInRange(Map<Integer, String> documentation, int start, int end) {
-        for (int index = start; index <= end; index++) {
-            String value = documentation.get(index);
-            if (value != null) return value;
-        }
-        return null;
-    }
-
-    private static int lineStartToken(List<Token> tokens, int index, int lowerBound) {
-        int result = index;
-        for (int cursor = index - 1; cursor >= lowerBound; cursor--) {
-            Token token = tokens.get(cursor);
-            if (tokens.get(result).newlineBefore() || token.type() == McfppTokenTypes.SEMICOLON ||
-                    token.type() == McfppTokenTypes.LEFT_BRACE || token.type() == McfppTokenTypes.RIGHT_BRACE) break;
-            result = cursor;
-        }
-        return result;
     }
 
     private static int modifierStart(List<Token> tokens, int keywordIndex) {

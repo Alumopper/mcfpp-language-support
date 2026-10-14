@@ -7,6 +7,23 @@ import kotlin.test.assertTrue
 
 class MCFPPCallContextTest {
     @Test
+    fun `finds calls in unparenthesized conditions and returns`() {
+        for (prefix in listOf("if ", "else if ", "while ", "do {} while ", "return ")) {
+            val text = "${prefix}check(value, "
+            val candidates = MCFPPCallContextFinder.findCandidates(text, Position(0, text.length))
+            assertEquals("check", candidates.first().name, text)
+            assertEquals(1, candidates.first().activeParameter, text)
+        }
+    }
+
+    @Test
+    fun `does not offer call contexts in colon parameter declarations`() {
+        for (text in listOf("func generic<T, N: int>(value: ", "data Box<T, N: ")) {
+            assertTrue(MCFPPCallContextFinder.findCandidates(text, Position(0, text.length)).isEmpty(), text)
+        }
+    }
+
+    @Test
     fun `finds the innermost nested call`() {
         val text = "outer(inner(1, value), second)"
         val candidates = MCFPPCallContextFinder.findCandidates(text, Position(0, 16))

@@ -39,7 +39,7 @@ compilationUnit
         (separator* typealiasDeclaration (separator | EOF))*
         (separator* topStatement)?
         (separator* typeDeclaration (separator | EOF))*
-        EOF
+        separator* EOF
     ;
 
 separator
@@ -52,7 +52,7 @@ topStatement
 
 //命名空间声明
 namespaceDeclaration
-    :   doc_comment? NAMESPACE Identifier (DOT Identifier)*
+    :   doc_comment? NL* NAMESPACE namespacePath
     ;
 
 importDeclaration
@@ -60,7 +60,7 @@ importDeclaration
     ;
 
 importType
-    :   Identifier (DOT Identifier)* COLON (Identifier | MULT)
+    :   namespacePath COLON (Identifier | MULT)
     ;
 
 typealiasDeclaration
@@ -87,11 +87,11 @@ declarations
     ;
 
 operationOverrideDeclaration
-    :   OPERATOR supportOperator NL* functionParams NL* (ARROW functionReturnType)? NL* curlBlock
+    :   OPERATOR supportOperator NL* functionParams NL* (COLON functionReturnType)? NL* curlBlock
     ;
 
 nativeOperationOverrideDeclaration
-    :   OPERATOR supportOperator NL* functionParams NL* (ARROW functionReturnType)? NL* ASSIGNMENT NL* javaRefer
+    :   OPERATOR supportOperator NL* functionParams NL* (COLON functionReturnType)? NL* ASSIGNMENT NL* javaRefer
     ;
 
 supportOperator
@@ -114,21 +114,21 @@ supportOperator
     ;
 
 accessor
-    :   LCURL NL* getter? separator+ setter? separator* RCURL
+    :   LCURL NL* (getter (separator+ setter)? | setter)? separator* RCURL
     ;
 
 getter
     :   GET NL* curlBlock
-    |   GET NL* ASSIGNMENT NL* javaRefer SEMICOLON
-    |   GET NL* ASSIGNMENT NL* expression SEMICOLON?
-    |   GET SEMICOLON?
+    |   GET NL* ASSIGNMENT NL* javaRefer
+    |   GET NL* ASSIGNMENT NL* expression
+    |   GET
     ;
 
 setter
     :   SET NL* curlBlock
     |   SET NL* ASSIGNMENT javaRefer
     |   SET NL* ASSIGNMENT expression
-    |   SET SEMICOLON
+    |   SET
     ;
 
 compoundDeclaration
@@ -150,7 +150,7 @@ objectTemplateDeclaration
     ;
 
 templateBody
-    :   LCURL NL* (doc_comment? templateMemberDeclaration separator*)* RCURL
+    :   LCURL NL* (doc_comment? NL* templateMemberDeclaration separator*)* RCURL
     ;
 
 templateMemberDeclaration
@@ -167,7 +167,7 @@ templateMember
     ;
 
 functionDeclarationPart
-    :   FUNCTION NL* Identifier NL* functionParams (NL* ARROW NL* functionReturnType)?
+    :   FUNCTION NL* Identifier NL* functionParams (NL* COLON NL* functionReturnType)?
     ;
 
 templateFunctionDeclaration
@@ -175,7 +175,7 @@ templateFunctionDeclaration
     ;
 
 templateFieldDeclaration
-    :    CONST? VAR? NL* Identifier NL* (AS NL* templateType)? (NL* ASSIGNMENT expression)? NL* accessor?
+    :   (VAR | CONST) NL* Identifier NL* (COLON NL* templateType)? (NL* ASSIGNMENT expression)? NL* accessor?
     ;
 
 templateType
@@ -217,7 +217,7 @@ functionDeclaration
     ;
 
 extensionFunctionDeclaration
-    :   FUNCTION NL* (type DOT)? Identifier functionParams (NL* ARROW NL* functionReturnType)? NL* curlBlock
+    :   FUNCTION NL* (type DOT)? Identifier functionParams (NL* COLON NL* functionReturnType)? NL* curlBlock
     ;
 
 //枚举
@@ -235,7 +235,15 @@ enumMember
 
 
 namespaceID
-    : (Identifier (DOT Identifier)* COLON)? Identifier
+    : (namespacePath COLON)? Identifier
+    ;
+
+namespacePath
+    : namespaceSegment (DOT namespaceSegment)*
+    ;
+
+namespaceSegment
+    : Identifier | ENTITY
     ;
 
 nativeFuncDeclaration
@@ -259,10 +267,10 @@ templateConstructorDeclaration
 
 //变量声明
 fieldDeclaration
-    :   fieldModifier? NL* VAR NL* Identifier NL* (AS NL* type)? NL* (ASSIGNMENT NL* expression)?
+    :   (VAR | fieldModifier) NL* Identifier NL* (COLON NL* type)? NL* (ASSIGNMENT NL* expression)?
     ;
 
-fieldModifier : CONST|DYNAMIC|IMPORT;
+fieldModifier : CONST | DYNAMIC | IMPORT NL* VAR;
 
 functionParams
     :   readOnlyParams? NL* normalParams
@@ -283,7 +291,7 @@ parameterList
 
 //参数
 parameter
-    :   STATIC? NL* VAR? NL* (Identifier NL* AS NL*)? type (NL* ASSIGNMENT NL* value)?
+    :   (OUT | IN)? NL* STATIC? NL* (Identifier NL* COLON NL*)? type (NL* ASSIGNMENT NL* value)?
     ;
 
 //能作为语句的表达式
@@ -357,7 +365,7 @@ varWithSelector
     ;
 
 jvmAccessExpression
-    :   propertyOperator (NL* COLONCOLON NL* Identifier)?
+    :   propertyOperator
     ;
 
 //字段操作器
@@ -381,8 +389,8 @@ primary
 
 var
     :   bucketExpression
-    |   varWithSuffix
     |   functionCall
+    |   varWithSuffix
     ;
 
 bucketExpression
@@ -410,7 +418,7 @@ arguments
     ;
 
 readOnlyArgs
-    :   LANGLE NL* ((expressionList | MULT) NL*)? RANGLE
+    :   LANGLE NL* (expressionList NL*)? RANGLE
     ;
 
 normalArgs
@@ -467,11 +475,11 @@ controlStatement
     ;
 
 ifStatement
-    :   IF NL* bucketExpression NL* block (NL* elseIfStatement)* (NL* elseStatement)?
+    :   IF NL* expression NL* block (NL* elseIfStatement)* (NL* elseStatement)?
     ;
 
 elseIfStatement
-    :   ELSE NL* IF NL* bucketExpression NL* block
+    :   ELSE NL* IF NL* expression NL* block
     ;
 
 elseStatement
@@ -479,11 +487,11 @@ elseStatement
     ;
 
 whileStatement
-    :   WHILE NL* bucketExpression NL* block
+    :   WHILE NL* expression NL* block
     ;
 
 doWhileStatement
-    :   DO NL* block NL* WHILE NL* bucketExpression
+    :   DO NL* block NL* WHILE NL* expression
     ;
 
 tryStoreStatement
@@ -495,7 +503,7 @@ returnStatement
     ;
 
 curlBlock
-    :   LCURL NL* (statement (separator statement)* separator)? NL* RCURL
+    :   LCURL NL* (statement (separator statement)* separator?)? NL* RCURL
     ;
 
 block
@@ -508,18 +516,19 @@ expressionList
     ;
 
 type
-    :   typeWithoutExcl EXCL?
+    :   typeBody
     ;
 
-typeWithoutExcl
+typeBody
     :   normalType
     |   VecType
-    |   (LIST | MAP | DICT) NL* LANGLE NL* (type | MULT) NL* RANGLE
+    |   (LIST | IMMUTABLE_LIST | MAP | DICT) NL* LANGLE NL* type NL* RANGLE
     |   ENTITY NL* LANGLE NL* nbtInt NL* RANGLE
     |   ENTITY NL* LANGLE NL* LineString (NL* COMMA NL* LineString)* NL* RANGLE
     |   ENTITY NL* LANGLE NL* nbtInt NL* COMMA NL* LineString (NL* COMMA NL* LineString)* NL* RANGLE
-    |   className NL* readOnlyArgs?
+    |   className (NL* readOnlyArgs)?
     |   Identifier
+    |   unionType
     |   unionTemplateType
     |   anonymousTemplateType
     ;
@@ -528,12 +537,17 @@ anonymousTemplateType
     :   DATA (NL* COLON NL* extendName (NL* COMMA NL* extendName)*)? NL* templateBody
     ;
 
+unionType
+    :   LPAREN NL* type (NL* PIPE NL* type)+ NL* RPAREN
+    ;
+
 unionTemplateType
     :   LPAREN NL* type (NL* UNION NL* type)* NL* RPAREN
     ;
 
 normalType
-    :   INT
+    :   OBJECT
+    |   INT
     |   ENTITY
     |   BOOL
     |   BYTE
@@ -575,7 +589,7 @@ coordinateDimension
     ;
 
 className
-    :   (Identifier (DOT Identifier)* COLON NL*)? classWithoutNamespace
+    :   (namespacePath COLON NL*)? classWithoutNamespace
     ;
 
 classWithoutNamespace
@@ -622,11 +636,11 @@ nbtFloat: SUB? NBTFloat;
 nbtDouble: SUB? NBTDouble;
 nbtBool: TRUE | FALSE;
 
-nbtByteArray: NBT_BYTE_ARRAY_BEGIN NL* nbtByte (NL* COMMA NL* nbtByte)* NL* RSQUARE;
-nbtIntArray: NBT_INT_ARRAY_BEGIN NL* nbtInt (NL* COMMA NL* nbtInt)* NL* RSQUARE;
-nbtLongArray: NBT_LONG_ARRAY_BEGIN NL* nbtLong (NL* COMMA NL* nbtLong)* NL* RSQUARE;
+nbtByteArray: NBT_BYTE_ARRAY_BEGIN NL* (nbtByte (NL* COMMA NL* nbtByte)*)? NL* RSQUARE;
+nbtIntArray: NBT_INT_ARRAY_BEGIN NL* (nbtInt (NL* COMMA NL* nbtInt)*)? NL* RSQUARE;
+nbtLongArray: NBT_LONG_ARRAY_BEGIN NL* (nbtLong (NL* COMMA NL* nbtLong)*)? NL* RSQUARE;
 
-nbtList: LSQUARE (NL* expression (NL* COMMA NL* expression)* )* NL* RSQUARE;
+nbtList: LSQUARE NL* (expression (NL* COMMA NL* expression)*)? NL* RSQUARE;
 nbtKeyValuePair: key=Identifier NL* COLON NL* expression;
 nbtCompound: LCURL (NL* nbtKeyValuePair (NL* COMMA NL* nbtKeyValuePair)* )* NL* RCURL;
 
@@ -649,5 +663,4 @@ multiLineStringExpression
 
 doc_comment
     :   DOC_COMMENT
-    |   SIMPLE_DOC_COMMENT
     ;

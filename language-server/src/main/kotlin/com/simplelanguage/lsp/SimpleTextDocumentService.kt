@@ -145,10 +145,10 @@ class SimpleTextDocumentService(private val server: SimpleLanguageServer) : Text
         val lines = text.lines()
         
         // 定义正则表达式模式，用于匹配变量定义、函数定义和数据模板定义
-        // 变量定义模式：匹配 "var x = 1"、"var x as int = 1" 或 "var x as int" 这样的语句
-        val varPattern = Regex("^\\s*var\\s+(\\w+)(?:\\s+as\\s+(\\w+))?(?:\\s*=.*)?")
+        // 变量定义模式：匹配 var、const 和 dynamic 声明及冒号类型标注
+        val varPattern = Regex("^\\s*(?:var|const|dynamic)\\s+(\\w+)(?:\\s*:\\s*(\\w+))?(?:\\s*=.*)?")
         
-        // 函数定义模式：匹配 "func test(a as int) -> int {" 或 "func test(a as int) {" 这样的语句
+        // 函数定义模式：匹配带冒号参数类型的函数声明
         val funcPattern = Regex("^\\s*func\\s+(\\w+)\\s*\\(")
         
         // 数据模板定义模式：匹配 "data Test {" 这样的语句

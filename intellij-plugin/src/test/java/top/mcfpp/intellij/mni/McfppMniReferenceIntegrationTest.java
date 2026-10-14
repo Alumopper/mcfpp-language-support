@@ -79,7 +79,7 @@ public final class McfppMniReferenceIntegrationTest extends LightJavaCodeInsight
                 """);
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "func convert(value as string) = example.mni.Bridge.con<caret>vert;"
+                "func convert(value: string) = example.mni.Bridge.con<caret>vert;"
         );
 
         PsiReference reference = myFixture.getReferenceAtCaretPosition();
@@ -139,7 +139,7 @@ public final class McfppMniReferenceIntegrationTest extends LightJavaCodeInsight
                 """);
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "func ann<caret>ounce(message as string) = example.mni.ProjectMni.announce;"
+                "func ann<caret>ounce(message: string) = example.mni.ProjectMni.announce;"
         );
 
         PsiElement declaration = myFixture.getFile().findElementAt(myFixture.getCaretOffset());
@@ -256,7 +256,7 @@ public final class McfppMniReferenceIntegrationTest extends LightJavaCodeInsight
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 @From<"example.mni.Base">
                 data Child {}
-                func invoke(value as string) = example.mni.Bridge.invoke;
+                func invoke(value: string) = example.mni.Bridge.invoke;
                 """);
         PsiFile bindingFile = myFixture.getFile();
         assertEquals(2, MniJavaTargetParser.parse(bindingFile.getText()).size());

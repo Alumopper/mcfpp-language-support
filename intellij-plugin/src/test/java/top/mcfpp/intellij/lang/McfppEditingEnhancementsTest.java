@@ -33,46 +33,46 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         myFixture.addFileToProject("one.mcfpp", "namespace one; data Counter {} data CountDown {}");
         myFixture.addFileToProject("two.mcfpp", "namespace two; data Counter {}");
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "namespace app;\nfunc main() { var value as Coun<caret>; }\n");
+                "namespace app;\nfunc main() { var value: Coun<caret>; }\n");
         LookupElement[] items = complete();
         assertEquals(2, Arrays.stream(items).filter(item -> item.getLookupString().equals("Counter")).count());
         select(items, "Counter", "two:Counter");
-        myFixture.checkResult("namespace app;\nimport two:Counter;\nfunc main() { var value as Counter<caret>; }\n");
+        myFixture.checkResult("namespace app;\nimport two:Counter\nfunc main() { var value: Counter<caret>; }\n");
         assertEquals("two", McfppFileModels.get(resolve("Counter;").getContainingFile()).namespace());
     }
 
     public void testExternalOverloadsRetainSignaturesAndInsertParentheses() {
         myFixture.addFileToProject("convert.mcfpp", """
                 namespace converters;
-                func convert(value as int) {}
-                func convert(value as string) {}
+                func convert(value: int) {}
+                func convert(value: string) {}
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, "namespace app;\nfunc main() { conv<caret>; }\n");
         LookupElement[] items = complete();
         assertEquals(2, Arrays.stream(items).filter(item -> item.getLookupString().equals("convert")).count());
-        var item = Arrays.stream(items).filter(value -> tail(value).contains("value as string")).findFirst().orElseThrow();
+        var item = Arrays.stream(items).filter(value -> tail(value).contains("value: string")).findFirst().orElseThrow();
         myFixture.getLookup().setCurrentItem(item);
         myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR);
-        myFixture.checkResult("namespace app;\nimport converters:convert;\nfunc main() { convert(<caret>); }\n");
+        myFixture.checkResult("namespace app;\nimport converters:convert\nfunc main() { convert(<caret>); }\n");
     }
 
     public void testLocalConflictInsertsQualifiedNameAndResolvesSelectedType() {
         myFixture.addFileToProject("models.mcfpp", "namespace models; data Counter {} data CountDown {}");
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "namespace app;\nfunc main() { var Counter as int = 1; var value as Coun<caret>; }\n");
+                "namespace app;\nfunc main() { var Counter: int = 1; var value: Coun<caret>; }\n");
         select(complete(), "Counter", "models:Counter");
         assertFalse(myFixture.getFile().getText().contains("import "));
-        myFixture.checkResult("namespace app;\nfunc main() { var Counter as int = 1; var value as models:Counter<caret>; }\n");
+        myFixture.checkResult("namespace app;\nfunc main() { var Counter: int = 1; var value: models:Counter<caret>; }\n");
         assertEquals("models", McfppFileModels.get(resolve("Counter;").getContainingFile()).namespace());
     }
 
     public void testExistingSymbolAliasIsCompletedAndReused() {
         myFixture.addFileToProject("models.mcfpp", "namespace models; data Counter {} data CountDown {}");
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "namespace app;\nimport models:Counter as RenamedCounter;\nfunc main() { var value as Ren<caret>; }\n");
+                "namespace app;\nimport models:Counter as RenamedCounter;\nfunc main() { var value: Ren<caret>; }\n");
         LookupElement[] items = complete();
         if (items != null) select(items, "RenamedCounter", "models:Counter");
-        myFixture.checkResult("namespace app;\nimport models:Counter as RenamedCounter;\nfunc main() { var value as RenamedCounter<caret>; }\n");
+        myFixture.checkResult("namespace app;\nimport models:Counter as RenamedCounter;\nfunc main() { var value: RenamedCounter<caret>; }\n");
         assertEquals("models", McfppFileModels.get(resolve("RenamedCounter;").getContainingFile()).namespace());
     }
 
@@ -85,12 +85,12 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
 
     public void testOptimizeImportsPreservesCommentsAliasesAndVersionBranches() {
         String source = """
-                # file header
+                // file header
                 namespace app;
                 import z:Z;
                 import a:A;
                 import z:Z;
-                # attached comment
+                // attached comment
                 import y:Y;
                 import b:B as Other;
                 #if MC >= 26.3
@@ -102,11 +102,11 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
                 func main() {}
                 """;
         String expected = """
-                # file header
+                // file header
                 namespace app;
                 import a:A;
                 import z:Z;
-                # attached comment
+                // attached comment
                 import y:Y;
                 import b:B as Other;
                 #if MC >= 26.3
@@ -126,9 +126,9 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
     }
 
     public void testOptimizeImportsPreservesInlineCommentsCodeAndDifferentAliases() {
-        String source = "import z:Z; # attached\nimport b:B; func main() {}\n" +
+        String source = "import z:Z; // attached\nimport b:B; func main() {}\n" +
                 "import z:Z as First;\nimport z:Z as Second;\nimport a:*;\n";
-        String expected = "import z:Z; # attached\nimport b:B; func main() {}\n" +
+        String expected = "import z:Z; // attached\nimport b:B; func main() {}\n" +
                 "import a:*;\nimport z:Z as First;\nimport z:Z as Second;\n";
         assertEquals(expected, McfppImportOptimizer.organize(source));
         assertEquals("import a:A\r\nimport z:Z\r\n", McfppImportOptimizer.organize("import z:Z\r\nimport a:A\r\n"));
@@ -136,25 +136,25 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
 
     public void testImportInsertionProtectsHeaderDocsAndConditionalImports() {
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "# file header\nnamespace app;\n#if MC >= 26.3\nimport models:Counter;\n#endif\n#{Function docs}#\nfunc main() {}\n");
+                "// file header\nnamespace app;\n#if MC >= 26.3\nimport models:Counter;\n#endif\n/// Function docs\nfunc main() {}\n");
         WriteCommandAction.runWriteCommandAction(getProject(), () -> {
             var document = myFixture.getEditor().getDocument();
             assertTrue(McfppImportManager.insertImport(document, "models", "Counter") >= 0);
             assertEquals(-1, McfppImportManager.insertImport(document, "models", "Counter"));
         });
         assertTrue(myFixture.getEditor().getDocument().getText().startsWith(
-                "# file header\nnamespace app;\nimport models:Counter;\n#if"));
-        assertTrue(myFixture.getEditor().getDocument().getText().contains("#{Function docs}#\nfunc main()"));
+                "// file header\nnamespace app;\nimport models:Counter\n#if"));
+        assertTrue(myFixture.getEditor().getDocument().getText().contains("/// Function docs\nfunc main()"));
     }
 
     public void testImportInsertionIgnoresCommentAndStringContentsAndSupportsCRLF() {
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "# import models:Counter;\n#{Docs}#\nfunc main() { var text = \"import models:Counter;\"; }\n");
+                "// import models:Counter;\n/// Docs\nfunc main() { var text = \"import models:Counter;\"; }\n");
         WriteCommandAction.runWriteCommandAction(getProject(), () -> {
             McfppImportManager.insertImport(myFixture.getEditor().getDocument(), "models", "Counter");
         });
         assertTrue(myFixture.getEditor().getDocument().getText().startsWith(
-                "# import models:Counter;\nimport models:Counter;\n#{Docs}#"));
+                "// import models:Counter;\nimport models:Counter\n/// Docs"));
         // IDEA normalizes Document line separators; test raw CRLF layout independently.
         assertEquals("namespace app;\r\n".length(),
                 McfppImportLayout.insertionOffset("namespace app;\r\n"));
@@ -164,13 +164,13 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         myFixture.addFileToProject("one.mcfpp", "namespace one; data Missing {}");
         myFixture.addFileToProject("two.mcfpp", "namespace two; data Missing {}");
         myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
-        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var value as Mis<caret>sing; }");
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var value: Mis<caret>sing; }");
         ready();
         assertEquals(1, undefinedCount());
         assertNotEmpty(myFixture.filterAvailableIntentions("Import 'one:Missing'"));
         assertNotEmpty(myFixture.filterAvailableIntentions("Import 'two:Missing'"));
         myFixture.launchAction(myFixture.findSingleIntention("Import 'two:Missing'"));
-        assertTrue(myFixture.getFile().getText().startsWith("import two:Missing;\n"));
+        assertTrue(myFixture.getFile().getText().startsWith("import two:Missing\n"));
         assertEquals(0, undefinedCount());
     }
 
@@ -180,8 +180,8 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
                 @From<example.mni.Base>
                 data Child {}
                 func nativeBinding() = example.mni.Bridge.run;
-                func main(value as int) {
-                    # Undefined words in a comment
+                func main(value: int) {
+                    // Undefined words in a comment
                     var text = "Undefined words in a string";
                     var target = @e[type=minecraft:pig,tag=hello];
                     var item = value;
@@ -203,7 +203,7 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         myFixture.configureByText(McfppFileType.INSTANCE, "func main() { missing(");
         assertEquals(0, undefinedCount());
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "import unavailable:External;\nfunc main() { var value as External; }");
+                "import unavailable:External;\nfunc main() { var value: External; }");
         ready();
         assertEquals(0, undefinedCount());
     }
@@ -220,12 +220,12 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 data Duplicate {}
                 data Duplicate {}
-                data First { var value as int; }
-                data Second { var value as int; }
-                func main(value as int) {
-                    var value as int;
-                    if (true) { var value as int; }
-                    if (false) { var value as int; }
+                data First { var value: int; }
+                data Second { var value: int; }
+                func main(value: int) {
+                    var value: int;
+                    if (true) { var value: int; }
+                    if (false) { var value: int; }
                 }
                 """);
         var errors = myFixture.doHighlighting().stream().filter(info -> info.getDescription() != null &&
@@ -235,8 +235,8 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
 
     public void testNestedVariableResolutionDoesNotLeakToOuterScope() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func main(value as int) {
-                    if (true) { var value as string; }
+                func main(value: int) {
+                    if (true) { var value: string; }
                     var copy = va<caret>lue;
                 }
                 """);
@@ -279,7 +279,7 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         try {
             myFixture.launchAction(myFixture.findSingleIntention("Create MCFPP function 'missing'"));
             String text = myFixture.getEditor().getDocument().getText();
-            assertTrue(text, text.contains("func missing(arg1 as int) {\n  \n}\n"));
+            assertTrue(text, text.contains("func missing(arg1: int) {\n  \n}\n"));
             int caret = myFixture.getCaretOffset();
             assertEquals('\n', text.charAt(caret));
             assertEquals("  ", text.substring(text.lastIndexOf('\n', caret - 1) + 1, caret));
@@ -303,7 +303,7 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
 
     public void testGlobalFieldCompletionDoesNotQualifyAnUnshadowedField() {
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "namespace app;\nvar counter as int = 0;\nfunc main() { cou<caret>; }\n");
+                "namespace app;\nvar counter: int = 0;\nfunc main() { cou<caret>; }\n");
         LookupElement[] items = complete();
         if (items != null) select(items, "counter", "app:counter");
         assertTrue(myFixture.getFile().getText(), myFixture.getFile().getText().contains("{ counter; }"));
@@ -312,10 +312,10 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
     public void testCompilerOnlyDeclarationsAndDependenciesStayLspOwned() {
         myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
         for (String source : List.of(
-                "data Generic<T as Type> { func main() { var value as T; } }",
+                "data Generic<T> { func main() { var value: T; } }",
                 "data Child: Parent { func main() { inherited(); } }",
                 "interface Interface { func method(); }",
-                "data Accessor { value as int { get { return backing; } set { backing = value; } } }")) {
+                "data Accessor { var value: int { get { return backing; } set { backing = value; } } }")) {
             myFixture.configureByText(McfppFileType.INSTANCE, source);
             assertEquals(source, 0, undefinedCount());
         }
@@ -333,30 +333,30 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         myFixture.addFileToProject("mcfpp.json", java.nio.file.Files.readString(root.resolve("mcfpp.json")));
         try (var files = java.nio.file.Files.walk(root.resolve("src/main/mcfpp"))) {
             for (var path : files.filter(java.nio.file.Files::isRegularFile).toList()) {
-                myFixture.addFileToProject(root.relativize(path).toString(), java.nio.file.Files.readString(path));
+                myFixture.addFileToProject(root.relativize(path).toString().replace('\\', '/'), java.nio.file.Files.readString(path));
             }
         }
-        String source = java.nio.file.Files.readString(root.resolve("src/main/mcfpp/main.mcfpp"));
+        String source = java.nio.file.Files.readString(root.resolve("src/main/mcfpp/main.mcfpp")).replace("\r\n", "\n");
         myFixture.configureByText(McfppFileType.INSTANCE, source.replace("math:doubled(result)", "math:dou<caret>(result)"));
         var items = complete();
         if (items != null) select(items, "doubled", "complete.math:doubled");
         assertEquals(source, myFixture.getFile().getText());
         WriteCommandAction.runWriteCommandAction(getProject(), new McfppImportOptimizer().processFile(myFixture.getFile()));
-        assertTrue(myFixture.getFile().getText().contains("import complete.math:doubled as twice;"));
-        assertTrue(myFixture.getFile().getText().contains("import complete.math:* as math;"));
-        assertTrue(myFixture.getFile().getText().contains("func announce(message as string) = example.mni.ProjectMni.announce;"));
+        assertTrue(myFixture.getFile().getText().contains("import complete.math:doubled as twice"));
+        assertTrue(myFixture.getFile().getText().contains("import complete.math:* as math"));
+        assertTrue(myFixture.getFile().getText().contains("func announce(message: string) = example.mni.ProjectMni.announce"));
         myFixture.configureByText(McfppFileType.INSTANCE, source.replace("counter.increment()", "counter.increment();\n    new<caret>Helper(1)"));
         myFixture.launchAction(myFixture.findSingleIntention("Create MCFPP function 'newHelper'"));
-        assertTrue(myFixture.getFile().getText().contains("func newHelper(arg1 as int)"));
+        assertTrue(myFixture.getFile().getText().contains("func newHelper(arg1: int)"));
     }
 
     public void testOtherFileInCurrentNamespacePreventsAmbiguousImport() {
         myFixture.addFileToProject("local.mcfpp", "namespace app; data Counter {}");
         myFixture.addFileToProject("foreign.mcfpp", "namespace models; data Counter {} data CountDown {}");
         myFixture.configureByText(McfppFileType.INSTANCE,
-                "namespace app;\nfunc main() { var value as Coun<caret>; }\n");
+                "namespace app;\nfunc main() { var value: Coun<caret>; }\n");
         select(complete(), "Counter", "models:Counter");
-        myFixture.checkResult("namespace app;\nfunc main() { var value as models:Counter<caret>; }\n");
+        myFixture.checkResult("namespace app;\nfunc main() { var value: models:Counter<caret>; }\n");
         assertEquals("models", McfppFileModels.get(resolve("Counter;").getContainingFile()).namespace());
     }
 

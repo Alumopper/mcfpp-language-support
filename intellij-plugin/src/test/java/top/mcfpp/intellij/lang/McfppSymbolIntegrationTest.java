@@ -39,12 +39,12 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
     public void testResolvesImportedTypeAcrossFiles() {
         myFixture.addFileToProject("src/models.mcfpp", """
                 namespace complete.models;
-                data Counter { func increment() -> int { return 1; } }
+                data Counter { func increment() : int { return 1; } }
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace complete.app;
                 import complete.models:Counter;
-                func main() { var value as Cou<caret>nter = Counter(); }
+                func main() { var value: Cou<caret>nter = Counter(); }
                 """);
         DumbService.getInstance(getProject()).waitForSmartMode();
 
@@ -58,7 +58,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
     public void testResolvesWildcardNamespaceAliasAndMemberFunction() {
         myFixture.addFileToProject("src/math.mcfpp", """
                 namespace complete.math;
-                func doubled(value as int) -> int { return value * 2; }
+                func doubled(value: int) : int { return value * 2; }
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace complete.app;
@@ -80,13 +80,13 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 """);
         var standardLibraryFile = myFixture.addFileToProject(
                 "src/main/mcfpp/minecraft/entity/Player.mcfpp",
-                "data PlayerData { score as int; }"
+                "data PlayerData { var score: int; }"
         );
         assertEquals("mcfpp.minecraft.entity", McfppFileModels.get(standardLibraryFile).namespace());
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
                 import mcfpp.minecraft.entity:PlayerData;
-                func main() { var player as Player<caret>Data = PlayerData(); }
+                func main() { var player: Player<caret>Data = PlayerData(); }
                 """);
         DumbService.getInstance(getProject()).waitForSmartMode();
 
@@ -139,7 +139,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
     public void testPackagedStandardLibraryCompletesAndRealCtrlBNavigatesToSource() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
-                func main(value as int) { pri<caret>nt(value); }
+                func main(value: int) { pri<caret>nt(value); }
                 """);
         DumbService.getInstance(getProject()).waitForSmartMode();
         IndexingTestUtil.waitUntilIndexesAreReady(getProject());
@@ -164,8 +164,8 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
                 data Counter {
-                    var value as int = 0;
-                    func increment(amount as int) -> int { return value + amount; }
+                    var value: int = 0;
+                    func increment(amount: int) : int { return value + amount; }
                     func increase() {}
                 }
                 func main() { Counter.incre<caret>ment(2); }
@@ -185,8 +185,8 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace complete.app;
-                func main(localValue as int) {
-                    var localResult as int = 0;
+                func main(localValue: int) {
+                    var localResult: int = 0;
                     Cou<caret>
                 }
                 """);
@@ -198,8 +198,8 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         assertContainsElements(names, "Counter", "CountDown");
 
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func main(localValue as int) {
-                    var localResult as int = 0;
+                func main(localValue: int) {
+                    var localResult: int = 0;
                     local<caret>
                 }
                 """);
@@ -213,8 +213,8 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         myFixture.addFileToProject("src/models.mcfpp", """
                 namespace complete.models;
                 data Counter {
-                    var value as int = 0;
-                    func increment(amount as int) -> int { return value + amount; }
+                    var value: int = 0;
+                    func increment(amount: int) : int { return value + amount; }
                 }
                 func unrelated() {}
                 """);
@@ -222,7 +222,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 namespace complete.app;
                 import complete.models:Counter;
                 func main() {
-                    var counter as Counter = Counter();
+                    var counter: Counter = Counter();
                     counter.<caret>
                 }
                 """);
@@ -239,7 +239,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 namespace complete.app;
                 import complete.models:Counter;
                 func main() {
-                    var counter as Counter = Counter();
+                    var counter: Counter = Counter();
                     counter.incre<caret>ment(1);
                 }
                 """);
@@ -256,7 +256,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace complete.app;
-                func main() { var counter as Coun<caret>; }
+                func main() { var counter: Coun<caret>; }
                 """);
         DumbService.getInstance(getProject()).waitForSmartMode();
 
@@ -268,8 +268,8 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         myFixture.getLookup().setCurrentItem(counter);
         myFixture.finishLookup('\n');
 
-        assertTrue(myFixture.getFile().getText().contains("import complete.models:Counter;"));
-        assertTrue(myFixture.getFile().getText().contains("var counter as Counter;"));
+        assertTrue(myFixture.getFile().getText().contains("import complete.models:Counter\n"));
+        assertTrue(myFixture.getFile().getText().contains("var counter: Counter;"));
     }
 
     public void testImportIntentionAddsUniqueProjectSymbol() {
@@ -279,21 +279,21 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace complete.app;
-                func main() { var counter as Cou<caret>nter; }
+                func main() { var counter: Cou<caret>nter; }
                 """);
         DumbService.getInstance(getProject()).waitForSmartMode();
 
         var action = myFixture.findSingleIntention("Import 'complete.models:Counter'");
         myFixture.launchAction(action);
 
-        assertTrue(myFixture.getFile().getText().contains("import complete.models:Counter;"));
+        assertTrue(myFixture.getFile().getText().contains("import complete.models:Counter\n"));
     }
 
     public void testNamespaceAliasCompletionOnlyOffersNamespaceSymbols() {
         myFixture.addFileToProject("src/math.mcfpp", """
                 namespace complete.math;
-                func doubled(value as int) -> int { return value * 2; }
-                func tripled(value as int) -> int { return value * 3; }
+                func doubled(value: int) : int { return value * 2; }
+                func tripled(value: int) : int { return value * 3; }
                 """);
         myFixture.addFileToProject("src/other.mcfpp", """
                 namespace complete.other;
@@ -316,7 +316,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
 
     public void testFunctionCompletionAddsParenthesesAndPlacesCaretInside() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func sum(left as int, right as int) -> int { return left + right; }
+                func sum(left: int, right: int) : int { return left + right; }
                 func main() { su<caret> }
                 """);
 
@@ -329,7 +329,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         myFixture.finishLookup('\n');
 
         myFixture.checkResult("""
-                func sum(left as int, right as int) -> int { return left + right; }
+                func sum(left: int, right: int) : int { return left + right; }
                 func main() { sum(<caret>) }
                 """);
     }
@@ -339,7 +339,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
                 namespace complete.models;
                 data Counter {}
                 enum Direction { NORTH, SOUTH }
-                func createCounter() -> Counter { return Counter(); }
+                func createCounter() : Counter { return Counter(); }
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, "namespace complete.app; Coun<caret>");
         DumbService.getInstance(getProject()).waitForSmartMode();
@@ -367,7 +367,7 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         var usageFile = myFixture.addFileToProject("src/main.mcfpp", """
                 namespace complete.app;
                 import complete.models:Counter;
-                func main() { var value as Counter = Counter(); }
+                func main() { var value: Counter = Counter(); }
                 """);
         var usageVirtualFile = usageFile.getVirtualFile();
         myFixture.configureByText(McfppFileType.INSTANCE, """
@@ -402,26 +402,26 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         assertNotNull(updatedUsageFile);
         assertTrue(myFixture.getFile().getText().contains("data ScoreCounter"));
         assertTrue(updatedUsageFile.getText().contains("import complete.models:ScoreCounter"));
-        assertTrue(updatedUsageFile.getText().contains("as ScoreCounter = ScoreCounter()"));
+        assertTrue(updatedUsageFile.getText().contains(": ScoreCounter = ScoreCounter()"));
     }
 
     public void testParameterRenameIsLimitedToItsFunction() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func first(val<caret>ue as int) -> int { return value; }
-                func second(value as int) -> int { return value; }
+                func first(val<caret>ue: int) : int { return value; }
+                func second(value: int) : int { return value; }
                 """);
 
         myFixture.renameElementAtCaret("amount");
 
         assertEquals("""
-                func first(amount as int) -> int { return amount; }
-                func second(value as int) -> int { return value; }
+                func first(amount: int): int { return amount; }
+                func second(value: int) : int { return value; }
                 """, myFixture.getFile().getText());
     }
 
     public void testReadOnlyParametersAndForeachVariablesResolveCompleteAndRenameByScope() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func visit<player as Player>(values as list<Player>) {
+                func visit<player: Player>(values: list<Player>) {
                     for (entry : values) {
                         player.notify(entry);
                         <caret>
@@ -437,23 +437,23 @@ public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
         assertContainsElements(names, "entry", "player", "values");
 
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func visit<pla<caret>yer as Player>(values as list<Player>) {
+                func visit<pla<caret>yer: Player>(values: list<Player>) {
                     for (entry : values) { player.notify(entry); }
                 }
                 """);
         myFixture.renameElementAtCaret("recipient");
-        assertTrue(myFixture.getFile().getText().contains("<recipient as Player>"));
+        assertTrue(myFixture.getFile().getText().contains("<recipient: Player>"));
         assertTrue(myFixture.getFile().getText().contains("recipient.notify(entry)"));
 
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func visit(values as list<Player>) {
+                func visit(values: list<Player>) {
                     for (ent<caret>ry : values) { notify(entry); }
                     notify(entry);
                 }
                 """);
         myFixture.renameElementAtCaret("member");
         assertEquals("""
-                func visit(values as list<Player>) {
+                func visit(values: list<Player>) {
                     for (member : values) { notify(member); }
                     notify(entry);
                 }

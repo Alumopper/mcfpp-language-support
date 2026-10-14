@@ -17,6 +17,41 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
+    public void testCompletionDoesNotOfferLegacyDeclarationForms() {
+        for (String source : List.of("func main() { const v<caret> }", "func main() { dynamic v<caret> }",
+                "func main() { var value a<caret> }", "func transform<T a<caret>>() {}")) {
+            myFixture.configureByText(McfppFileType.INSTANCE, source);
+            var items = myFixture.completeBasic();
+            String forbidden = source.contains("const ") || source.contains("dynamic ") ? "var" : "as";
+            assertTrue(source + " " + (items == null ? "auto-inserted" : Arrays.stream(items).map(item -> item.getLookupString()).toList()), items == null || Arrays.stream(items).noneMatch(item ->
+                    item.getLookupString().equals(forbidden)));
+        }
+    }
+
+    public void testParameterInfoForCallsInBareConditionsAndReturns() {
+        for (String statement : List.of("if check(1, <caret>) {}", "while check(1, <caret>) {}",
+                "return check(1, <caret>)")) {
+            myFixture.configureByText(McfppFileType.INSTANCE,
+                    "func check(value: int, flag: bool): bool { return flag }\nfunc main() { " + statement + " }");
+            String info = myFixture.getParameterInfoAtCaret();
+            assertNotNull(statement, info);
+            assertTrue(info, info.contains("<b>flag: bool</b>"));
+        }
+    }
+
+    public void testAnnotationTypeCompletionRetainsQualifiedTypeCompletion() {
+        myFixture.addFileToProject("models.mcfpp", "namespace models\ndata Counter {}\ndata CountDown {}\nfunc compute() {}");
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var value: Cou<caret> }");
+        var items = myFixture.completeBasic();
+        assertNotNull(items);
+        assertTrue(Arrays.stream(items).anyMatch(item -> item.getLookupString().equals("Counter")));
+        assertFalse(Arrays.stream(items).anyMatch(item -> item.getLookupString().equals("compute")));
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var value: models:Cou<caret> }");
+        items = myFixture.completeBasic();
+        assertTrue(myFixture.getFile().getText().contains("models:Counter") ||
+                items != null && Arrays.stream(items).anyMatch(item -> item.getLookupString().equals("Counter")));
+    }
+
     public void testCompletesVersionDirectiveWithCondition() {
         myFixture.configureByText(McfppFileType.INSTANCE, "#i<caret>");
         var items = myFixture.completeBasic();
@@ -48,13 +83,19 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
         IntentionAction action = myFixture.findSingleIntention("Create MCFPP function 'missing'");
         myFixture.launchAction(action);
 
-        assertTrue(myFixture.getFile().getText().contains("func missing(arg1 as int, arg2 as string)"));
+        assertTrue(myFixture.getFile().getText().contains("func missing(arg1: int, arg2: string)"));
+    }
+
+    public void testCreateFunctionIntentionUsesImplicitReadonlyTypeParameters() {
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { miss<caret>ing<int>(1) }");
+        myFixture.launchAction(myFixture.findSingleIntention("Create MCFPP function 'missing'"));
+        assertTrue(myFixture.getFile().getText().contains("func missing<T>(arg1: int)"));
     }
 
     public void testCreateFunctionIntentionPreservesReadOnlyArgumentsAndInfersUsefulTypes() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
-                func main(player as Player, message as string) {
+                func main(player: Player, message: string) {
                     miss<caret>ing<player, 4>(message, true, @a, 2.5f, Player(), [1, 2]);
                 }
                 """);
@@ -63,13 +104,13 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
         myFixture.launchAction(action);
 
         assertTrue(myFixture.getFile().getText().contains("""
-                func missing<player as Player, readOnly2 as int>(message as string, arg2 as bool, arg3 as selector, arg4 as float, arg5 as Player, arg6 as list<any>)"""));
+                func missing<player: Player, readOnly2: int>(message: string, arg2: bool, arg3: selector, arg4: float, arg5: Player, arg6: list<any>)"""));
     }
 
     public void testCreateTypeIntentionAddsDataDeclaration() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
-                func main() { var value as Miss<caret>ing; }
+                func main() { var value: Miss<caret>ing; }
                 """);
 
         IntentionAction action = myFixture.findSingleIntention("Create MCFPP data type 'Missing'");
@@ -80,15 +121,15 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
 
     public void testParameterInfoShowsAndTracksFunctionSignature() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                func sum(left as int, right as string) -> int { return left; }
+                func sum(left: int, right: string) : int { return left; }
                 func main() { sum(1, <caret>); }
                 """);
 
         String info = myFixture.getParameterInfoAtCaret();
 
         assertNotNull(info);
-        assertTrue(info, info.contains("func sum(left as int, <b>right as string</b>)"));
-        assertTrue(info, info.contains("-&gt; int"));
+        assertTrue(info, info.contains("func sum(left: int, <b>right: string</b>)"));
+        assertTrue(info, info.contains(": int"));
     }
 
     public void testTypingPairsBracesQuotesAndIndentsNewLine() {
@@ -98,8 +139,8 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
         myFixture.checkResult("func main() {<caret>}");
         myFixture.type('\n');
         myFixture.checkResult("func main() {\n    <caret>\n}");
-        myFixture.type("var message as string = \"");
-        myFixture.checkResult("func main() {\n    var message as string = \"<caret>\"\n}");
+        myFixture.type("var message: string = \"");
+        myFixture.checkResult("func main() {\n    var message: string = \"<caret>\"\n}");
     }
 
     public void testTypingPairsParenthesesBracketsAndIndentsContinuation() {
@@ -120,8 +161,8 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
                 data Counter {
-                    var value as int = 0;
-                    func increment(amount as int) -> int {
+                    var value: int = 0;
+                    func increment(amount: int) : int {
                         return value + amount;
                     }
                 }
@@ -157,8 +198,8 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 data Duplicate {}
                 data Duplicate {}
-                func convert(value as int) {}
-                func convert(value as string) {}
+                func convert(value: int) {}
+                func convert(value: string) {}
                 """);
 
         List<HighlightInfo> highlights = myFixture.doHighlighting();
@@ -173,7 +214,7 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
                 import example.models:Counter;
                 @From<\"example.mni.Base\">
                 data Child { func update() {} }
-                func main(value as Child) { var copy as Child = Child(); Child.update(); }
+                func main(value: Child) { var copy: Child = Child(); Child.update(); }
                 """;
         myFixture.configureByText(McfppFileType.INSTANCE, source);
 
@@ -193,8 +234,8 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
     public void testQuickDocumentationUsesSignatureAndDocComment() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
-                #{Adds one to the supplied value.}#
-                func increment(value as int) -> int { return value + 1; }
+                /// Adds one to the supplied value.
+                func increment(value: int) : int { return value + 1; }
                 func main() { incre<caret>ment(1); }
                 """);
 
@@ -203,10 +244,10 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
 
         assertEquals(1, targets.size());
         DocumentationTarget target = targets.getFirst();
-        assertEquals("func increment(value as int) -> int", target.computePresentation().getPresentableText());
+        assertEquals("func increment(value: int) : int", target.computePresentation().getPresentableText());
         String hint = target.computeDocumentationHint();
         assertNotNull(hint);
-        assertTrue(hint.contains("increment(value as int)"));
+        assertTrue(hint.contains("increment(value: int)"));
         assertNotNull(target.computeDocumentation());
     }
 

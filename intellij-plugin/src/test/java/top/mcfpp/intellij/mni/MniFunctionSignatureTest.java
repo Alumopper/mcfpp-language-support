@@ -8,12 +8,34 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MniFunctionSignatureTest {
     @Test
+    void stripsReadonlyStaticBeforeClassifyingImplicitTypes() {
+        String source = "func bridge<static T, static int>() = example.mni.Bridge.invoke";
+        var signature = MniFunctionSignature.from(source, MniJavaTargetParser.parse(source).getFirst()).orElseThrow();
+        assertEquals(List.of("type", "int"), signature.readOnlyTypes());
+    }
+
+    @Test
+    void distinguishesImplicitTypesFromAnonymousReadonlyValueTypes() {
+        String source = "func bridge<T, int, list<int>, N: int>() = example.mni.Bridge.invoke";
+        var signature = MniFunctionSignature.from(source, MniJavaTargetParser.parse(source).getFirst()).orElseThrow();
+        assertEquals(List.of("type", "int", "list<int>", "int"), signature.readOnlyTypes());
+    }
+
+    @Test
+    void preservesAnonymousValuesAndExplicitTypeParameters() {
+        String source = "func generic<T, U: type>(SomeClass) = example.mni.Bridge.generic";
+        var signature = MniFunctionSignature.from(source, MniJavaTargetParser.parse(source).getFirst()).orElseThrow();
+        assertEquals(List.of("type", "type"), signature.readOnlyTypes());
+        assertEquals(List.of("SomeClass"), signature.normalTypes());
+    }
+
+    @Test
     void parsesReadOnlyNormalAndReturnTypes() {
         String source = """
-                func convert<kind as type, size as int = 2>(
-                    input as list<string>,
+                func convert<kind, size: int = 2>(
+                    input: list<string>,
                     static var entity<minecraft:zombie>
-                ) -> map<string> = example.mni.Bridge.convert;
+                ) : map<string> = example.mni.Bridge.convert;
                 """;
         MniJavaTargetParser.Target target = MniJavaTargetParser.parse(source).getFirst();
 
@@ -29,7 +51,7 @@ class MniFunctionSignatureTest {
     @Test
     void preservesCommasNestedInsideTypesAndDefaults() {
         String source = """
-                func nested(value as entity<1, "zombie", "undead">, other as (int|string)) = example.mni.Bridge.nested;
+                func nested(value: entity<1, "zombie", "undead">, other: (int|string)) = example.mni.Bridge.nested;
                 """;
         MniJavaTargetParser.Target target = MniJavaTargetParser.parse(source).getFirst();
 

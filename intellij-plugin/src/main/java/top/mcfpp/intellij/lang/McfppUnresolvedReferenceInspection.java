@@ -161,7 +161,8 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
                             (symbol.kind() == McfppSymbolKind.FUNCTION &&
                                     (symbol.signature().contains("<") || symbol.signature().contains(".")))))) continue;
             // Member inheritance, inferred receivers and compiler-only libraries remain LSP-owned.
-            if (previous.equals(".") || previous.equals(":")) continue;
+            if (previous.equals(".") || previous.equals(":") &&
+                    !McfppDeclarationSyntax.isAnnotationColon(file.getText(), tokens.get(i - 1).start())) continue;
             if (next.isEmpty() || next.equals("as") || next.equals("from")) continue;
             offsets.add(token.start());
         }
@@ -202,6 +203,8 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
 
     static boolean isUnqualified(PsiElement element) {
         var previous = com.intellij.psi.util.PsiTreeUtil.prevVisibleLeaf(element);
-        return previous == null || (!previous.getText().equals(".") && !previous.getText().equals(":"));
+        return previous == null || (!previous.getText().equals(".") &&
+                (!previous.getText().equals(":") || McfppDeclarationSyntax.isAnnotationColon(
+                        element.getContainingFile().getViewProvider().getContents(), previous.getTextOffset())));
     }
 }

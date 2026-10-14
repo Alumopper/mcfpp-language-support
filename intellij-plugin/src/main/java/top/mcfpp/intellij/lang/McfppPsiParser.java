@@ -14,7 +14,7 @@ import java.util.Set;
  * the user is typing incomplete code.
  */
 final class McfppPsiParser implements PsiParser {
-    private static final Set<String> VARIABLE_KEYWORDS = Set.of("var", "global", "dynamic");
+    private static final Set<String> VARIABLE_KEYWORDS = Set.of("var", "const", "dynamic");
 
     @Override
     public @NotNull ASTNode parse(@NotNull IElementType root, @NotNull PsiBuilder builder) {
@@ -33,6 +33,8 @@ final class McfppPsiParser implements PsiParser {
                 parseTypeAlias(builder);
             } else if ("constructor".equals(text)) {
                 parseConstructor(builder);
+            } else if ("import".equals(text)) {
+                builder.advanceLexer();
             } else if (VARIABLE_KEYWORDS.contains(text)) {
                 parseVariable(builder);
             } else if ("for".equals(text)) {
@@ -163,8 +165,11 @@ final class McfppPsiParser implements PsiParser {
             if (atParameterStart && type == McfppTokenTypes.IDENTIFIER) {
                 PsiBuilder.Marker parameter = builder.mark();
                 builder.advanceLexer();
-                if ("as".equals(builder.getTokenText())) {
+                if (builder.getTokenType() == McfppTokenTypes.COLON) {
                     builder.advanceLexer();
+                    parameter.done(McfppElementTypes.PARAMETER_DECLARATION);
+                } else if ("<".equals(openText) && (",".equals(builder.getTokenText()) ||
+                        ">".equals(builder.getTokenText()) || "=".equals(builder.getTokenText()))) {
                     parameter.done(McfppElementTypes.PARAMETER_DECLARATION);
                 } else {
                     parameter.drop();
@@ -192,6 +197,18 @@ final class McfppPsiParser implements PsiParser {
     }
 
     private static void parseVariable(PsiBuilder builder) {
+        PsiBuilder.Marker rollback = builder.mark();
+        builder.advanceLexer();
+        if (builder.getTokenType() != McfppTokenTypes.IDENTIFIER) {
+            rollback.rollbackTo();
+            builder.advanceLexer();
+            if ("var".equals(builder.getTokenText())) builder.advanceLexer();
+            return;
+        }
+        builder.advanceLexer();
+        boolean legacy = "as".equals(builder.getTokenText());
+        rollback.rollbackTo();
+        if (legacy) { builder.advanceLexer(); return; }
         PsiBuilder.Marker declaration = builder.mark();
         builder.advanceLexer();
         int scanned = 0;
@@ -199,7 +216,7 @@ final class McfppPsiParser implements PsiParser {
             IElementType type = builder.getTokenType();
             if (type == McfppTokenTypes.IDENTIFIER) {
                 builder.advanceLexer();
-                if ("as".equals(builder.getTokenText())) builder.advanceLexer();
+                if (builder.getTokenType() == McfppTokenTypes.COLON) builder.advanceLexer();
                 declaration.done(McfppElementTypes.VARIABLE_DECLARATION);
                 return;
             }
@@ -250,6 +267,7 @@ final class McfppPsiParser implements PsiParser {
             if (type == McfppTokenTypes.IDENTIFIER) {
                 builder.advanceLexer();
                 declaration.done(elementType);
+                if ("<".equals(builder.getTokenText())) parseParameters(builder, "<", ">");
                 return;
             }
             if (type == McfppTokenTypes.LEFT_BRACE || type == McfppTokenTypes.RIGHT_BRACE ||

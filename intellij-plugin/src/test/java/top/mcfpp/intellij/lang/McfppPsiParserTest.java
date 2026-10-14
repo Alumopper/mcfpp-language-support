@@ -10,6 +10,14 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public final class McfppPsiParserTest extends BasePlatformTestCase {
+    public void testImportedVariablesCreateVariableDeclarationNodes() {
+        myFixture.configureByText(McfppFileType.INSTANCE, "import var imported: int\nimport var compact:int");
+        var declarations = PsiTreeUtil.findChildrenOfType(myFixture.getFile(), McfppNamedElement.class);
+        assertEquals(2, declarations.size());
+        assertEquals(java.util.Set.of("imported", "compact"), declarations.stream().map(McfppNamedElement::getName).collect(Collectors.toSet()));
+        assertTrue(declarations.stream().allMatch(element -> element.getNode().getElementType() == McfppElementTypes.VARIABLE_DECLARATION));
+    }
+
     public void testMcfppExtensionCreatesLanguagePsi() {
         var file = myFixture.configureByText("extension-association.mcfpp", "func main() {}");
 
@@ -21,8 +29,8 @@ public final class McfppPsiParserTest extends BasePlatformTestCase {
     public void testCreatesStableNamedDeclarationNodes() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 data Counter {
-                    var value as int = 0;
-                    func increment(amount as int) -> int { return value; }
+                    var value: int = 0;
+                    func increment(amount: int) : int { return value; }
                 }
                 typealias list<int> as Scores;
                 """);

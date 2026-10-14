@@ -19,7 +19,7 @@ public final class MniJavaResolverTest extends LightJavaCodeInsightFixtureTestCa
                 }
                 """);
         MniJavaTargetParser.Target target = MniJavaTargetParser
-                .parse("func invoke(value as string) = example.mni.Bridge.invoke;")
+                .parse("func invoke(value: string) = example.mni.Bridge.invoke;")
                 .getFirst();
         MniJavaTargetParser.Segment methodSegment = target.segments().getLast();
 

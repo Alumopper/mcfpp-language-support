@@ -1,6 +1,8 @@
 package top.mcfpp.intellij.mni;
 
 import org.jetbrains.annotations.NotNull;
+import top.mcfpp.intellij.lang.McfppLexer;
+import top.mcfpp.intellij.lang.McfppTokenTypes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,18 +45,18 @@ record MniFunctionSignature(
         if (cursor < header.length() && header.charAt(cursor) == '<') {
             int close = matchingDelimiter(header, cursor, '<', '>');
             if (close < 0) return Optional.empty();
-            readOnly = parameterTypes(header.substring(cursor + 1, close));
+            readOnly = parameterTypes(header.substring(cursor + 1, close), true);
             cursor = skipWhitespace(header, close + 1);
         }
         if (cursor >= header.length() || header.charAt(cursor) != '(') return Optional.empty();
         int normalClose = matchingDelimiter(header, cursor, '(', ')');
         if (normalClose < 0) return Optional.empty();
-        List<String> normal = parameterTypes(header.substring(cursor + 1, normalClose));
+        List<String> normal = parameterTypes(header.substring(cursor + 1, normalClose), false);
 
         cursor = skipWhitespace(header, normalClose + 1);
         String returnType = "void";
-        if (cursor + 1 < header.length() && header.charAt(cursor) == '-' && header.charAt(cursor + 1) == '>') {
-            returnType = normalizeType(header.substring(cursor + 2));
+        if (cursor < header.length() && header.charAt(cursor) == ':') {
+            returnType = normalizeType(header.substring(cursor + 1));
             if (returnType.isEmpty()) returnType = "void";
         }
         return Optional.of(new MniFunctionSignature(function.group(1), readOnly, normal, returnType));
@@ -73,21 +75,20 @@ record MniFunctionSignature(
         return readOnly + "(" + String.join(", ", normalTypes) + ")";
     }
 
-    private static List<String> parameterTypes(String parameters) {
+    private static List<String> parameterTypes(String parameters, boolean readOnly) {
         List<String> result = new ArrayList<>();
         for (String parameter : splitTopLevel(parameters)) {
-            String type = parameterType(parameter);
+            String type = parameterType(parameter, readOnly);
             if (!type.isEmpty()) result.add(type);
         }
         return List.copyOf(result);
     }
 
-    private static String parameterType(String parameter) {
+    private static String parameterType(String parameter, boolean readOnly) {
         int assignment = topLevelCharacter(parameter, '=');
         String declaration = assignment < 0 ? parameter : parameter.substring(0, assignment);
-        int as = topLevelWord(declaration, "as");
-        if (as >= 0) return normalizeType(declaration.substring(as + 2));
-
+        int colon = topLevelCharacter(declaration, ':');
+        if (colon >= 0) return normalizeType(declaration.substring(colon + 1));
         String withoutModifiers = declaration.strip();
         boolean changed;
         do {
@@ -99,6 +100,13 @@ record MniFunctionSignature(
                 }
             }
         } while (changed);
+        if (readOnly) {
+            McfppLexer lexer = new McfppLexer();
+            lexer.start(withoutModifiers);
+            if (lexer.getTokenType() == McfppTokenTypes.IDENTIFIER && lexer.getTokenEnd() == withoutModifiers.length()) {
+                return "type";
+            }
+        }
         return normalizeType(withoutModifiers);
     }
 

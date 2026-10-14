@@ -203,7 +203,8 @@ object MCFPPParserSemanticExtractor {
             }
             if (node.parent is mcfppParser.PropertyOperatorExpressionContext ||
                 node.parent is mcfppParser.CommonBinaryOperatorExpressionContext ||
-                node.parent is mcfppParser.ClassNameContext
+                node.parent is mcfppParser.ClassNameContext ||
+                node.parent is mcfppParser.NamespaceSegmentContext
             ) {
                 return
             }
@@ -221,10 +222,7 @@ object MCFPPParserSemanticExtractor {
             val functionCall = namespaceId?.parent as? mcfppParser.FunctionCallContext
             val isCall = functionCall != null && namespaceId.getTokens(mcfppParser.Identifier).lastOrNull()?.symbol?.tokenIndex == token.tokenIndex
             val namespaceQualifier = if (isCall) {
-                namespaceId?.getTokens(mcfppParser.Identifier).orEmpty()
-                    .dropLast(1)
-                    .joinToString(".") { it.text }
-                    .takeIf { it.isNotEmpty() }
+                namespaceId?.namespacePath()?.text
             } else {
                 null
             }
@@ -286,13 +284,13 @@ object MCFPPParserSemanticExtractor {
         }
 
         private fun recordNamespace(ctx: mcfppParser.NamespaceDeclarationContext) {
-            val identifiers = ctx.getTokens(mcfppParser.Identifier)
+            val identifiers = ctx.namespacePath()?.namespaceSegment()?.map { it.start }.orEmpty()
             if (identifiers.isEmpty()) {
                 return
             }
             identifiers.forEach(::markDeclaration)
             recordSymbol(
-                declarationToken = identifiers.last().symbol,
+                declarationToken = identifiers.last(),
                 name = identifiers.joinToString(".") { it.text },
                 kind = SymbolKind.Namespace,
                 detail = identifiers.joinToString(".") { it.text },
@@ -626,14 +624,15 @@ object MCFPPParserSemanticExtractor {
         }
 
         private fun recordParameter(ctx: mcfppParser.ParameterContext) {
-            val nameToken = ctx.getTokens(mcfppParser.Identifier).firstOrNull() ?: return
-            markDeclaration(nameToken)
-            val typeName = ctx.getRuleContext(mcfppParser.TypeContext::class.java, 0)?.text?.trim()
             val isReadOnly = ctx.parent?.parent is mcfppParser.ReadOnlyParamsContext
+            val implicitType = implicitTypeParameter(ctx, isReadOnly)
+            val nameToken = ctx.Identifier()?.symbol ?: implicitType?.start ?: return
+            markDeclaration(nameToken)
+            val typeName = if (implicitType != null) "Type" else ctx.type()?.text?.trim()
             val isTypeParameter = isReadOnly && typeName.equals("Type", ignoreCase = true)
             variables[nameToken.text] = typeName
             recordSymbol(
-                declarationToken = nameToken.symbol,
+                declarationToken = nameToken,
                 name = nameToken.text,
                 kind = if (isTypeParameter) SymbolKind.TypeParameter else SymbolKind.Variable,
                 detail = typeName,
@@ -678,8 +677,9 @@ object MCFPPParserSemanticExtractor {
             contexts: List<mcfppParser.ParameterContext>,
             readOnly: Boolean
         ): List<MCFPPFunctionParameter> = contexts.mapNotNull { parameter ->
-            val typeName = parameter.type()?.text?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-            val name = parameter.getTokens(mcfppParser.Identifier).firstOrNull()?.text
+            val implicitType = implicitTypeParameter(parameter, readOnly)
+            val typeName = if (implicitType != null) "Type" else parameter.type()?.text?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val name = parameter.Identifier()?.text ?: implicitType?.text
             val defaultValue = parameter.value()?.text?.trim()?.takeIf { it.isNotEmpty() }
             MCFPPFunctionParameter(
                 name = name,
@@ -689,6 +689,14 @@ object MCFPPParserSemanticExtractor {
                 defaultValue = defaultValue,
                 isReadOnly = readOnly
             )
+        }
+
+        private fun implicitTypeParameter(
+            parameter: mcfppParser.ParameterContext,
+            readOnly: Boolean
+        ): mcfppParser.TypeContext? = parameter.type()?.takeIf {
+            readOnly && parameter.Identifier() == null &&
+                it.start.type == mcfppParser.Identifier && it.start.tokenIndex == it.stop.tokenIndex
         }
 
         private fun recordEnumMember(ctx: mcfppParser.EnumMemberContext) {

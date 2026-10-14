@@ -32,6 +32,7 @@ final class McfppFormattingBlock extends AbstractBlock {
     private final CodeStyleSettings settings;
     private final Indent indent;
     private final boolean root;
+    private final Set<Integer> annotationColons;
 
     private McfppFormattingBlock(
             ASTNode node,
@@ -43,6 +44,7 @@ final class McfppFormattingBlock extends AbstractBlock {
         this.settings = settings;
         this.indent = indent;
         this.root = root;
+        this.annotationColons = root ? McfppDeclarationSyntax.annotationColons(node.getText()) : Set.of();
     }
 
     static McfppFormattingBlock root(ASTNode node, CodeStyleSettings settings) {
@@ -132,7 +134,10 @@ final class McfppFormattingBlock extends AbstractBlock {
         }
         if (leftType == McfppTokenTypes.COMMA) return spacing(common.SPACE_AFTER_COMMA);
         if (leftType == McfppTokenTypes.COLON) {
-            return spacing(isInheritanceColon(left.myNode) || isForeachColon(left.myNode));
+            ASTNode previous = previousSignificantLeaf(left.myNode);
+            return spacing(isInheritanceColon(left.myNode) || isForeachColon(left.myNode) ||
+                    annotationColons.contains(left.myNode.getStartOffset()) ||
+                    previous != null && previous.getElementType() == McfppTokenTypes.RIGHT_PARENTHESIS);
         }
         if (leftType == McfppTokenTypes.SEMICOLON || leftType == McfppTokenTypes.LEFT_BRACE) {
             return spacing(1);
@@ -184,7 +189,7 @@ final class McfppFormattingBlock extends AbstractBlock {
         if (RELATIONAL_OPERATORS.contains(operator)) return common.SPACE_AROUND_RELATIONAL_OPERATORS;
         if (operator.equals("+") || operator.equals("-")) return common.SPACE_AROUND_ADDITIVE_OPERATORS;
         if (MULTIPLICATIVE_OPERATORS.contains(operator)) return common.SPACE_AROUND_MULTIPLICATIVE_OPERATORS;
-        if (operator.equals("->") || operator.equals("=>")) return common.SPACE_AROUND_LAMBDA_ARROW;
+        if (operator.equals("=>")) return common.SPACE_AROUND_LAMBDA_ARROW;
         if (operator.equals("::")) return common.SPACE_AROUND_METHOD_REF_DBL_COLON;
         return true;
     }
@@ -243,7 +248,7 @@ final class McfppFormattingBlock extends AbstractBlock {
         if (beforeIdentifier != null) {
             String beforeText = beforeIdentifier.getText();
             if (beforeText.equals("func") || beforeText.equals("data") || beforeText.equals("object") ||
-                    beforeText.equals("as") || beforeText.equals("->") || beforeText.equals(":")) {
+                    beforeText.equals("as") || beforeText.equals(":")) {
                 return true;
             }
             if (beforeText.equals("<") && isStructuralAngle(beforeIdentifier)) return true;

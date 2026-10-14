@@ -19,7 +19,7 @@ class MCFPPCompilerFeaturesTest {
     @Test
     fun `supports compound assignments unary minus and trailing operator continuation`() {
         val source = """
-            func calculate(value as float) -> float {
+            func calculate(value: float) : float {
                 var x = 12 /
                     3
                 x +=
@@ -57,7 +57,7 @@ class MCFPPCompilerFeaturesTest {
         val source = """
             #if MC >= 26.3
             import modern:*
-            func selected() -> float {
+            func selected() : float {
             #if MC == 26.3
                 return -1.5f
             #else
@@ -66,9 +66,9 @@ class MCFPPCompilerFeaturesTest {
             }
             #elif MC >= 26.1
             import legacy:*
-            func selected() -> int { return 2; }
+            func selected() : int { return 2; }
             #else
-            func selected() -> int { return 1; }
+            func selected() : int { return 1; }
             #endif
         """.trimIndent()
         val current = MCFPPDocumentIndex.analyze("file:///versions.mcfpp", source, "26.3")
@@ -106,13 +106,20 @@ class MCFPPCompilerFeaturesTest {
 
     @Test
     fun `ignores directive text in comments strings and commands`() {
-        for ((open, close) in listOf("##" to "##", "#{" to "}#", "###" to "###", "\"\"\"" to "\"\"\"", "\"" to "\"", "'" to "'")) {
+        for ((open, close) in listOf("\"\"\"" to "\"\"\"", "\"" to "\"", "'" to "'")) {
             val source = "$open\n#if MC >= 26.3\n$close\nfunc visible(){}\n"
             val result = VersionPreprocessor.preprocess(source, "26.2")
             assertEquals(source, result.text())
             assertTrue(result.directives().isEmpty())
             val prefix = "$open\n#i"
             assertEquals(-1, VersionPreprocessor.directivePrefixStart(prefix, prefix.length))
+        }
+        for (prefix in listOf("//", "///")) {
+            val source = "$prefix #if MC >= 26.3\n$prefix #endif\nfunc visible(){}\n"
+            val result = VersionPreprocessor.preprocess(source, "26.2")
+            assertEquals(source, result.text())
+            assertTrue(result.directives().isEmpty())
+            assertEquals(-1, VersionPreprocessor.directivePrefixStart("$prefix #i", prefix.length + 3))
         }
         val commands = "/say \"unterminated quote #if MC >= 26.3\n#if MC >= 26.3\nnew\n#else\nold\n#endif\n"
         assertTrue(VersionPreprocessor.process(commands, "26.2").contains("old"))
