@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** A compact, error-tolerant declaration model shared by indexing and editor features. */
 public final class McfppFileModel {
@@ -49,6 +50,7 @@ public final class McfppFileModel {
         parseFields(source, tokens, lexed.documentationBefore(), matches, typeOwners, functionOwners, drafts);
         parseForeachVariables(source, tokens, matches, typeOwners, functionOwners, drafts);
         parseParameters(source, tokens, matches, typeOwners, drafts);
+        parseLambdaParameters(source, tokens, matches, drafts);
         parseEnumMembers(source, tokens, matches, drafts);
 
         List<McfppSymbol> symbols = new ArrayList<>(drafts.size());
@@ -349,10 +351,10 @@ public final class McfppFileModel {
     ) {
         for (int index = 0; index < tokens.size(); index++) {
             String keyword = tokens.get(index).text();
-            if (!List.of("var", "const", "dynamic").contains(keyword)) continue;
+            if (!List.of("var", "const", "external").contains(keyword)) continue;
             int previous = previousCode(tokens, index - 1);
             if (previous >= 0 && "var".equals(keyword) &&
-                    List.of("const", "dynamic").contains(tokens.get(previous).text())) continue;
+                    List.of("const", "external").contains(tokens.get(previous).text())) continue;
             int next = nextCode(tokens, index + 1);
             if (next >= 0 && "func".equals(tokens.get(next).text())) continue;
             int name = next;
@@ -376,7 +378,7 @@ public final class McfppFileModel {
                     }
                 }
             }
-            int end = declarationEnd(tokens, name, source.length());
+            int end = fieldDeclarationEnd(tokens, name, source.length());
             drafts.add(new Draft(
                     kind,
                     tokens.get(name).text(),
@@ -448,6 +450,54 @@ public final class McfppFileModel {
         }
     }
 
+    private static void parseLambdaParameters(String source, List<Token> tokens, MatchData matches, List<Draft> drafts) {
+        for (var pair : matches.braces().entrySet()) {
+            int open = pair.getKey(), close = pair.getValue();
+            if (close <= open || drafts.stream().anyMatch(d -> d.bodyStart == tokens.get(open).start())) continue;
+            int arrow = -1;
+            for (int i = open + 1; i < close; i++) {
+                Token token = tokens.get(i);
+                if (token.type() == McfppTokenTypes.LEFT_BRACE || token.type() == McfppTokenTypes.SEMICOLON) break;
+                if ("->".equals(token.text())) { arrow = i; break; }
+                if ("=".equals(token.text())) break;
+            }
+            int end = tokens.get(close).end();
+            if (arrow > 0) {
+                int start = open + 1;
+                for (int i = start; i <= arrow; i++) {
+                    if (i < arrow && tokens.get(i).type() != McfppTokenTypes.COMMA) continue;
+                    int name = nextCode(tokens, start);
+                    if (name >= 0 && name < i && tokens.get(name).type() == McfppTokenTypes.IDENTIFIER) {
+                        String signature = source.substring(tokens.get(name).start(), tokens.get(i).start()).trim();
+                        drafts.add(new Draft(McfppSymbolKind.PARAMETER, tokens.get(name).text(), "<lambda>",
+                                tokens.get(name).start(), tokens.get(name).start(), tokens.get(name).end(), -1,
+                                tokens.get(name).end(), tokens.get(open).start(), end, signature, "Lambda parameter"));
+                    }
+                    start = i + 1;
+                }
+            } else {
+                // An implicit parameter exists only in a callback-shaped expression, not a control-flow block.
+                int before = previousCode(tokens, open - 1);
+                if (before < 0 || !Set.of(")", "=", "(", ",", "tryRead").contains(tokens.get(before).text())) continue;
+                if (")".equals(tokens.get(before).text())) {
+                    int left = before - 1, depth = 1;
+                    for (; left >= 0; left--) {
+                        if (")".equals(tokens.get(left).text())) depth++;
+                        if ("(".equals(tokens.get(left).text()) && --depth == 0) break;
+                    }
+                    int keyword = previousCode(tokens, left - 1);
+                    if (keyword >= 0 && Set.of("if", "while", "for", "execute", "store").contains(tokens.get(keyword).text())) continue;
+                }
+                for (int i = open + 1; i < close; i++) if ("it".equals(tokens.get(i).text())) {
+                    drafts.add(new Draft(McfppSymbolKind.PARAMETER, "it", "<lambda>", tokens.get(open).start(),
+                            tokens.get(open).start(), tokens.get(open).end(), -1, tokens.get(open).end(),
+                            tokens.get(open).start(), end, "it", "Implicit lambda parameter"));
+                    break;
+                }
+            }
+        }
+    }
+
     private static void addParameter(
             String source,
             List<Token> tokens,
@@ -458,7 +508,7 @@ public final class McfppFileModel {
             List<Draft> drafts
     ) {
         int name = nextCode(tokens, start);
-        while (name >= 0 && name < end && List.of("static", "var").contains(tokens.get(name).text())) {
+        while (name >= 0 && name < end && "var".equals(tokens.get(name).text())) {
             name = nextCode(tokens, name + 1);
         }
         if (name < 0 || name >= end || tokens.get(name).type() != McfppTokenTypes.IDENTIFIER) return;
@@ -743,6 +793,30 @@ public final class McfppFileModel {
                     token.type() == McfppTokenTypes.RIGHT_BRACE) return token.start();
         }
         return fallback;
+    }
+
+    private static int fieldDeclarationEnd(List<Token> tokens, int fromIndex, int fallback) {
+        int braces = 0, parentheses = 0, brackets = 0;
+        int end = tokens.get(fromIndex).end();
+        for (int index = fromIndex + 1; index < tokens.size(); index++) {
+            Token token = tokens.get(index);
+            IElementType type = token.type();
+            boolean balanced = braces == 0 && parentheses == 0 && brackets == 0;
+            if (balanced) {
+                if (type == McfppTokenTypes.SEMICOLON) return token.end();
+                if (type == McfppTokenTypes.RIGHT_BRACE) return end;
+                String previous = tokens.get(index - 1).text();
+                if (token.newlineBefore() && !Set.of("=", ":", ",", "->").contains(previous)) return end;
+            }
+            if (type == McfppTokenTypes.LEFT_BRACE) braces++;
+            else if (type == McfppTokenTypes.RIGHT_BRACE) braces--;
+            else if (type == McfppTokenTypes.LEFT_PARENTHESIS) parentheses++;
+            else if (type == McfppTokenTypes.RIGHT_PARENTHESIS) parentheses--;
+            else if (type == McfppTokenTypes.LEFT_BRACKET) brackets++;
+            else if (type == McfppTokenTypes.RIGHT_BRACKET) brackets--;
+            end = token.end();
+        }
+        return Math.min(end, fallback);
     }
 
     private static int nextIdentifier(List<Token> tokens, int start, int limit) {

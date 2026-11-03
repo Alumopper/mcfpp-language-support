@@ -1,4 +1,5 @@
 import org.gradle.api.plugins.antlr.AntlrTask
+import java.security.MessageDigest
 
 plugins {
     id("org.jetbrains.kotlin.jvm") version "1.9.20"
@@ -21,6 +22,37 @@ val lsp4jVersion = "0.22.0"
 val antlrVersion = "4.13.1"
 val antlrPackage = "com.simplelanguage.lsp"
 val generatedAntlrDir = layout.buildDirectory.dir("generated-src/antlr/antlr4")
+val compilerJar = providers.gradleProperty("mcfppCompilerJar").orElse("../../MCFPP/build/libs/MCFPP-1.0.2-SNAPSHOT.jar")
+val verifyCompilerGrammar by tasks.registering {
+    val upstream = file(providers.gradleProperty("mcfppCompilerGrammar").orElse("../../MCFPP/src/main/antlr").get())
+    val copies = file("src/main/antlr4")
+    inputs.files(listOf("mcfppLexer.g4", "mcfppParser.g4").flatMap { listOf(upstream.resolve(it), copies.resolve(it)) })
+    doLast {
+        for (name in listOf("mcfppLexer.g4", "mcfppParser.g4")) {
+            check(upstream.resolve(name).readText().replace("\r\n", "\n") == copies.resolve(name).readText().replace("\r\n", "\n")) {
+                "The language server grammar differs from the compiler: $name. Synchronize the grammar before building."
+            }
+        }
+    }
+}
+// Compile against the compiler API and our Kotlin version; the executable distribution also contains the SDK's newer Kotlin runtime.
+val compilerEditorApi by tasks.registering(Jar::class) {
+    archiveFileName.set("compiler-editor-api.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("compiler-api"))
+    from(compilerJar.map { zipTree(file(it)) }) {
+        exclude("kotlin/**", "kotlinx/**", "moe/**", "META-INF/kotlin*", "META-INF/moe*", "META-INF/*.kotlin_module")
+        exclude("org/junit/**", "org/opentest4j/**", "org/apiguardian/**", "junit/**")
+        include("**")
+    }
+}
+// The CLI distribution embeds its own test API. Keep it out of the editor and its test runtime.
+val compilerEditorRuntime by tasks.registering(Jar::class) {
+    archiveFileName.set("compiler-editor-runtime.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("compiler-api"))
+    from(compilerJar.map { zipTree(file(it)) }) {
+        exclude("org/junit/**", "org/opentest4j/**", "org/apiguardian/**", "junit/**", "META-INF/services/org.junit.*")
+    }
+}
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -31,7 +63,10 @@ dependencies {
 
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:$lsp4jVersion")
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:$lsp4jVersion")
-    implementation("top.mcfpp:mcfpp:1.0.2-SNAPSHOT")
+    compileOnly(files(compilerEditorApi))
+    testCompileOnly(files(compilerEditorApi))
+    runtimeOnly(files(compilerEditorRuntime))
+    implementation("org.tomlj:tomlj:1.1.1")
 
     implementation("org.slf4j:slf4j-simple:2.0.9")
 
@@ -107,7 +142,7 @@ val generateSimpleLanguageGrammar by tasks.registering(AntlrTask::class) {
 }
 
 val generateAllGrammarSources by tasks.registering {
-    dependsOn(generateMcfppParserGrammar, generateSimpleLanguageGrammar)
+    dependsOn(verifyCompilerGrammar, generateMcfppParserGrammar, generateSimpleLanguageGrammar)
 }
 
 sourceSets {
@@ -139,6 +174,12 @@ tasks {
     }
 
     jar {
+        dependsOn(compilerEditorRuntime)
+        val distribution = file(compilerJar.get())
+        inputs.file(distribution)
+        doFirst {
+            manifest.attributes["Mcfpp-Compiler-Sha256"] = MessageDigest.getInstance("SHA-256").digest(distribution.readBytes()).joinToString("") { "%02x".format(it) }
+        }
         archiveFileName.set("mcfpp-language-server.jar")
         manifest {
             attributes["Main-Class"] = application.mainClass.get()

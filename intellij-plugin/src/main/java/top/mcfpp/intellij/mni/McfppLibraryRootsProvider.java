@@ -23,7 +23,7 @@ import java.util.Set;
 import java.net.URL;
 import javax.swing.Icon;
 
-/** Exposes a local MCFPP compiler checkout as navigable MNI library sources. */
+/** Exposes compiler implementation and standard-library sources, including portable bundled sources. */
 public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvider {
     private static final String SOURCES_PROPERTY = "mcfpp.sources.path";
     private static final String HOME_ENVIRONMENT = "MCFPP_HOME";
@@ -52,11 +52,24 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
                 System.getenv(HOME_ENVIRONMENT)
         );
         List<VirtualFile> roots = new ArrayList<>(virtualRoots(discovered));
+        if (discovered.stream().noneMatch(McfppLibraryRootsProvider::isConventionalJvmSourceRoot)) {
+            VirtualFile bundled = bundledCompilerSourcesRoot();
+            if (bundled != null) roots.add(bundled);
+        }
         if (roots.stream().noneMatch(root -> isStandardLibraryRoot(Path.of(root.getPath())))) {
             VirtualFile bundled = bundledStandardLibraryRoot();
             if (bundled != null) roots.add(bundled);
         }
+        addBundledTestSources(roots);
         return List.copyOf(new LinkedHashSet<>(roots));
+    }
+
+    /** Java/Kotlin implementation roots to attach to the compiler binary used by MNI projects. */
+    public static @NotNull List<VirtualFile> compilerSourceRoots(@NotNull Project project) {
+        VirtualFile tests = bundledTestLibraryRoot();
+        return sourceRoots(project).stream()
+                .filter(root -> !root.getPath().replace('\\', '/').endsWith("/src/main/mcfpp") && !root.equals(tests))
+                .toList();
     }
 
     /** MCFPP-only roots used by the direct source fallback while IDEA's file indexes are unavailable or stale. */
@@ -73,6 +86,7 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
             VirtualFile bundled = bundledStandardLibraryRoot();
             if (bundled != null) roots.add(bundled);
         }
+        addBundledTestSources(roots);
         return List.copyOf(new LinkedHashSet<>(roots));
     }
 
@@ -153,6 +167,24 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
 
     private static @Nullable VirtualFile bundledStandardLibraryRoot() {
         URL resource = McfppLibraryRootsProvider.class.getResource("/stdlib/src/main/mcfpp");
+        return resource == null ? null : VfsUtil.findFileByURL(resource);
+    }
+
+    private static @Nullable VirtualFile bundledTestLibraryRoot() {
+        URL resource = McfppLibraryRootsProvider.class.getResource("/stdlib/src/main/mcfpp/test");
+        return resource == null ? null : VfsUtil.findFileByURL(resource);
+    }
+
+    private static void addBundledTestSources(List<VirtualFile> roots) {
+        // The test API ships with the CLI resources, outside a checkout's src/main/mcfpp.
+        VirtualFile tests = bundledTestLibraryRoot();
+        if (tests != null && roots.stream().noneMatch(root -> com.intellij.openapi.vfs.VfsUtilCore.isAncestor(root, tests, false))) {
+            roots.add(tests);
+        }
+    }
+
+    public static @Nullable VirtualFile bundledCompilerSourcesRoot() {
+        URL resource = McfppLibraryRootsProvider.class.getResource("/compiler-sources");
         return resource == null ? null : VfsUtil.findFileByURL(resource);
     }
 

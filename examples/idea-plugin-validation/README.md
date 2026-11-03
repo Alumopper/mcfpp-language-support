@@ -32,7 +32,7 @@
 | `scenarios/04_import_choices.mcfpp` | Counter 上按 Alt+Enter，选择 `Import 'validation.beta:Counter'` | 可以按命名空间选择导入；修复后 Ctrl+B 指向 beta 文件。 |
 | `scenarios/05_optimize_imports.mcfpp` | **Code | Optimize Imports**，重复一次，再撤销 | 删除第一个块中重复的 convert 导入并排序；保留未使用导入、不同别名、CountDown 的注释绑定和条件分支；再次执行无变化，撤销可恢复。 |
 | 同上 | 查看没有引用的导入，在灰显导入上 Alt+Enter → Remove unused import | 未使用导入灰显并提示警告；只删除选中的导入，保留注释和版本指令；撤销可恢复。 |
-| `scenarios/06_quick_fixes.mcfpp` | missingHelper 与 MissingType 上按 Alt+Enter | 分别创建 `func missingHelper(arg1 as int, arg2 as string)` 和 `data MissingType`；光标进入新声明。可把 MCFPP 缩进改成 2 后测试格式化。 |
+| `scenarios/06_quick_fixes.mcfpp` | missingHelper 与 MissingType 上按 Alt+Enter | 分别创建 `func missingHelper(arg1: int, arg2: string)` 和 `data MissingType`；光标进入新声明。可把 MCFPP 缩进改成 2 后测试格式化。 |
 | `scenarios/07_scopes_and_duplicates.mcfpp` | 查看重复提示；在 nestedScope 的最后一个 value 上 Ctrl+B | 第二个 Duplicate 和参数/局部变量重名被检查；不同类型成员及不同内层块中的同名变量不误报；最后一个 value 指向参数。 |
 | `scenarios/08_version_branches.mcfpp` | 查看红线和折叠，再把 mcfpp.json 的 version 改成 1.21.8 并保存 | 默认只有 missingModern 报错，legacy 分支灰显并默认折叠；版本切换后只有 missingLegacy 报错，modern 分支灰显并折叠。展开非活动分支仍可看到灰显。测试后将版本恢复 26.3。 |
 | `scenarios/09_qualified_calls.mcfpp` | 两个缺失调用上按 Alt+Enter | LSP 保留错误提示；不提供错误的“在当前文件创建顶层函数”操作。 |

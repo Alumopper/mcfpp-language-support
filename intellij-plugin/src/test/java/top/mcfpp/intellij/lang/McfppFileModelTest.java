@@ -102,7 +102,7 @@ class McfppFileModelTest {
         String source = """
                 data PlayerData {
                     private var id: string;
-                    @Name<"Score"> var score: int;
+                    @Name("Score") var score: int;
                     func read(fallback: int) : int { return score; }
                 }
                 """;
@@ -141,6 +141,24 @@ class McfppFileModelTest {
         McfppSymbol entry = symbol(model, McfppSymbolKind.VARIABLE, "entry");
         assertTrue(entry.scopeContains(source.indexOf("notify(entry)") + "notify(".length()));
         assertFalse(entry.scopeContains(source.lastIndexOf("entry")));
+    }
+
+    @Test
+    void preservesLambdaInitializersInVariableSignatures() {
+        String source = """
+                func main() {
+                    var n: int = 0
+                    var f = { a: int -> 1 }
+                    var g = {
+                        a: int -> a + 1
+                    }
+                    for (i : 1..5) { n += f(i) }
+                }
+                """;
+        var model = McfppFileModel.parse(source);
+        assertEquals("var f = { a: int -> 1 }", symbol(model, McfppSymbolKind.VARIABLE, "f").signature());
+        assertEquals("var g = { a: int -> a + 1 }", symbol(model, McfppSymbolKind.VARIABLE, "g").signature());
+        assertEquals(1, model.visibleLocalSymbols("n", source.indexOf("n +=")).size());
     }
 
     private static McfppSymbol symbol(McfppFileModel model, McfppSymbolKind kind, String name) {

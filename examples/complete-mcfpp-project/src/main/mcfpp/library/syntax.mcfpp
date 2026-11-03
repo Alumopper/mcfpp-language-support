@@ -9,7 +9,7 @@ data SizedBox<T, N: int> {
 func identity<T>(value: T): T { return value }
 
 func countTo<limit: int>(): int {
-    dynamic count: int = 0
+    external count: int = 0
     while count < limit {
         count += 1
     }

@@ -16,7 +16,7 @@ import java.util.Set;
 
 final class McfppSemanticTokens {
     private static final Set<String> TYPE_DECLARATIONS = Set.of("data", "enum", "typealias");
-    private static final Set<String> VARIABLE_DECLARATIONS = Set.of("var", "const", "dynamic");
+    private static final Set<String> VARIABLE_DECLARATIONS = Set.of("var", "const", "external");
     private static final Set<String> TYPE_OPERATORS = Set.of("<", ">", "!", "?", "&", "|", "*");
 
     private McfppSemanticTokens() {

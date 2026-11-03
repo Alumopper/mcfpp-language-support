@@ -33,7 +33,7 @@ public final class McfppCompletionContributor extends CompletionContributor impl
     private static final int PROJECT_RESULT_LIMIT = 512;
     private static final List<String> KEYWORDS = List.of(
             "namespace", "import", "from", "as", "typealias", "data", "object", "enum", "func", "constructor",
-            "operator", "var", "global", "const", "dynamic", "inline", "final", "abstract", "override", "static",
+            "operator", "var", "global", "const", "external", "inline", "final", "abstract", "override",
             "public", "protected", "private", "if", "else", "while", "do", "for", "try", "store", "execute",
             "return", "break", "continue", "this", "super", "get", "set", "true", "false", "null"
     );
@@ -90,13 +90,27 @@ public final class McfppCompletionContributor extends CompletionContributor impl
             int prefixStart = Math.min(offset, originalSource.length());
             while (prefixStart > 0 && Character.isUnicodeIdentifierPart(originalSource.charAt(prefixStart - 1))) prefixStart--;
             String before = originalSource.substring(0, Math.min(prefixStart, originalSource.length())).stripTrailing();
-            addKeywords(result, seen, before.matches("(?s).*\\b(?:const|dynamic)$"),
+            addKeywords(result, seen, before.matches("(?s).*\\b(?:const|external)$"),
                     McfppDeclarationSyntax.endsWithValueDeclarationName(before));
         } else if (completionContext.kind() == McfppCompletionContext.Kind.TYPE) {
             for (String type : List.of("int", "bool", "byte", "short", "long", "float", "double", "string",
                     "entity", "selector", "text", "nbt", "any", "list", "map", "dict", "type", "vec",
-                    "void", "ByteArray", "IntArray", "LongArray")) {
+                    "void", "ByteArray", "IntArray", "LongArray", "ScoreRef", "NBTRef")) {
                 result.addElement(LookupElementBuilder.create(type));
+            }
+        }
+
+        if (completionContext.kind() == McfppCompletionContext.Kind.MEMBER &&
+                Set.of("ScoreRef", "NBTRef").contains(completionContext.qualifier())) {
+            String valueType = "ScoreRef".equals(completionContext.qualifier()) ? "int" : "T";
+            result.addElement(LookupElementBuilder.create("tryRead")
+                    .withTailText(" { value -> ... }", true).withTypeText("bool; synchronous " + valueType + " snapshot", true));
+            result.addElement(LookupElementBuilder.create("set")
+                    .withTailText("(value: " + valueType + ")", true).withTypeText("void; writes the target", true));
+        }
+        if (completionContext.kind() == McfppCompletionContext.Kind.GLOBAL) {
+            for (String factory : List.of("scoreRef", "nbtStorageRef", "nbtEntityRef", "nbtBlockRef")) {
+                result.addElement(LookupElementBuilder.create(factory).withTypeText("explicit Minecraft address", true));
             }
         }
 

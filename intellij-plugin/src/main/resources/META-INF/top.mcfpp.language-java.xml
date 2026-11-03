@@ -1,5 +1,16 @@
 <idea-plugin>
     <extensions defaultExtensionNs="com.intellij">
+        <psi.referenceContributor language="UAST" implementation="top.mcfpp.intellij.mni.MniTypeReferenceContributor"/>
+        <completion.contributor language="JAVA" implementationClass="top.mcfpp.intellij.mni.MniTypeCompletionContributor" order="first"/>
+        <annotator language="JAVA" implementationClass="top.mcfpp.intellij.mni.MniTypeAnnotator"/>
+        <referencesSearch implementation="top.mcfpp.intellij.mni.MniTypeUsages"/>
+        <psi.referenceContributor language="MCFPP" implementation="top.mcfpp.intellij.mni.McfppMacroReferenceContributor"/>
+        <completion.contributor language="MCFPP" implementationClass="top.mcfpp.intellij.mni.McfppMacroCompletionContributor"/>
+        <localInspection language="JAVA" shortName="McfppMacroBinding" displayName="Invalid MCFPP macro binding"
+                         groupName="MCFPP" enabledByDefault="true" level="ERROR"
+                         implementationClass="top.mcfpp.intellij.mni.McfppMacroBindingInspection"/>
+        <newProjectWizard.languageGenerator implementation="top.mcfpp.intellij.project.McfppProjectWizard"/>
+        <newProjectWizard.languageGenerator implementation="top.mcfpp.intellij.project.McfppMniProjectWizard"/>
         <completion.contributor
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.mni.McfppMniCompletionContributor"/>

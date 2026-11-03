@@ -10,6 +10,15 @@ import org.jetbrains.annotations.NotNull;
 import java.nio.file.Path;
 
 final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
+    @Override public @NotNull Class<? extends org.eclipse.lsp4j.services.LanguageServer> getLsp4jServerClass() {
+        return McfppExtendedServer.class;
+    }
+
+    @Override public Object createInitializationOptions() {
+        var javaPlugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(com.intellij.openapi.extensions.PluginId.getId("com.intellij.java"));
+        if (javaPlugin == null || !javaPlugin.isEnabled() || com.intellij.openapi.project.DumbService.isDumb(getProject())) return null;
+        return com.intellij.openapi.application.ReadAction.compute(() -> top.mcfpp.intellij.mni.McfppMacroIndex.snapshot(getProject()));
+    }
     McfppLspServerDescriptor(@NotNull Project project) {
         super(project, "MCFPP");
     }
@@ -17,8 +26,12 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
     @Override
     public @NotNull com.intellij.platform.lsp.api.customization.LspCustomization getLspCustomization() {
         return new com.intellij.platform.lsp.api.customization.LspCustomization() {
+            @Override public @NotNull com.intellij.platform.lsp.api.customization.LspCompletionCustomizer
+            getCompletionCustomizer() { return new McfppLspCompletionSupport(); }
             @Override public @NotNull com.intellij.platform.lsp.api.customization.LspDiagnosticsCustomizer
             getDiagnosticsCustomizer() { return new McfppLspDiagnosticsSupport(); }
+            @Override public @NotNull com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
+            getFormattingCustomizer() { return com.intellij.platform.lsp.api.customization.LspFormattingDisabled.INSTANCE; }
         };
     }
 

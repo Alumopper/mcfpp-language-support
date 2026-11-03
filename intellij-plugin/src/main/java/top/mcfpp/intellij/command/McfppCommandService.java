@@ -70,6 +70,13 @@ public final class McfppCommandService implements Disposable {
         return ensureReady();
     }
 
+    /** Reuses the Java installation already checked against the bundled DSB runtime. */
+    public synchronized String sandboxJavaExecutable() {
+        if (!ensureReady()) throw new IllegalStateException("Datapack Sandbox requires Java 25. Configure the DSB Java executable in Settings | Tools | MCFPP. " + stderrTail);
+        return process.info().command().orElseThrow(() -> new IllegalStateException("Cannot locate the DSB Java executable"));
+    }
+    public synchronized void restart() { stopProcess(); retryAfter = 0; versionRefreshAfter = 0; }
+
     public synchronized CompletionResult complete(String buffer, int cursor) {
         if (buffer.length() > 64 * 1024 || !ensureReady()) return CompletionResult.EMPTY;
         int boundedCursor = Math.max(0, Math.min(cursor, buffer.length()));
@@ -301,6 +308,7 @@ public final class McfppCommandService implements Disposable {
 
     private Set<String> javaCandidates() {
         LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        addCandidate(candidates, top.mcfpp.intellij.tooling.McfppSettings.get(project).dpsJavaPath);
         addCandidate(candidates, System.getProperty("mcfpp.dps.java.path"));
         addCandidate(candidates, System.getenv("MCFPP_DPS_JAVA"));
         addJavaHome(candidates, System.getenv("JAVA_HOME"));

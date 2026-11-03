@@ -149,7 +149,8 @@ final class McfppFormattingBlock extends AbstractBlock {
         if (rightType == McfppTokenTypes.LEFT_BRACE) return spacing(common.SPACE_BEFORE_METHOD_LBRACE);
         if (rightType == McfppTokenTypes.COLON) return spacing(isForeachColon(right.myNode));
         if (rightType == McfppTokenTypes.LEFT_PARENTHESIS) {
-            return spacing(isWord(leftType) && leftType != McfppTokenTypes.IDENTIFIER ? 1 : 0);
+            return spacing(isWord(leftType) && leftType != McfppTokenTypes.IDENTIFIER &&
+                    leftType != McfppTokenTypes.ANNOTATION ? 1 : 0);
         }
         if (leftType == McfppTokenTypes.OPERATOR && PREFIX_OPERATORS.contains(leftText)) {
             return spacing(common.SPACE_AROUND_UNARY_OPERATOR);
@@ -241,7 +242,7 @@ final class McfppFormattingBlock extends AbstractBlock {
         ASTNode previous = previousSignificantLeaf(angle);
         if (previous == null) return false;
         IElementType previousType = previous.getElementType();
-        if (previousType == McfppTokenTypes.ANNOTATION || previousType == McfppTokenTypes.TYPE_KEYWORD) return true;
+        if (previousType == McfppTokenTypes.TYPE_KEYWORD) return true;
         if (previousType != McfppTokenTypes.IDENTIFIER) return false;
 
         ASTNode beforeIdentifier = previousSignificantLeaf(previous);

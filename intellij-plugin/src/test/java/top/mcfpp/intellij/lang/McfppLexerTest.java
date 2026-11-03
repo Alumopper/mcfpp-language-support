@@ -42,7 +42,7 @@ class McfppLexerTest {
         String source = """
                 /// docs
                 public data Example {
-                    @From<"top.mcfpp.Mni">
+                    @From("top.mcfpp.Mni")
                     var enabled: bool = true
                     /execute as @a run say hello
                 }

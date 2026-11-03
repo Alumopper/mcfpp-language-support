@@ -279,13 +279,13 @@
           }
         },
         {
-          "begin": "\\b(data|interface|enum)([ \\t]+)(?:(abstract)([ \\t]+))?([\\p{L}_][\\p{L}\\p{Nd}_]*)(?=[ \\t]*<)",
+          "begin": "\\b(?:(abstract)([ \\t]+))?(data|enum)([ \\t]+)([\\p{L}_][\\p{L}\\p{Nd}_]*)(?=[ \\t]*<)",
           "beginCaptures": {
             "1": {
-              "name": "keyword.declaration.type.mcfpp"
+              "name": "storage.modifier.mcfpp"
             },
             "3": {
-              "name": "storage.modifier.mcfpp"
+              "name": "keyword.declaration.type.mcfpp"
             },
             "5": {
               "name": "entity.name.type.mcfpp"
@@ -299,13 +299,13 @@
           ]
         },
         {
-          "match": "\\b(data|interface|enum)([ \\t]+)(?:(abstract)([ \\t]+))?([\\p{L}_][\\p{L}\\p{Nd}_]*)",
+          "match": "\\b(?:(abstract)([ \\t]+))?(data|enum)([ \\t]+)([\\p{L}_][\\p{L}\\p{Nd}_]*)",
           "captures": {
             "1": {
-              "name": "keyword.declaration.type.mcfpp"
+              "name": "storage.modifier.mcfpp"
             },
             "3": {
-              "name": "storage.modifier.mcfpp"
+              "name": "keyword.declaration.type.mcfpp"
             },
             "5": {
               "name": "entity.name.type.mcfpp"
@@ -330,7 +330,7 @@
           ]
         },
         {
-          "match": "\\b(const|dynamic)([ \\t]+)(var)([ \\t]+)([\\p{L}_][\\p{L}\\p{Nd}_]*)",
+          "match": "\\b(const|external)([ \\t]+)(var)([ \\t]+)([\\p{L}_][\\p{L}\\p{Nd}_]*)",
           "captures": {
             "1": {
               "name": "storage.modifier.mcfpp"
@@ -344,7 +344,7 @@
           }
         },
         {
-          "match": "\\b(var|const|dynamic)([ \\t]+)(?!var\\b)([\\p{L}_][\\p{L}\\p{Nd}_]*)(?![\\p{L}\\p{Nd}_])(?=[ \\t]*(?::(?!:)|=|[,;}]|$))(?:[ \\t]*(:)(?!:))?",
+          "match": "\\b(var|const|external)([ \\t]+)(?!var\\b)([\\p{L}_][\\p{L}\\p{Nd}_]*)(?![\\p{L}\\p{Nd}_])(?=[ \\t]*(?::(?!:)|=|[,;}]|$))(?:[ \\t]*(:)(?!:))?",
           "captures": {
             "1": {
               "name": "storage.type.variable.mcfpp"
@@ -361,7 +361,7 @@
           "include": "#named-parameters"
         },
         {
-          "match": "^([ \\t]*(?:(?:public|protected|private|static|final|override)[ \\t]+)*)([\\p{L}_][\\p{L}\\p{Nd}_]*)([ \\t]*)(:)(?!:)",
+          "match": "^([ \\t]*(?:(?:public|protected|private|final|override)[ \\t]+)*)([\\p{L}_][\\p{L}\\p{Nd}_]*)([ \\t]*)(:)(?!:)",
           "captures": {
             "2": {
               "name": "variable.other.definition.mcfpp"
@@ -468,11 +468,11 @@
         },
         {
           "name": "keyword.declaration.mcfpp",
-          "match": "\\b(?:namespace|import|typealias|data|object|interface|enum|func|constructor|var|get|set|operator)\\b"
+          "match": "\\b(?:namespace|import|typealias|data|object|enum|func|constructor|var|get|set|operator)\\b"
         },
         {
           "name": "storage.modifier.mcfpp",
-          "match": "\\b(?:static|extends|native|concrete|final|public|protected|private|override|abstract|impl|const|dynamic|inline|global|in|out)\\b"
+          "match": "\\b(?:extends|native|concrete|final|public|protected|private|override|abstract|impl|const|external|inline|global|in|out)\\b"
         },
         {
           "name": "keyword.operator.word.mcfpp",
@@ -497,7 +497,7 @@
     },
     "builtin-types": {
       "name": "support.type.builtin.mcfpp",
-      "match": "\\b(?:vec[0-9]*|int|entity|bool|byte|short|long|float|double|selector|string|text|nbt|any|type|Type|void|list|ImmutableList|map|dict|ByteArray|IntArray|LongArray)\\b"
+      "match": "\\b(?:vec[0-9]*|int|entity|bool|byte|short|long|float|double|selector|string|text|nbt|any|type|Type|void|list|ImmutableList|map|dict|ByteArray|IntArray|LongArray|ScoreRef|NBTRef)\\b"
     },
     "literals": {
       "patterns": [

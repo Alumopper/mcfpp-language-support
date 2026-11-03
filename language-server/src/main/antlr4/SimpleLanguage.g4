@@ -45,7 +45,7 @@ returnStatement
 
 // 变量声明语句 - 支持类型推断和显式类型声明
 varStatement
-    : (VAR | CONST | DYNAMIC) IDENTIFIER (COLON type)? (ASSIGN expression)? SEMICOLON?
+    : (VAR | CONST | EXTERNAL) IDENTIFIER (COLON type)? (ASSIGN expression)? SEMICOLON?
     ;
 
 // 数据成员声明
@@ -159,7 +159,7 @@ FUNC : 'func';
 RETURN : 'return';
 AS : 'as';
 CONST : 'const';
-DYNAMIC : 'dynamic';
+EXTERNAL : 'external';
 DATA : 'data'; // 数据模板关键字
 DOT : '.'; // 点运算符
 WHILE : 'while'; // while关键字

@@ -13,12 +13,24 @@ final class McfppTypes {
     static @Nullable String declaredType(McfppSymbol symbol) {
         String signature = symbol.signature();
         int assignment = signature.indexOf('=');
+        String initializer = assignment >= 0 ? signature.substring(assignment + 1).strip() : "";
         if (assignment >= 0) signature = signature.substring(0, assignment).stripTrailing();
         int annotation = signature.indexOf(':');
-        if (annotation < 0) return symbol.kind() == McfppSymbolKind.PARAMETER &&
-                signature.matches("[A-Za-z_$][A-Za-z0-9_$]*(?:\\s*=.*)?") ? "type" : null;
+        if (annotation < 0) {
+            if ("<lambda>".equals(symbol.owner())) return null;
+            String factory = initializer.substring(0, initializer.contains("(") ? initializer.indexOf('(') : initializer.length()).strip();
+            int generic = factory.indexOf('<');
+            String name = generic >= 0 ? factory.substring(0, generic) : factory;
+            name = name.substring(name.lastIndexOf(':') + 1).strip();
+            if (initializer.contains("(") && name.equals("scoreRef")) return "ScoreRef";
+            if (initializer.contains("(") && factory.endsWith(">") &&
+                    List.of("nbtStorageRef", "nbtEntityRef", "nbtBlockRef").contains(name)) return "NBTRef";
+            return symbol.kind() == McfppSymbolKind.PARAMETER &&
+                    signature.matches("[A-Za-z_$][A-Za-z0-9_$]*(?:\\s*=.*)?") ? "type" : null;
+        }
         int cursor = annotation + 1;
         while (cursor < signature.length() && Character.isWhitespace(signature.charAt(cursor))) cursor++;
+        if (cursor < signature.length() && signature.charAt(cursor) == '(') return signature.substring(cursor).strip();
         int start = cursor;
         while (cursor < signature.length()) {
             char value = signature.charAt(cursor);

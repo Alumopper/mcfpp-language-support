@@ -6,7 +6,7 @@ import java.util.HashSet;
 
 /** Distinguishes declaration annotations from qualified names sharing the colon token. */
 final class McfppDeclarationSyntax {
-    private static final Set<String> DECLARATIONS = Set.of("var", "const", "dynamic", "data", "enum");
+    private static final Set<String> DECLARATIONS = Set.of("var", "const", "external", "data", "enum");
 
     static boolean isAnnotationColon(CharSequence source, int offset) {
         List<McfppSourceTokens.Token> tokens = McfppSourceTokens.lex(source.subSequence(0, offset).toString())
@@ -42,7 +42,7 @@ final class McfppDeclarationSyntax {
         if (name.type() != McfppTokenTypes.IDENTIFIER || last == 0) return false;
         String before = tokens.get(last - 1).text();
         if (DECLARATIONS.contains(before)) return true;
-        if (!List.of("(", ",", "<", "static", "var").contains(before)) return false;
+        if (!List.of("(", ",", "<", "var").contains(before)) return false;
         for (int index = last - 1; index >= 0; index--) {
             String text = tokens.get(index).text();
             if (text.equals("func") || text.equals("constructor") || text.equals("data")) return true;

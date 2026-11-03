@@ -18,6 +18,17 @@ public final class MinecraftDatapackPath {
         if (!fileName.endsWith(".json")) return null;
 
         String[] segments = normalized.split("/");
+        for (int index = segments.length - 3; index >= 0; index--) {
+            if (!segments[index].equals("assets") || index + 2 >= segments.length) continue;
+            if (index + 2 == segments.length - 1 && segments[index + 2].equals("sounds.json")) return Kind.SOUNDS;
+            return switch (segments[index + 2]) {
+                case "models" -> Kind.MODEL;
+                case "items" -> Kind.ITEM_MODEL;
+                case "blockstates" -> Kind.BLOCKSTATE;
+                case "font" -> Kind.FONT;
+                default -> null;
+            };
+        }
         for (int index = segments.length - 4; index >= 0; index--) {
             if (!segments[index].equals("data") || index + 3 >= segments.length) continue;
             String folder = segments[index + 2];
@@ -42,6 +53,6 @@ public final class MinecraftDatapackPath {
         PREDICATE,
         LOOT_TABLE,
         ITEM_MODIFIER,
-        REGISTRY
+        REGISTRY, MODEL, ITEM_MODEL, BLOCKSTATE, FONT, SOUNDS
     }
 }

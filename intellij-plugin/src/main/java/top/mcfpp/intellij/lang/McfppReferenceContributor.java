@@ -28,8 +28,11 @@ public final class McfppReferenceContributor extends PsiReferenceContributor {
     }
 
     static PsiReference @NotNull [] referencesFor(PsiElement element) {
-        if (element.getFirstChild() != null || element.getNode() == null ||
-                element.getNode().getElementType() != McfppTokenTypes.IDENTIFIER) return PsiReference.EMPTY_ARRAY;
+        if (element.getFirstChild() != null || element.getNode() == null) return PsiReference.EMPTY_ARRAY;
+        if (element.getNode().getElementType() == McfppTokenTypes.ANNOTATION) {
+            return new PsiReference[]{new McfppAnnotationReference(element)};
+        }
+        if (element.getNode().getElementType() != McfppTokenTypes.IDENTIFIER) return PsiReference.EMPTY_ARRAY;
         McfppNamedElement declaration = PsiTreeUtil.getParentOfType(element, McfppNamedElement.class, false);
         if (declaration != null && declaration.getNameIdentifier() == element) return PsiReference.EMPTY_ARRAY;
         if (McfppFileModels.get(element.getContainingFile()).declarationAt(element.getTextOffset()) != null) {

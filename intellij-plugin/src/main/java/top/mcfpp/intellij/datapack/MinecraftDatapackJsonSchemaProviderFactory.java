@@ -19,7 +19,12 @@ public final class MinecraftDatapackJsonSchemaProviderFactory implements JsonSch
             provider(MinecraftDatapackPath.Kind.PREDICATE, "Minecraft predicate", "/schemas/minecraft/predicate.schema.json"),
             provider(MinecraftDatapackPath.Kind.LOOT_TABLE, "Minecraft loot table", "/schemas/minecraft/loot-table.schema.json"),
             provider(MinecraftDatapackPath.Kind.ITEM_MODIFIER, "Minecraft item modifier", "/schemas/minecraft/item-modifier.schema.json"),
-            provider(MinecraftDatapackPath.Kind.REGISTRY, "Minecraft datapack registry", "/schemas/minecraft/registry.schema.json")
+            provider(MinecraftDatapackPath.Kind.REGISTRY, "Minecraft datapack registry", "/schemas/minecraft/registry.schema.json"),
+            provider(MinecraftDatapackPath.Kind.MODEL, "Minecraft model", "/schemas/minecraft/model.schema.json"),
+            provider(MinecraftDatapackPath.Kind.ITEM_MODEL, "Minecraft item definition (1.21.4+)", "/schemas/minecraft/item-model.schema.json"),
+            provider(MinecraftDatapackPath.Kind.BLOCKSTATE, "Minecraft blockstate", "/schemas/minecraft/blockstate.schema.json"),
+            provider(MinecraftDatapackPath.Kind.FONT, "Minecraft font", "/schemas/minecraft/font.schema.json"),
+            provider(MinecraftDatapackPath.Kind.SOUNDS, "Minecraft sound events", "/schemas/minecraft/sounds.schema.json")
     );
 
     @Override

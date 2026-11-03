@@ -7,7 +7,7 @@ import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase;
 
 import java.util.List;
 
-public final class MniJavaResolverTest extends LightJavaCodeInsightFixtureTestCase {
+public final class MniJavaResolverTest extends McfppJavaFixtureTestCase {
     public void testResolvesOnlyStaticJavaMniMethods() {
         myFixture.addClass("""
                 package example.mni;

@@ -67,7 +67,7 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
                 #{ MCFPP documentation }#
                 namespace <namespace>demo.example</namespace>
 
-                @From<\"top.mcfpp.mni.minecraft.MinecraftObject\">
+                @From(\"top.mcfpp.mni.minecraft.MinecraftObject\")
                 data <type>PlayerInfo</type> {
                     var <field>score</field>: int = 0
                     func <function>update</function>(<parameter>target</parameter>: entity): bool {

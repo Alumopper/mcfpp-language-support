@@ -14,21 +14,21 @@ public final class McfppLexer extends LexerBase {
     );
     private static final Set<String> DECLARATION_KEYWORDS = Set.of(
             "import", "object", "data", "func", "enum", "operator", "typealias", "constructor",
-            "global", "var", "const", "dynamic", "get", "set", "namespace"
+            "global", "var", "const", "external", "get", "set", "namespace"
     );
     private static final Set<String> MODIFIER_KEYWORDS = Set.of(
-            "static", "extends", "native", "concrete", "final", "public", "protected", "private", "override",
+            "extends", "native", "concrete", "final", "public", "protected", "private", "override",
             "abstract", "impl", "inline"
     );
     private static final Set<String> TYPE_KEYWORDS = Set.of(
             "vec", "int", "entity", "bool", "byte", "short", "long", "float", "double", "selector", "string",
-            "text", "nbt", "any", "void", "list", "map", "dict", "type", "Type", "ByteArray", "IntArray", "LongArray"
+            "text", "nbt", "any", "void", "list", "map", "dict", "type", "Type", "ByteArray", "IntArray", "LongArray", "ScoreRef", "NBTRef"
     );
     private static final Set<String> KEYWORDS = Set.of(
             "this", "super", "as", "from"
     );
     private static final String[] MULTI_CHARACTER_OPERATORS = {
-            "...", "++", "--", "&&", "||", "+=", "-=", "*=", "/=", "%=", "=>", "..", "::",
+            "...", "++", "--", "&&", "||", "+=", "-=", "*=", "/=", "%=", "=>", "->", "..", "::",
             "<=", ">=", "!=", "==", "~="
     };
 

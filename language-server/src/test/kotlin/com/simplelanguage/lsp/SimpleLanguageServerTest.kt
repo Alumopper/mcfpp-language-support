@@ -204,6 +204,32 @@ class SimpleLanguageServerTest {
     }
 
     @Test
+    fun `completes public reference types factories and members`() {
+        val analyzed = CountDownLatch(1)
+        val server = SimpleLanguageServer()
+        server.connect(RecordingLanguageClient(analyzed) { true })
+        server.initialize(InitializeParams()).get()
+        val service = server.getTextDocumentService()
+        val uri = "file:///reference-completion.mcfpp"
+        val source = "func run() {\nvar score: ScoreRef\nvar saved: NBTRef<int>\nscore.set(1)\nsaved.set(2)\n}"
+        try {
+            service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, source)))
+            assertTrue(analyzed.await(5, TimeUnit.SECONDS))
+            fun labels(position: Position): List<String> {
+                val result = service.completion(CompletionParams(TextDocumentIdentifier(uri), position)).get()
+                return if (result.isLeft) result.left.map { it.label } else result.right.items.map { it.label }
+            }
+            for ((line, receiver) in listOf(3 to "score", 4 to "saved")) {
+                assertTrue(labels(Position(line, receiver.length + 1)).containsAll(listOf("tryRead", "set")))
+            }
+            assertTrue(labels(Position(1, "var score: ".length)).containsAll(listOf("ScoreRef", "NBTRef")))
+            assertTrue(labels(Position(0, 0)).containsAll(MCFPPDocumentIndex.referenceFactories))
+        } finally {
+            server.shutdown().get()
+        }
+    }
+
+    @Test
     fun `advertises incremental synchronization with save text`() {
         val server = SimpleLanguageServer()
         try {
@@ -1395,7 +1421,7 @@ class SimpleLanguageServerTest {
         val text = """
             data Base {
             }
-            interface Contract {
+            abstract data Contract {
             }
             data Middle: Base, Contract {
             }

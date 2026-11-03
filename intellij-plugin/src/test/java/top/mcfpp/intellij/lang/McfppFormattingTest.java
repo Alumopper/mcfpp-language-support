@@ -9,11 +9,18 @@ import com.intellij.testFramework.fixtures.LightPlatformCodeInsightFixture4TestC
 import org.junit.Test;
 
 public final class McfppFormattingTest extends LightPlatformCodeInsightFixture4TestCase {
+    @Override protected void setUp() throws Exception {
+        super.setUp();
+        var point = com.intellij.formatting.service.FormattingService.EP_NAME;
+        com.intellij.testFramework.ExtensionTestUtil.maskExtensions(point,
+                point.getExtensionList().stream().filter(service -> !(service instanceof top.mcfpp.intellij.format.McfppAsyncFormatter)).toList(),
+                getTestRootDisposable());
+    }
     @Test
     public void testFormatsAnnotationsAndBareControlConditions() {
         PsiFile file = myFixture.configureByText(McfppFileType.INSTANCE, """
                 func check<T,N:int>(value:models:Counter):bool{
-                dynamic count:int=0
+                external count:int=0
                 const ready:bool=true
                 if ready{count=1}else if check<models:Counter,2>(value){count=2}
                 while ready{count++}
@@ -24,7 +31,7 @@ public final class McfppFormattingTest extends LightPlatformCodeInsightFixture4T
             CodeStyleManager.getInstance(getProject()).reformat(file);
         });
         assertTrue(file.getText(), file.getText().contains("func check<T, N: int>(value: models:Counter): bool {"));
-        assertTrue(file.getText(), file.getText().contains("dynamic count: int = 0"));
+        assertTrue(file.getText(), file.getText().contains("external count: int = 0"));
         assertTrue(file.getText(), file.getText().contains("if ready {"));
         assertTrue(file.getText(), file.getText().contains("while ready"));
         assertFalse(file.getText().contains(";"));
@@ -84,7 +91,7 @@ public final class McfppFormattingTest extends LightPlatformCodeInsightFixture4T
     @Test
     public void testFormatsGenericAnglesContinuationIndentAndElseSpacing() {
         PsiFile file = myFixture.configureByText(McfppFileType.INSTANCE, """
-                @From <example.mni.Bridge>
+                @From (example.mni.Bridge)
                 data Generic{
                 func map <kind> (
                 value: list <int>,
@@ -104,7 +111,7 @@ public final class McfppFormattingTest extends LightPlatformCodeInsightFixture4T
         });
 
         assertEquals("""
-                @From<example.mni.Bridge>
+                @From(example.mni.Bridge)
                 data Generic {
                     func map<kind>(
                             value: list<int>,

@@ -26,7 +26,7 @@ import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public final class McfppMniReferenceIntegrationTest extends LightJavaCodeInsightFixtureTestCase {
+public final class McfppMniReferenceIntegrationTest extends McfppJavaFixtureTestCase {
     public void testJavaOptionalDescriptorRegistersMniReferences() {
         myFixture.addClass("""
                 package example.mni;
@@ -220,7 +220,7 @@ public final class McfppMniReferenceIntegrationTest extends LightJavaCodeInsight
                 """);
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "@From<\"example.mni.Base\">\ndata Ch<caret>ild {}"
+                "@From(\"example.mni.Base\")\ndata Ch<caret>ild {}"
         );
 
         PsiElement declaration = myFixture.getFile().findElementAt(myFixture.getCaretOffset());
@@ -254,7 +254,7 @@ public final class McfppMniReferenceIntegrationTest extends LightJavaCodeInsight
                 public class Base {}
                 """);
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                @From<"example.mni.Base">
+                @From("example.mni.Base")
                 data Child {}
                 func invoke(value: string) = example.mni.Bridge.invoke;
                 """);

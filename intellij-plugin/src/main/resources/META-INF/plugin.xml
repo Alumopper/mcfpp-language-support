@@ -10,16 +10,33 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
+    <depends optional="true" config-file="top.mcfpp.language-test-runner.xml">intellij.testRunner.plugin</depends>
     <depends optional="true" config-file="top.mcfpp.language-lsp.xml">com.intellij.modules.lsp</depends>
     <depends optional="true" config-file="top.mcfpp.language-java.xml">com.intellij.java</depends>
+    <depends optional="true" config-file="top.mcfpp.language-kotlin.xml">org.jetbrains.kotlin</depends>
     <depends optional="true" config-file="top.mcfpp.language-json.xml">com.intellij.modules.json</depends>
 
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK1="true" supportsK2="true"/>
+    </extensions>
+
     <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="MCFPP" displayType="BALLOON" isLogByDefault="true"/>
+        <projectConfigurable id="mcfpp" parentId="tools" displayName="MCFPP"
+                             instance="top.mcfpp.intellij.tooling.McfppSettingsConfigurable"/>
+        <formattingService implementation="top.mcfpp.intellij.format.McfppAsyncFormatter" order="first"/>
+        <externalAnnotator language="MCFPP" implementationClass="top.mcfpp.intellij.format.McfppLintAnnotator"/>
+        <configurationType implementation="top.mcfpp.intellij.run.McfppRunConfigurationType"/>
+        <programRunner implementation="top.mcfpp.intellij.run.McfppProgramRunner"/>
+        <runLineMarkerContributor language="MCFPP" implementationClass="top.mcfpp.intellij.run.McfppTestLineMarker"/>
+        <toolWindow id="MCFPP" anchor="right" factoryClass="top.mcfpp.intellij.project.McfppToolWindowFactory" icon="/icons/mcfpp.svg"/>
+        <postStartupActivity implementation="top.mcfpp.intellij.project.McfppProjectStartup"/>
         <fileType
                 name="MCFPP"
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.lang.McfppFileType"
                 fieldName="INSTANCE"
+                fileNames=".mcfpp"
                 extensions="mcfpp"/>
         <fileType
                 name="Minecraft Function"
@@ -69,6 +86,11 @@
         <completion.contributor
                 language="MinecraftFunction"
                 implementationClass="top.mcfpp.intellij.lang.MinecraftFunctionCompletionContributor"/>
+        <completion.contributor language="MCFPP" implementationClass="top.mcfpp.intellij.datapack.PackResourceCompletion" order="first"/>
+        <completion.contributor language="MinecraftFunction" implementationClass="top.mcfpp.intellij.datapack.PackResourceCompletion" order="first"/>
+        <annotator language="MCFPP" implementationClass="top.mcfpp.intellij.datapack.PackResourceAnnotator"/>
+        <annotator language="MinecraftFunction" implementationClass="top.mcfpp.intellij.datapack.PackResourceAnnotator"/>
+        <referencesSearch implementation="top.mcfpp.intellij.datapack.PackResourceUsages"/>
         <completion.confidence
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.command.MinecraftCommandCompletionConfidence"/>
@@ -145,9 +167,13 @@
     </extensions>
 
     <projectListeners>
+        <listener class="top.mcfpp.intellij.project.McfppProjectWatcher" topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
         <listener class="top.mcfpp.intellij.lang.McfppConfigurationListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
     </projectListeners>
+    <applicationListeners>
+        <listener class="top.mcfpp.intellij.format.McfppSaveListener" topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    </applicationListeners>
 
     <extensions defaultExtensionNs="com.intellij.platform.backend.documentation">
         <targetProvider implementation="top.mcfpp.intellij.lang.McfppDocumentationTargetProvider"/>

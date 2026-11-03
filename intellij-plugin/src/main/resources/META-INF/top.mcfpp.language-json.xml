@@ -1,6 +1,9 @@
 <idea-plugin>
     <extensions defaultExtensionNs="com.intellij">
         <fileTypeDetector implementation="top.mcfpp.intellij.datapack.MinecraftMetadataFileTypeDetector"/>
+        <psi.referenceContributor language="JSON" implementation="top.mcfpp.intellij.datapack.PackResourceReferenceContributor"/>
+        <completion.contributor language="JSON" implementationClass="top.mcfpp.intellij.datapack.PackResourceCompletion" order="first"/>
+        <annotator language="JSON" implementationClass="top.mcfpp.intellij.datapack.PackResourceAnnotator"/>
     </extensions>
     <extensions defaultExtensionNs="JavaScript">
         <JsonSchema.ProviderFactory

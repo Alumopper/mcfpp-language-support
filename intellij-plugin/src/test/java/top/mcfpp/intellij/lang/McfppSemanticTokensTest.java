@@ -62,7 +62,7 @@ class McfppSemanticTokensTest {
     @Test
     void classifiesReadOnlyParametersForeachVariablesMembersAndMniTargets() {
         String source = """
-                @From<example.mni.Base>
+                @From(example.mni.Base)
                 data Child {
                     var count: int = 0
                     func visit<player: Player>(values: list<int>) {
@@ -114,7 +114,7 @@ class McfppSemanticTokensTest {
 
     @Test
     void exposesSemanticSubrangesInsideQuotedMniTargets() {
-        String source = "@From<\"example.mni.Base\">\ndata Child {}";
+        String source = "@From(\"example.mni.Base\")\ndata Child {}";
 
         McfppSemanticTokens.Analysis analysis = McfppSemanticTokens.analyzeDetailed(source);
 

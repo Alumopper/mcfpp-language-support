@@ -19,6 +19,8 @@ import com.intellij.psi.SmartPointerManager;
 import com.intellij.psi.SmartPsiElementPointer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.commonmark.parser.Parser;
+import org.commonmark.renderer.html.HtmlRenderer;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -27,12 +29,27 @@ import java.util.Set;
 
 /** Quick Documentation backed by the same cached declaration model as navigation. */
 public final class McfppDocumentationTargetProvider implements DocumentationTargetProvider {
+    private static final Parser MARKDOWN_PARSER = Parser.builder().build();
+    private static final HtmlRenderer MARKDOWN_RENDERER = HtmlRenderer.builder().escapeHtml(true).sanitizeUrls(true).build();
+
+    static String renderMarkdown(String text) {
+        return MARKDOWN_RENDERER.render(MARKDOWN_PARSER.parse(text));
+    }
     @Override
     public @NotNull List<? extends @NotNull DocumentationTarget> documentationTargets(
             @NotNull PsiFile file,
             int offset
     ) {
-        if (!(file instanceof McfppFile)) return List.of();
+        if (!(file instanceof McfppFile)) {
+            PsiReference reference = file.findReferenceAt(offset);
+            if (reference == null) return List.of();
+            List<DocumentationTarget> targets = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            if (reference instanceof PsiPolyVariantReference poly) {
+                for (ResolveResult resolved : poly.multiResolve(false)) addTarget(resolved.getElement(), targets, seen);
+            } else addTarget(reference.resolve(), targets, seen);
+            return targets;
+        }
         int safeOffset = Math.max(0, Math.min(offset, Math.max(0, file.getTextLength() - 1)));
         McfppSymbol declaration = McfppFileModels.get(file).declarationAt(safeOffset);
         if (declaration != null) return List.of(new McfppDocumentationTarget(file, declaration));
@@ -125,7 +142,7 @@ public final class McfppDocumentationTargetProvider implements DocumentationTarg
                     .append(DocumentationMarkup.DEFINITION_END);
             if (symbol.documentation() != null && !symbol.documentation().isBlank()) {
                 html.append(DocumentationMarkup.CONTENT_START)
-                        .append(escape(symbol.documentation()).replace("\n", "<br>"))
+                        .append(renderMarkdown(symbol.documentation()))
                         .append(DocumentationMarkup.CONTENT_END);
             }
             html.append(DocumentationMarkup.SECTIONS_START)

@@ -137,7 +137,7 @@ public final class McfppMniReferenceContributor extends PsiReferenceContributor 
             if (start < 0 || end < start || end > source.length()) return false;
             for (int offset = start; offset < end; offset++) {
                 char value = source.charAt(offset);
-                if (!Character.isWhitespace(value) && value != '"' && value != '\'' && value != '>') return false;
+                if (!Character.isWhitespace(value) && value != '"' && value != '\'' && value != ')') return false;
             }
             return true;
         }

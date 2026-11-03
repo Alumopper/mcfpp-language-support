@@ -33,12 +33,31 @@ public final class McfppLineIndentProvider implements LineIndentProvider {
 
         Document document = editor.getDocument();
         int safeOffset = Math.max(0, Math.min(offset, document.getTextLength()));
-        int previousLine = document.getLineNumber(safeOffset) - 1;
         CharSequence text = document.getImmutableCharSequence();
+        int currentEnd = document.getLineEndOffset(document.getLineNumber(safeOffset));
+        int content = safeOffset;
+        while (content < currentEnd && (text.charAt(content) == ' ' || text.charAt(content) == '\t')) content++;
+        CommonCodeStyleSettings.IndentOptions options = CodeStyle.getIndentOptions(project, document);
+        if (content < currentEnd) {
+            HighlighterIterator closer = editorEx.getHighlighter().createIterator(content);
+            if (!closer.atEnd() && closer.getTokenType() == McfppTokenTypes.RIGHT_BRACE) {
+                int depth = 1;
+                closer.retreat();
+                while (!closer.atEnd()) {
+                    if (closer.getTokenType() == McfppTokenTypes.RIGHT_BRACE) depth++;
+                    else if (closer.getTokenType() == McfppTokenTypes.LEFT_BRACE && --depth == 0) {
+                        int line = document.getLineNumber(closer.getStart());
+                        return whitespace(leadingColumns(text, document.getLineStartOffset(line),
+                                document.getLineEndOffset(line), Math.max(1, options.TAB_SIZE)), options);
+                    }
+                    closer.retreat();
+                }
+            }
+        }
+        int previousLine = document.getLineNumber(safeOffset) - 1;
         while (previousLine >= 0 && isBlank(document, text, previousLine)) previousLine--;
         if (previousLine < 0) return "";
 
-        CommonCodeStyleSettings.IndentOptions options = CodeStyle.getIndentOptions(project, document);
         int lineStart = document.getLineStartOffset(previousLine);
         int lineEnd = document.getLineEndOffset(previousLine);
         int columns = leadingColumns(text, lineStart, lineEnd, Math.max(1, options.TAB_SIZE));

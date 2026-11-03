@@ -19,7 +19,7 @@ public final class McfppConfigurationListener implements BulkFileListener {
     public McfppConfigurationListener(Project project) { this.project = project; }
 
     @Override public void after(@NotNull List<? extends VFileEvent> events) {
-        if (events.stream().noneMatch(event -> event.getPath().endsWith("/mcfpp.json"))) return;
+        if (events.stream().noneMatch(event -> event.getPath().endsWith("/mcfpp.json") || event.getPath().endsWith("/mcfpp.toml"))) return;
         ApplicationManager.getApplication().invokeLater(() -> {
             if (project.isDisposed()) return;
             WriteIntentReadAction.run((Runnable) () -> {

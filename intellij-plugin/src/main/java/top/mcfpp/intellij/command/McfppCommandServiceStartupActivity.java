@@ -24,6 +24,6 @@ public final class McfppCommandServiceStartupActivity implements ProjectActivity
 
     private static boolean isCommandProject(String basePath) {
         Path root = Path.of(basePath);
-        return Files.isRegularFile(root.resolve("mcfpp.json")) || Files.isRegularFile(root.resolve("pack.mcmeta"));
+        return Files.isRegularFile(root.resolve("mcfpp.toml")) || Files.isRegularFile(root.resolve("mcfpp.json")) || Files.isRegularFile(root.resolve("pack.mcmeta"));
     }
 }

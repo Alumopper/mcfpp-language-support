@@ -13,7 +13,7 @@ public final class MniJavaTargetParser {
     private static final String QUALIFIED_NAME = IDENTIFIER + "(?:\\s*\\.\\s*" + IDENTIFIER + ")+";
     private static final Pattern SEGMENT = Pattern.compile(IDENTIFIER);
     private static final Pattern FROM_TARGET = Pattern.compile(
-            "@From\\s*<\\s*[\\\"']?\\s*(" + QUALIFIED_NAME + ")"
+            "@From\\s*\\(\\s*[\\\"']?\\s*(" + QUALIFIED_NAME + ")"
     );
     private static final String JAVA_METHOD_DECLARATION = "(?:func|operator|get|set)";
     private static final Pattern JAVA_METHOD_TARGET = Pattern.compile(
@@ -22,7 +22,7 @@ public final class MniJavaTargetParser {
             Pattern.DOTALL
     );
     private static final Pattern FROM_COMPLETION = Pattern.compile(
-            "@From\\s*<\\s*[\\\"']?\\s*([A-Za-z0-9_$.]*)$"
+            "@From\\s*\\(\\s*[\\\"']?\\s*([A-Za-z0-9_$.]*)$"
     );
     private static final Pattern JAVA_METHOD_COMPLETION = Pattern.compile(
             "\\b" + JAVA_METHOD_DECLARATION + "\\b" +

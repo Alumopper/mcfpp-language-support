@@ -1,0 +1,14 @@
+"schema" = 1
+"name" = "idea-cli-simple"
+"namespace" = "idea-cli-simple"
+"version" = "1.21.8"
+"description" = "A new MCFPP datapack"
+"sourcePath" = "src/main/mcfpp"
+"targetPath" = "build"
+"dataPath" = "src/main/resources/data"
+
+["toolchain"]
+"version" = "java21-v1"
+
+["mni"]
+"enabled" = false

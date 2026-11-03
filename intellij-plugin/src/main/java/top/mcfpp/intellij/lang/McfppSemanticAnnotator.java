@@ -43,6 +43,12 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
                     : CachedValueProvider.Result.create(value, file, dependency);
         });
         if (identifier) {
+            if ("ref".equals(element.getText())) {
+                holder.newAnnotation(HighlightSeverity.ERROR,
+                                "'ref expression' has been removed. Pass a ScoreRef or NBTRef<T> created from an explicit Minecraft address.")
+                        .range(element).create();
+                return;
+            }
             var key = analysis.attributes().get(element.getTextOffset());
             if (key == null) return;
             holder.newSilentAnnotation(HighlightSeverity.INFORMATION)

@@ -48,9 +48,9 @@ class MniJavaTargetParserTest {
     @Test
     void parsesQuotedAndUnquotedFromTargets() {
         String source = """
-                @From<"top.mcfpp.mni.minecraft.AreaData">
+                @From("top.mcfpp.mni.minecraft.AreaData")
                 data Area;
-                @From<example.mni.ProjectMni>
+                @From(example.mni.ProjectMni)
                 data Project;
                 """;
 
@@ -104,7 +104,7 @@ class MniJavaTargetParserTest {
 
     @Test
     void detectsQuotedFromCompletionContext() {
-        String source = "@From<\"java.lang.Str";
+        String source = "@From(\"java.lang.Str";
 
         MniJavaTargetParser.CompletionContext context = MniJavaTargetParser
                 .completionAt(source, source.length())

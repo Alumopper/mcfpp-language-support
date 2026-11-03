@@ -211,6 +211,10 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                 addAll(MCFPPDocumentIndex.keywords.map { keywordCompletion(it) })
                 addAll(MCFPPDocumentIndex.builtinTypes.map { typeCompletion(it) })
                 addAll(MCFPPDocumentIndex.builtinValues.map { valueCompletion(it) })
+                addAll(MCFPPDocumentIndex.referenceFactories.map { name -> CompletionItem(name).apply {
+                    kind = CompletionItemKind.Function
+                    detail = "Create a reference from an explicit Minecraft address"
+                } })
                 addAll(globalCompletionItems(analysis))
                 analysis.innermostTypeScope(params.position)?.name?.let { currentType ->
                     addAll(
@@ -388,13 +392,13 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
 
     override fun definition(params: DefinitionParams): CompletableFuture<Either<List<Location>, List<LocationLink>>> {
         val analysis = analyses[params.textDocument.uri] ?: return CompletableFuture.completedFuture(Either.forLeft(emptyList()))
-        val locations = resolveSymbolAt(params, analysis)?.takeIf { !it.isExternal }?.location()?.let(::listOf).orEmpty()
+        val locations = resolveSymbolAt(params, analysis)?.takeIf { !it.isExternal || it.uri.endsWith(".mcfpp") }?.location()?.let(::listOf).orEmpty()
         return CompletableFuture.completedFuture(Either.forLeft(locations))
     }
 
     override fun declaration(params: DeclarationParams): CompletableFuture<Either<List<Location>, List<LocationLink>>> {
         val analysis = analyses[params.textDocument.uri] ?: return CompletableFuture.completedFuture(Either.forLeft(emptyList()))
-        val locations = resolveSymbolAt(params, analysis)?.takeIf { !it.isExternal }?.location()?.let(::listOf).orEmpty()
+        val locations = resolveSymbolAt(params, analysis)?.takeIf { !it.isExternal || it.uri.endsWith(".mcfpp") }?.location()?.let(::listOf).orEmpty()
         return CompletableFuture.completedFuture(Either.forLeft(locations))
     }
 
@@ -616,6 +620,11 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         scheduleProjectIndexRefresh(PROJECT_CHANGE_DEBOUNCE_MS)
     }
 
+    fun updateMniSymbols(snapshot: top.mcfpp.language.MniSymbolSnapshot) {
+        projectIndex.setMniSymbols(snapshot)
+        refreshProjectIndex()
+    }
+
     fun refreshProjectIndex(changedUris: List<String>) {
         if (changedUris.none(projectIndex::isRelevantWorkspaceChange)) {
             return
@@ -787,7 +796,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         return analysis.topLevelSymbols
             .sortedWith(compareBy({ it.range.start.line }, { it.range.start.character }))
             .map { symbol ->
-                val children = if (symbol.kind in setOf(SymbolKind.Class, SymbolKind.Interface, SymbolKind.Enum)) {
+                val children = if (symbol.kind in setOf(SymbolKind.Class, SymbolKind.Enum)) {
                     analysis.typeMembers[symbol.name]
                         .orEmpty()
                         .sortedWith(compareBy({ it.range.start.line }, { it.range.start.character }))
@@ -828,7 +837,17 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         position: Position
     ): List<CompletionItem> {
         val receiverType = resolveReceiverTypeAt(analysis, receiver, position) ?: return emptyList()
-        return accessibleMemberSymbolsForType(analysis, receiverType, position)
+        val builtins = if (MCFPPDocumentIndex.isReferenceType(receiverType)) listOf(
+            CompletionItem("tryRead").apply {
+                kind = CompletionItemKind.Method
+                detail = "tryRead { value -> ... }: bool; synchronous value snapshot"
+            },
+            CompletionItem("set").apply {
+                kind = CompletionItemKind.Method
+                detail = "set(value): void; writes the referenced target"
+            }
+        ) else emptyList()
+        return builtins + accessibleMemberSymbolsForType(analysis, receiverType, position)
             .filter { it.kind != SymbolKind.Constructor }
             .map { symbolCompletion(it) }
     }
@@ -917,6 +936,15 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         position: Position
     ): List<MCFPPSymbol> {
         val callableKinds = setOf(SymbolKind.Function, SymbolKind.Method, SymbolKind.Constructor)
+        if (context.qualifierSeparator == null) {
+            val value = resolveLocalSymbol(analysis, context.name, position)
+                ?: visibleGlobalSymbolsForDocument(analysis).firstOrNull {
+                    it.name == context.name && it.kind in setOf(SymbolKind.Variable, SymbolKind.Field)
+                }
+            if (value != null && value.kind in setOf(SymbolKind.Variable, SymbolKind.Field)) {
+                return callableValues(analysis, value, emptySet())
+            }
+        }
         val symbols = when (context.qualifierSeparator) {
             '.' -> {
                 val receiverType = context.qualifier?.let { resolveReceiverTypeAt(analysis, it, position) }
@@ -963,6 +991,35 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             .distinctBy { symbolIdentityKey(it) }
     }
 
+    private fun callableValues(analysis: MCFPPDocumentAnalysis, value: MCFPPSymbol, visited: Set<String>): List<MCFPPSymbol> {
+        val key = symbolIdentityKey(value)
+        if (key in visited) return emptyList()
+        value.functionValue?.let { signature ->
+            return listOf(value.copy(parameters = signature.parameters, typeName = signature.returnType, detail = signature.returnType))
+        }
+        val reference = value.initializer?.takeIf { it.matches(Regex("(?:[A-Za-z_][A-Za-z0-9_.]*:)?[A-Za-z_][A-Za-z0-9_]*")) }
+            ?: return emptyList()
+        val name = reference.substringAfterLast(':')
+        if (':' !in reference) {
+            resolveLocalSymbol(analysis, name, value.range.start)?.takeIf {
+                it.kind in setOf(SymbolKind.Variable, SymbolKind.Field)
+            }?.let { alias ->
+                return callableValues(analysis, alias, visited + key).map {
+                    value.copy(parameters = it.parameters, typeName = it.typeName, detail = it.detail)
+                }
+            }
+        }
+        val namespace = reference.substringBefore(':', "").takeIf { it.isNotEmpty() }
+            ?.let { resolveNamespaceQualifier(analysis, it) }
+        val imported = analysis.imports.firstOrNull { it.alias == name }
+        return visibleGlobalSymbolsForDocument(analysis).filter {
+            it.kind in CALLABLE_SYMBOL_KINDS &&
+                it.name == (imported?.importedName ?: name) &&
+                (namespace == null || it.namespaceName == namespace) &&
+                (imported == null || it.namespaceName == imported.namespace)
+        }.map { value.copy(parameters = it.parameters, typeName = it.typeName, detail = it.detail) }
+    }
+
     private fun resolveReceiverTypeAt(analysis: MCFPPDocumentAnalysis, receiver: String, position: Position): String? {
         val expression = receiver.trim().removeSurrounding("(", ")").trim()
         if (expression == "this") {
@@ -971,7 +1028,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         if (expression == "super") {
             val owner = analysis.innermostTypeScope(position)?.name ?: return null
             return visibleGlobalSymbolsForDocument(analysis).firstOrNull {
-                it.name == owner && it.kind in setOf(SymbolKind.Class, SymbolKind.Interface)
+                it.name == owner && it.kind in setOf(SymbolKind.Class)
             }?.superTypes?.firstOrNull()?.let(::normalizeTypeName)
         }
         if (expression.endsWith(')')) {
@@ -1177,13 +1234,15 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             return null
         }
         val initializerWithTerminator = suffix.substring(assignmentIndex + 1).trim()
-        val initializer = initializerWithTerminator
+        val initializer = symbol.initializer ?: initializerWithTerminator
             .let { value ->
                 val semicolon = value.lastIndexOf(';')
                 if (semicolon >= 0) value.substring(0, semicolon) else value
             }
             .trim()
-        val inferredType = inferArgumentType(analysis, initializer, symbol.selectionRange.start) ?: return null
+        val inferredType = if (symbol.functionValue != null) {
+            symbol.functionValue.typeName()?.replace(")->", ") -> ") ?: return null
+        } else inferArgumentType(analysis, initializer, symbol.selectionRange.start) ?: return null
         return InlayHint(symbol.selectionRange.end, Either.forLeft(": $inferredType")).apply {
             kind = InlayHintKind.Type
             paddingLeft = false
@@ -1578,7 +1637,6 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         SymbolKind.Namespace, SymbolKind.Module, SymbolKind.Package -> "namespace"
         SymbolKind.Class, SymbolKind.Object -> "class"
         SymbolKind.Enum -> "enum"
-        SymbolKind.Interface -> "interface"
         SymbolKind.Struct -> "struct"
         SymbolKind.TypeParameter -> "typeParameter"
         SymbolKind.Variable, SymbolKind.Constant -> if (symbol.isParameter) "parameter" else "variable"
@@ -1626,7 +1684,6 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             .filter { it.kind in setOf(SymbolKind.Variable, SymbolKind.Field, SymbolKind.Method, SymbolKind.Function, SymbolKind.Constructor, SymbolKind.EnumMember, SymbolKind.TypeParameter) }
             .filter { analysis.isScopeVisible(it.enclosingFunctionScopeId ?: it.enclosingTypeScopeId, position) }
             .filter { isBeforeOrEqual(it.range.start, position) }
-            .filter { matchesVisibleLocalScope(it, analysis, position) }
             .sortedBy { it.name }
     }
 
@@ -1635,8 +1692,6 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         declarations.firstOrNull { containsPosition(it.range, position) }?.let {
             return it
         }
-        val currentBlockScopeId = analysis.innermostBlockScope(position)?.id
-        val currentFunctionScopeId = analysis.innermostFunctionScope(position)?.id
         val currentTypeScopeId = analysis.innermostTypeScope(position)?.id
         return declarations
             .filter {
@@ -1648,7 +1703,6 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                     SymbolKind.Constructor,
                     SymbolKind.EnumMember,
                     SymbolKind.Class,
-                    SymbolKind.Interface,
                     SymbolKind.Enum,
                     SymbolKind.TypeParameter,
                     SymbolKind.Namespace
@@ -1657,15 +1711,14 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             .filter { isBeforeOrEqual(it.range.start, position) }
             .filter {
                 when {
-                    it.enclosingFunctionScopeId != null && currentBlockScopeId != null && it.enclosingFunctionScopeId.startsWith("block:") -> it.enclosingFunctionScopeId == currentBlockScopeId
-                    it.enclosingFunctionScopeId != null -> it.enclosingFunctionScopeId == currentFunctionScopeId
+                    it.enclosingFunctionScopeId != null -> analysis.isScopeVisible(it.enclosingFunctionScopeId, position)
                     it.enclosingTypeScopeId != null -> it.enclosingTypeScopeId == currentTypeScopeId || it.kind in setOf(SymbolKind.Field, SymbolKind.Method, SymbolKind.Constructor, SymbolKind.EnumMember)
                     else -> true
                 }
             }
             .maxWithOrNull(
                 compareBy<MCFPPSymbol>(
-                    { scopePriority(it, currentBlockScopeId, currentFunctionScopeId, currentTypeScopeId) },
+                    { scopePriority(it, analysis) },
                     { it.range.start.line },
                     { it.range.start.character }
                 )
@@ -1674,9 +1727,9 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
 
     private fun findImplementations(target: MCFPPSymbol): List<Location> {
         val workspace = workspaceSymbols()
-        val typeKinds = setOf(SymbolKind.Class, SymbolKind.Interface, SymbolKind.Enum)
+        val typeKinds = setOf(SymbolKind.Class, SymbolKind.Enum)
         val implementerTypes = when (target.kind) {
-            SymbolKind.Class, SymbolKind.Interface -> workspace
+            SymbolKind.Class -> workspace
                 .filter { it.topLevel && it.kind in typeKinds }
                 .filter { candidate -> isSubtype(candidate, target) }
             else -> emptyList()
@@ -1809,14 +1862,9 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             candidate.enclosingFunctionScopeId == target.enclosingFunctionScopeId
     }
 
-    private fun scopePriority(symbol: MCFPPSymbol, currentBlockScopeId: String?, currentFunctionScopeId: String?, currentTypeScopeId: String?): Int {
-        return when {
-            symbol.enclosingFunctionScopeId != null && symbol.enclosingFunctionScopeId.startsWith("block:") && symbol.enclosingFunctionScopeId == currentBlockScopeId -> 4
-            symbol.enclosingFunctionScopeId != null && symbol.enclosingFunctionScopeId == currentFunctionScopeId -> 3
-            symbol.enclosingTypeScopeId != null && symbol.enclosingTypeScopeId == currentTypeScopeId -> 2
-            symbol.enclosingFunctionScopeId == null && symbol.enclosingTypeScopeId == null -> 1
-            else -> 0
-        }
+    private fun scopePriority(symbol: MCFPPSymbol, analysis: MCFPPDocumentAnalysis): Int {
+        val scope = symbol.enclosingFunctionScopeId ?: symbol.enclosingTypeScopeId ?: return 0
+        return analysis.scopeDepth(scope)
     }
 
     private fun buildCodeActions(
@@ -2157,6 +2205,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         val receiver = document.receiverBefore(reference.range.end)
         if (receiver != null) {
             val receiverType = resolveReceiverTypeAt(document, receiver, reference.range.start) ?: return false
+            if (MCFPPDocumentIndex.isReferenceType(receiverType) && reference.name in setOf("tryRead", "set")) return true
             return memberSymbolsForType(document, receiverType).any { it.name == reference.name }
         }
         if (reference.isCall) {
@@ -2167,7 +2216,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun shouldCheckUndefinedReference(document: MCFPPDocumentAnalysis, reference: MCFPPReferenceOccurrence): Boolean {
-        if (reference.name in MCFPPDocumentIndex.keywords || reference.name in MCFPPDocumentIndex.builtinValues || reference.name in MCFPPDocumentIndex.builtinTypes) {
+        if (reference.name in MCFPPDocumentIndex.keywords || reference.name in MCFPPDocumentIndex.builtinValues || reference.name in MCFPPDocumentIndex.builtinTypes || reference.name in MCFPPDocumentIndex.referenceFactories) {
             return false
         }
         val line = document.line(reference.range.start.line)
@@ -2205,22 +2254,14 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         ).collectDiagnostics()
     }
 
-    private fun matchesVisibleLocalScope(symbol: MCFPPSymbol, analysis: MCFPPDocumentAnalysis, position: Position): Boolean {
-        val currentBlockScopeId = analysis.innermostBlockScope(position)?.id
-        return when {
-            symbol.enclosingFunctionScopeId != null && symbol.enclosingFunctionScopeId.startsWith("block:") -> symbol.enclosingFunctionScopeId == currentBlockScopeId
-            else -> true
-        }
-    }
-
     private fun determineCompletionContext(analysis: MCFPPDocumentAnalysis, position: Position): CompletionContext {
         val line = analysis.line(position.line)
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
         val trimmed = prefix.trimEnd()
-        if (Regex("(?:\\bas|\\)\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
+        if (Regex("(?:\\bas\\b|\\)\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
-        if (Regex("(?:\\b(?:var|const|dynamic)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*:|[<(,]\\s*(?:static\\s+)?[A-Za-z_][A-Za-z0-9_]*\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
+        if (Regex("(?:\\b(?:var|const|external)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*:|[<(,]\\s*[A-Za-z_][A-Za-z0-9_]*\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
         return CompletionContext.DEFAULT
@@ -2231,7 +2272,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
         val match = NAMESPACE_QUALIFIER_AT_CURSOR.find(prefix) ?: return null
         val beforeQualifier = prefix.substring(0, match.range.first).trimEnd()
-        if (Regex("\\b(?:var|const|dynamic|static)\\s*$").containsMatchIn(beforeQualifier) ||
+        if (Regex("\\b(?:var|const|external)\\s*$").containsMatchIn(beforeQualifier) ||
             beforeQualifier.lastOrNull() in setOf('(', '<', ',')) {
             return null
         }
@@ -2379,11 +2420,10 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         val NAMESPACE_QUALIFIER_AT_CURSOR = Regex("([A-Za-z_][A-Za-z0-9_.]*)\\s*:\\s*[A-Za-z_0-9]*$")
         val NUMERIC_TYPES = setOf("byte", "short", "int", "long", "float", "double")
         val CALLABLE_SYMBOL_KINDS = setOf(SymbolKind.Function, SymbolKind.Method, SymbolKind.Constructor)
-        val TYPE_SYMBOL_KINDS = setOf(SymbolKind.Class, SymbolKind.Interface, SymbolKind.Enum)
+        val TYPE_SYMBOL_KINDS = setOf(SymbolKind.Class, SymbolKind.Enum)
         val TYPE_DEFINITION_SYMBOL_KINDS = TYPE_SYMBOL_KINDS + SymbolKind.TypeParameter
         val RENAMABLE_SYMBOL_KINDS = setOf(
             SymbolKind.Class,
-            SymbolKind.Interface,
             SymbolKind.Enum,
             SymbolKind.TypeParameter,
             SymbolKind.Function,

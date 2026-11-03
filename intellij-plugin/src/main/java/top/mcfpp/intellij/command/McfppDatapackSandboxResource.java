@@ -15,7 +15,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-final class McfppDatapackSandboxResource {
+public final class McfppDatapackSandboxResource {
     private static final Logger LOG = Logger.getInstance(McfppDatapackSandboxResource.class);
     private static final PluginId PLUGIN_ID = PluginId.getId("top.mcfpp.language");
     private static final String RESOURCE_PATH = "/dps/datapack-sandbox-cli.jar";
@@ -25,7 +25,7 @@ final class McfppDatapackSandboxResource {
     private McfppDatapackSandboxResource() {
     }
 
-    static synchronized Path extract() {
+    public static synchronized Path extract() {
         if (extractedPath != null && Files.isRegularFile(extractedPath)) return extractedPath;
 
         IdeaPluginDescriptor descriptor = PluginManagerCore.getPlugin(PLUGIN_ID);

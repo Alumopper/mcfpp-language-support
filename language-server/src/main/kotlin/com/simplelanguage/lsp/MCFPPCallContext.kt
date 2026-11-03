@@ -21,7 +21,7 @@ internal data class MCFPPCallContext(
 internal object MCFPPCallContextFinder {
     private val nonCallKeywords = setOf(
         "func", "constructor", "if", "else", "while", "for", "do", "try", "store", "execute",
-        "return", "data", "interface", "enum", "import", "namespace", "as", "from"
+        "return", "data", "enum", "import", "namespace", "as", "from"
     )
 
     fun findCandidates(text: String, position: Position): List<MCFPPCallContext> {
@@ -151,7 +151,7 @@ internal object MCFPPCallContextFinder {
             while (keywordIndex >= 0 && isIdentifierPart(text[keywordIndex])) {
                 keywordIndex -= 1
             }
-            if (previousWordEnd > keywordIndex + 1 && text.substring(keywordIndex + 1, previousWordEnd) in setOf("func", "data", "interface", "enum", "namespace", "import")) {
+            if (previousWordEnd > keywordIndex + 1 && text.substring(keywordIndex + 1, previousWordEnd) in setOf("func", "data", "enum", "namespace", "import")) {
                 return null
             }
         }

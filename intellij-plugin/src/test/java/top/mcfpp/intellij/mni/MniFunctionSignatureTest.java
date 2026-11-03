@@ -8,22 +8,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MniFunctionSignatureTest {
     @Test
-    void stripsReadonlyStaticBeforeClassifyingImplicitTypes() {
-        String source = "func bridge<static T, static int>() = example.mni.Bridge.invoke";
+    void readsNamedReadonlyTypeAndValueParameters() {
+        String source = "func bridge<T, N: int>() = example.mni.Bridge.invoke";
         var signature = MniFunctionSignature.from(source, MniJavaTargetParser.parse(source).getFirst()).orElseThrow();
         assertEquals(List.of("type", "int"), signature.readOnlyTypes());
     }
 
     @Test
     void distinguishesImplicitTypesFromAnonymousReadonlyValueTypes() {
-        String source = "func bridge<T, int, list<int>, N: int>() = example.mni.Bridge.invoke";
+        String source = "func bridge<T, I: int, values: list<int>, N: int>() = example.mni.Bridge.invoke";
         var signature = MniFunctionSignature.from(source, MniJavaTargetParser.parse(source).getFirst()).orElseThrow();
         assertEquals(List.of("type", "int", "list<int>", "int"), signature.readOnlyTypes());
     }
 
     @Test
     void preservesAnonymousValuesAndExplicitTypeParameters() {
-        String source = "func generic<T, U: type>(SomeClass) = example.mni.Bridge.generic";
+        String source = "func generic<T, U: type>(value: SomeClass) = example.mni.Bridge.generic";
         var signature = MniFunctionSignature.from(source, MniJavaTargetParser.parse(source).getFirst()).orElseThrow();
         assertEquals(List.of("type", "type"), signature.readOnlyTypes());
         assertEquals(List.of("SomeClass"), signature.normalTypes());
@@ -34,7 +34,7 @@ class MniFunctionSignatureTest {
         String source = """
                 func convert<kind, size: int = 2>(
                     input: list<string>,
-                    static var entity<minecraft:zombie>
+                    target: entity<"minecraft:zombie">
                 ) : map<string> = example.mni.Bridge.convert;
                 """;
         MniJavaTargetParser.Target target = MniJavaTargetParser.parse(source).getFirst();
@@ -43,7 +43,7 @@ class MniFunctionSignatureTest {
 
         assertEquals("convert", signature.name());
         assertEquals(List.of("type", "int"), signature.readOnlyTypes());
-        assertEquals(List.of("list<string>", "entity<minecraft:zombie>"), signature.normalTypes());
+        assertEquals(List.of("list<string>", "entity<\"minecraft:zombie\">"), signature.normalTypes());
         assertEquals("map<string>", signature.returnType());
         assertEquals(5, signature.javaArgumentCount());
     }

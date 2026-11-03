@@ -7,6 +7,38 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class MCFPPSyntaxMigrationTest {
+    @Test fun `recognizes owned reference values and reports public ref migration`() {
+        val source = """
+            func run() {
+                var score = scoreRef("counter", "hp")
+                var saved = nbtStorageRef<int>("demo:state", "counter")
+                score.set(1)
+                saved.tryRead { value -> saved.set(value) }
+            }
+        """.trimIndent()
+        val analysis = MCFPPDocumentIndex.analyze("file:///references.mcfpp", source)
+        assertEquals(emptyList(), analysis.parserDiagnostics.map { it.message })
+        assertEquals("ScoreRef", analysis.declarationsByName.getValue("score").single().typeName)
+        assertEquals("NBTRef<int>", analysis.declarationsByName.getValue("saved").single().typeName)
+        assertTrue(listOf("ScoreRef", "NBTRef").all { it in MCFPPDocumentIndex.builtinTypes })
+        assertTrue("ref" !in MCFPPDocumentIndex.keywords)
+        val removed = MCFPPDocumentIndex.analyze("file:///removed-ref.mcfpp", "func run() { damage(ref local, 1) }")
+        assertTrue(removed.parserDiagnostics.any { "removed" in it.message && "ScoreRef" in it.message })
+    }
+
+    @Test fun `indexes abstract data and external declarations and rejects retired syntax`() {
+        val source = "abstract data Contract<T> { abstract func read(): T }\nfunc run(){ external counter: int = 1 }"
+        val analysis = MCFPPDocumentIndex.analyze("file:///abstract-data.mcfpp", source)
+        assertEquals(emptyList(), analysis.parserDiagnostics.map { it.message })
+        assertEquals(SymbolKind.Class, analysis.declarationsByName.getValue("Contract").single().kind)
+        assertEquals("int", analysis.declarationsByName.getValue("counter").single().typeName)
+        assertTrue("external" in MCFPPDocumentIndex.keywords)
+        assertTrue("dynamic" !in MCFPPDocumentIndex.keywords && "interface" !in MCFPPDocumentIndex.keywords)
+        for (old in listOf("interface Contract { abstract func read(): int }", "data abstract Contract {}", "func run(){ dynamic value = 1 }")) {
+            assertTrue(MCFPPDocumentIndex.analyze("file:///retired.mcfpp", old).parserDiagnostics.isNotEmpty(), old)
+        }
+    }
+
     @Test fun `indexes colon declarations implicit type parameters and direct modifiers`() {
         val source = """
             data Box<
@@ -19,7 +51,7 @@ class MCFPPSyntaxMigrationTest {
             }
             func identity<T>(value: T): T { return value }
             func run() {
-                dynamic counter: int = 0
+                external counter: int = 0
                 const limit: int = 2
                 import var imported: int
                 var box: Box = Box<int, 4>(1)
@@ -57,7 +89,7 @@ class MCFPPSyntaxMigrationTest {
             "func old<T as Type>() {}",
             "data Box { var value as int }",
             "const var value: int = 1",
-            "dynamic var value: int = 1"
+            "external var value: int = 1"
         )) {
             assertTrue(MCFPPDocumentIndex.analyze("file:///old-declarations.mcfpp", source).parserDiagnostics.isNotEmpty(), source)
         }

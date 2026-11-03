@@ -2,6 +2,10 @@
 
 The IntelliJ plugin provides first-class MCFPP support in IntelliJ IDEA by combining the existing language server with IDEA's Java PSI and project indexes.
 
+Version 0.5 adds CLI-compatible **MCFPP / MCFPP MNI project wizards**, dependency synchronization, native run configurations, a task/artifact tool window, and bundled Prettier/Linter formatting on save. See the [complete development guide](DEVELOPMENT.md) for installation, settings, building and the two CLI sample projects.
+
+Version 0.5.1 corrects whitespace diagnostics, closing-brace Enter indentation and console colors, simplifies the MNI template to explicit `@MNIFunction` bindings, and adds demand-linked datapacks and a **Dump IR** task. See the [development experience fixes](FEEDBACK-0.5.1.md).
+
 ## Features
 
 - All LSP-backed MCFPP diagnostics, completion, navigation, symbols, formatting, refactoring, hints, and semantic highlighting
@@ -16,7 +20,7 @@ The IntelliJ plugin provides first-class MCFPP support in IntelliJ IDEA by combi
 - Conservative **Code | Optimize Imports** sorting and deduplication inside comment/directive-separated blocks, retaining unused imports and aliases
 - Native unresolved-reference inspection with import and declaration-creation fixes; LSP diagnostics remain available for compiler-specific resolution and when the inspection is disabled
 - Unused import warnings with dimmed text and a quick fix that preserves surrounding comments and version directives
-- Dimmed, initially collapsed inactive Minecraft version branches, refreshed when `mcfpp.json` is saved
+- Dimmed, initially collapsed inactive Minecraft version branches, refreshed when `mcfpp.toml` or `mcfpp.json` is saved
 - Indexed cross-file navigation and completion for functions, data types, aliases, members, parameters, and variables, including attached standard-library sources
 - Structure view, Navigate | Symbol/Class integration, code folding, Find Usages, in-place rename, and duplicate declaration inspection
 - Automatic brace/quote pairing, continuation indentation, generic/read-only angle formatting, configurable code style, file templates, and MCFPP live templates (`fn`, `nfn`, `data`, `object`, `enum`, `ctor`, `field`, `if`, `for`)
@@ -24,7 +28,8 @@ The IntelliJ plugin provides first-class MCFPP support in IntelliJ IDEA by combi
 - Java PSI completion and signature-aware navigation for native MNI function targets when the bundled Java plugin is enabled
 - Ctrl+B and gutter navigation from MCFPP native declaration names and `@From` data declarations directly to Java
 - Native binding inspection for missing classes/methods, `@MNIFunction` signature mismatches, non-static methods, and invalid Java argument counts
-- Java PSI completion and navigation for quoted or unquoted `@From<...>` targets
+- Type completion, diagnostics, highlighting, documentation, navigation, Find Usages, and rename inside Java/Kotlin MNI annotation strings
+- Java PSI completion and navigation for quoted or unquoted `@From(...)` targets
 - Direct resolution against project sources, dependencies, libraries, and the configured JDK
 - Automatic MNI and MCFPP standard-library source attachment from a nearby compiler checkout, `MCFPP_HOME`, or `-Dmcfpp.sources.path=...`
 - Implicit `mcfpp.lang`, `mcfpp.sys`, and `mcfpp` resolution, including navigation from built-ins such as `print` to standard-library source
@@ -34,21 +39,39 @@ The native unresolved-reference inspection handles complete, active code after i
 
 `::jvm` is an MCFPP value conversion operator, not a Java fully-qualified name. It remains handled by the shared MCFPP language server rather than the Java PSI bridge.
 
+### Types in MNI annotations
+
+The following literal string fields use MCFPP type syntax in both Java and Kotlin:
+
+| Annotation | Type fields |
+|---|---|
+| `MNIFunction` | `normalParams`, `readOnlyParams`, `caller`, `returnType`; `genericType` declares method-scoped type parameters |
+| `MNIMacro` | `returnType` |
+| `MacroParam` | `type`, including callback signatures with `ref`, `const`, and `inline` parameter modes |
+| `MNIOperator` | `paramType`, `returnType` |
+
+Use Ctrl+Space inside a type string for builtins, generic parameters, project types, and attached library types. Project/library completion inserts namespace-qualified MCFPP names without adding Java/Kotlin imports. Ctrl+B and Quick Documentation resolve source types; Find Usages and Rename include annotation references. A generic parameter declared by `genericType` can also be renamed within its method.
+
+The parser is generated from the same ANTLR grammar as the language server. Diagnostics identify malformed syntax, unresolved/ambiguous names, and invalid readonly/type argument counts. Empty unary-operator `paramType` and native parameter defaults such as `"int = 1"` are supported. Rename preserves default expressions and unrelated strings such as `identifier`, `tag`, and parameter names. Java/Kotlin string escapes are decoded with source ranges mapped back to the original literal.
+
 ## Requirements
 
-- IntelliJ IDEA Ultimate 2025.3.x (tested against 2025.3.3, build 253.31033.145)
-- A project SDK and Gradle JVM running Java 21 or newer for MNI development (Gradle 9.1+ is required when the Gradle JVM is Java 25)
+- JetBrains IntelliJ IDEA 2025.3 or newer (SDK baseline: 2025.3.3, build 253.31033.145; UI acceptance: 2026.2.2)
+- JDK 21 for the bundled CLI and Java MNI development
+- Node.js 20 or newer for bundled Prettier and Linter services
 - Java 25 available on `PATH` for Datapack Sandbox-powered Minecraft command completion; alternatively set `MCFPP_DPS_JAVA` or `-Dmcfpp.dps.java.path=/path/to/java`
 
-The JetBrains LSP API is not available in IntelliJ IDEA open-source builds or Android Studio, so the plugin targets IntelliJ IDEA Ultimate. The Java plugin is an optional dependency: core MCFPP editing and LSP features still load when Java support is disabled, while Java PSI-based MNI features activate automatically when it is available. The bundled IDEA JSON module is optional in the same way; only datapack JSON schema features are omitted when it is unavailable.
+The JetBrains LSP API requires an IDEA distribution providing `com.intellij.modules.lsp`; it is unavailable in open-source builds and Android Studio. The Java plugin is an optional dependency: Java PSI-based MNI features and project wizards activate when it is available. The bundled IDEA JSON module is optional in the same way; only datapack JSON schema features are omitted when it is unavailable.
 
-Minecraft command support runs in a separate, lazily started Java process and does not depend on IDEA's Java plugin. The profile comes from the top-level `version` in `mcfpp.json`; projects without one use `1.21.8`.
+Minecraft command support runs in a separate, lazily started Java process and does not depend on IDEA's Java plugin. The profile comes from the top-level `version` in `mcfpp.toml` (preferred) or `mcfpp.json`; projects without one use `1.21.8`.
 
 The bundled service includes the `26.3` profile and native float `compute` commands. MCFPP version conditions, unary minus, and compound assignments are supported by the shared language server and native declaration model.
 
 Datapack Sandbox currently exposes command completion and command checking through its JSONL service. `.mcfunction` uses that semantic command tree directly; datapack JSON uses bundled path-sensitive JSON Schemas because DPS does not currently expose a JSON completion protocol.
 
 ## Build and run
+
+First build the sibling MCFPP CLI, install the sibling MCFPP-Linter dependencies, and build/synchronize the language server as described in [DEVELOPMENT.md](DEVELOPMENT.md). Packaging verifies that the bundled CLI and LSP compiler fingerprints match.
 
 ```powershell
 cd intellij-plugin

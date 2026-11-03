@@ -4,6 +4,10 @@
 
 This repository provides an MCFPP language server built with Kotlin, ANTLR 4, and LSP4J, together with extensions for Visual Studio Code and IntelliJ IDEA. Language behavior follows the [MCFPP documentation](https://www.mcfpp.top/) and the compiler grammar.
 
+Shared contracts use `abstract data` with explicit `abstract func` methods. Runtime variable declarations use `external name: Type`, replacing `dynamic`. The `interface` and `data abstract` declaration forms are retired.
+
+Public address values use `ScoreRef` and `NBTRef<T>`, with synchronous `tryRead` and explicit `set`. Create them from Minecraft addresses (`scoreRef`, `nbtStorageRef`, `nbtEntityRef`, `nbtBlockRef`, entity `.score`/`.dat`); `ref expression` is removed and produces a migration diagnostic. The editor recognizes the reference types and members. Internal MNI `Ref<T>` handles are a separate compiler API.
+
 ## Editor features
 
 - Incremental document synchronization, debounced background analysis, and syntax/semantic diagnostics
@@ -39,7 +43,9 @@ The VS Code extension recognizes `.mcfpp` files and uses `MinecraftCommands.synt
 
 The IntelliJ plugin provides MCFPP language services, Java PSI-based MNI navigation, standard-library source navigation, Datapack Sandbox-powered command completion, vanilla `.mcfunction` support, and path-sensitive datapack JSON schemas. Java and JSON integrations are optional plugin fragments; the core MCFPP plugin remains loadable without them.
 
-The current preview targets IntelliJ IDEA Ultimate 2025.3.x because JetBrains' LSP API is not available in IntelliJ IDEA Community Edition or Android Studio.
+The IDEA development workflow now includes **MCFPP / MCFPP MNI project creation**, CLI dependency synchronization, Build/Test/check run configurations, a project tool window, and bundled Prettier/Linter formatting on save. Follow the [IDEA development guide](intellij-plugin/DEVELOPMENT.md) and use the [simple](examples/idea-cli-simple) or [MNI](examples/idea-cli-mni) CLI template for acceptance.
+
+The SDK baseline is IntelliJ IDEA 2025.3.3, with UI acceptance on 2026.2.2. LSP integration requires an IDEA distribution providing `com.intellij.modules.lsp`; JetBrains does not provide that API in open-source builds or Android Studio.
 
 ## Build and test
 
@@ -86,16 +92,16 @@ Version conditions use the project's `version` (default `1.21.8`). Only the sele
 
 ```mcfpp
 #if MC >= 26.3
-func calculate(value as float) -> float {
+func calculate(value: float): float {
     value += 12 /
-        3;
-    value %= 2.5f;
-    return -value;
+        3
+    value %= 2.5f
+    return -value
 }
 #else
-func calculate(value as float) -> float {
-    value += 4;
-    return -value;
+func calculate(value: float): float {
+    value += 4
+    return -value
 }
 #endif
 ```

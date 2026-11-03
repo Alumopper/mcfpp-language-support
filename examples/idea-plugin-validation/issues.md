@@ -24,17 +24,17 @@
 1. 未解析的引用不会报错
 ```mcfpp
 func functionCompletion() {
-    var result = convert(w);    # w作为未定义变量不会报错
+    var result = convert(w) // w作为未定义变量不会报错
 }
 ```
 
 2. 类型别名匹配检查问题
 ```mcfpp
 func navigateAliases() {
-    # Type mismatch for `counter`: expected `AlphaCounter`, found `Counter`
-    var counter as AlphaCounter = AlphaCounter();
-    var result = counter.increment(1);
-    var converted = alpha:convert(result);
+    // Type mismatch for `counter`: expected `AlphaCounter`, found `Counter`
+    var counter: AlphaCounter = AlphaCounter()
+    var result = counter.increment(1)
+    var converted = alpha:convert(result)
 }
 
 ```

@@ -90,16 +90,9 @@ record MniFunctionSignature(
         int colon = topLevelCharacter(declaration, ':');
         if (colon >= 0) return normalizeType(declaration.substring(colon + 1));
         String withoutModifiers = declaration.strip();
-        boolean changed;
-        do {
-            changed = false;
-            for (String modifier : List.of("static", "var")) {
-                if (startsWithWord(withoutModifiers, modifier)) {
-                    withoutModifiers = withoutModifiers.substring(modifier.length()).stripLeading();
-                    changed = true;
-                }
-            }
-        } while (changed);
+        while (startsWithWord(withoutModifiers, "var")) {
+            withoutModifiers = withoutModifiers.substring("var".length()).stripLeading();
+        }
         if (readOnly) {
             McfppLexer lexer = new McfppLexer();
             lexer.start(withoutModifiers);

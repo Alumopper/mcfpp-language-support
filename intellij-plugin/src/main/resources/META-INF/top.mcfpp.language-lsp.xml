@@ -1,4 +1,7 @@
 <idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="top.mcfpp.intellij.lsp.McfppMniSymbolPublisher"/>
+    </extensions>
     <extensions defaultExtensionNs="com.intellij.platform.lsp">
         <serverSupportProvider implementation="top.mcfpp.intellij.lsp.McfppLspIntegrationProvider"/>
     </extensions>

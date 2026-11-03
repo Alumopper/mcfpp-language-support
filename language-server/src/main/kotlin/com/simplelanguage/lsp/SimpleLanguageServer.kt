@@ -26,6 +26,10 @@ import org.eclipse.lsp4j.services.WorkspaceService
 import java.util.concurrent.CompletableFuture
 
 class SimpleLanguageServer : LanguageServer, LanguageClientAware {
+    @org.eclipse.lsp4j.jsonrpc.services.JsonNotification("mcfpp/updateMniSymbols")
+    fun updateMniSymbols(snapshot: top.mcfpp.language.MniSymbolSnapshot) {
+        textDocumentService.updateMniSymbols(snapshot)
+    }
     private lateinit var client: LanguageClient
     private val textDocumentService = MCFPPTextDocumentService(this)
     private val workspaceService = MCFPPWorkspaceService(this)
@@ -46,6 +50,10 @@ class SimpleLanguageServer : LanguageServer, LanguageClientAware {
             ?: params.rootUri?.let(::listOf)
             ?: emptyList()
         textDocumentService.setWorkspaceRoots(roots)
+        if (params.initializationOptions != null) runCatching {
+            val gson = com.google.gson.Gson()
+            textDocumentService.updateMniSymbols(gson.fromJson(gson.toJsonTree(params.initializationOptions), top.mcfpp.language.MniSymbolSnapshot::class.java))
+        }
         val capabilities = ServerCapabilities()
         capabilities.textDocumentSync = Either.forRight(TextDocumentSyncOptions().apply {
             openClose = true

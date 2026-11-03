@@ -21,14 +21,10 @@ final class McfppMinecraftVersion {
         if (!override.isEmpty()) return override;
         String basePath = project.getBasePath();
         if (basePath == null) return FALLBACK_VERSION;
-        Path configuration = Path.of(basePath, "mcfpp.json");
-        if (!Files.isRegularFile(configuration)) return FALLBACK_VERSION;
+        Path configuration = top.mcfpp.language.ProjectConfiguration.find(Path.of(basePath));
+        if (configuration == null) return FALLBACK_VERSION;
         try {
-            JsonElement root = JsonParser.parseString(Files.readString(configuration));
-            if (root.isJsonObject() && root.getAsJsonObject().has("version")) {
-                String version = root.getAsJsonObject().get("version").getAsString().trim();
-                if (!version.isEmpty()) return version;
-            }
+            return top.mcfpp.language.ProjectConfiguration.read(configuration).version();
         } catch (IOException | RuntimeException exception) {
             LOG.warn("Unable to read the Minecraft version from " + configuration, exception);
         }

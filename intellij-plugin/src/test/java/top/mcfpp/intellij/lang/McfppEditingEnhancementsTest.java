@@ -177,7 +177,7 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
     public void testNativeInspectionIgnoresInactiveBranchesAnnotationsSelectorsAndLiterals() {
         myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
         myFixture.configureByText(McfppFileType.INSTANCE, """
-                @From<example.mni.Base>
+                @From(example.mni.Base)
                 data Child {}
                 func nativeBinding() = example.mni.Bridge.run;
                 func main(value: int) {

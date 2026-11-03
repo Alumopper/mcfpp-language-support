@@ -30,11 +30,11 @@ class MCFPPDocumentIndexTest {
     }
 
     @Test
-    fun `extracts readonly normal static and default function parameters`() {
+    fun `extracts readonly normal and default function parameters`() {
         val analysis = MCFPPDocumentIndex.analyze(
             "file:///function-parameters.mcfpp",
             """
-                func choose<limit: int = 1>(static value: int, fallback: int = 0) : int {
+                func choose<limit: int = 1>(value: int, fallback: int = 0) : int {
                     return value;
                 }
             """.trimIndent()
@@ -44,8 +44,7 @@ class MCFPPDocumentIndexTest {
         assertEquals(3, function.parameters.size)
         assertEquals("limit: int = 1", function.parameters[0].label())
         assertTrue(function.parameters[0].isReadOnly)
-        assertEquals("static value: int", function.parameters[1].label())
-        assertTrue(function.parameters[1].isStatic)
+        assertEquals("value: int", function.parameters[1].label())
         assertEquals("fallback: int = 0", function.parameters[2].label())
         assertTrue(function.parameters[2].hasDefault)
 
@@ -58,12 +57,12 @@ class MCFPPDocumentIndexTest {
     }
 
     @Test
-    fun `extracts direct template and interface supertypes`() {
+    fun `extracts direct concrete and abstract data supertypes`() {
         val analysis = MCFPPDocumentIndex.analyze(
             "file:///type-hierarchy.mcfpp",
             """
                 data Base {}
-                interface Contract {}
+                abstract data Contract {}
                 data Middle: Base, Contract {}
             """.trimIndent()
         )

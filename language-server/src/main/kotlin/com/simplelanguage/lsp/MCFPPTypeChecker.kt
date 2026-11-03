@@ -140,7 +140,7 @@ class MCFPPTypeChecker(
                 null
             }
             if (expectedType.isNullOrBlank() && initializer != null && declarationSymbol != null) {
-                inferExpressionType(initializer)?.let { inferredType ->
+                (declarationSymbol.functionValue?.typeName() ?: inferExpressionType(initializer))?.let { inferredType ->
                     inferredSymbolTypes[symbolKey(declarationSymbol)] = inferredType
                 }
             }
@@ -176,8 +176,18 @@ class MCFPPTypeChecker(
             super.visitStatementExpression(ctx)
         }
 
+        override fun visitInlineLambda(ctx: mcfppParser.InlineLambdaContext) {
+            val declaration = generateSequence(ctx.parent) { it.parent }
+                .takeWhile { it !is mcfppParser.InlineLambdaContext && it !is mcfppParser.CurlBlockContext }
+                .filterIsInstance<mcfppParser.FieldDeclarationContext>().firstOrNull()
+            val resultType = declaration?.type()?.typeBody()?.functionType()?.functionReturnType()?.text
+            withFunctionReturnType(resultType ?: "?") {
+                super.visitInlineLambda(ctx)
+            }
+        }
+
         override fun visitReturnStatement(ctx: mcfppParser.ReturnStatementContext) {
-            val expectedType = functionReturnTypes.lastOrNull()
+            val expectedType = functionReturnTypes.lastOrNull()?.takeUnless { it == "?" }
             val expression = ctx.expression()
             if (expectedType != null) {
                 val diagnostic = when {
@@ -223,17 +233,17 @@ class MCFPPTypeChecker(
         }
 
         override fun visitIfStatement(ctx: mcfppParser.IfStatementContext) {
-            checkCondition(ctx.expression())
+            checkCondition(ctx.conditionExpression())
             super.visitIfStatement(ctx)
         }
 
         override fun visitElseIfStatement(ctx: mcfppParser.ElseIfStatementContext) {
-            checkCondition(ctx.expression())
+            checkCondition(ctx.conditionExpression())
             super.visitElseIfStatement(ctx)
         }
 
         override fun visitWhileStatement(ctx: mcfppParser.WhileStatementContext) {
-            checkCondition(ctx.expression())
+            checkCondition(ctx.conditionExpression())
             super.visitWhileStatement(ctx)
         }
 
@@ -244,10 +254,20 @@ class MCFPPTypeChecker(
 
         private fun checkCondition(expression: mcfppParser.ExpressionContext?) {
             if (expression == null) return
-            val actualType = inferExpressionType(expression)
+            checkConditionType(inferExpressionType(expression), contextRange(expression))
+        }
+
+        private fun checkCondition(condition: mcfppParser.ConditionExpressionContext?) {
+            if (condition == null) return
+            val actualType = condition.primary()?.let(::inferPrimaryType)
+                ?: inferCommonBinaryOperatorType(condition.commonBinaryOperatorExpression())
+            checkConditionType(actualType, contextRange(condition))
+        }
+
+        private fun checkConditionType(actualType: String?, range: Range) {
             if (!isAssignable("bool", actualType)) {
                 diagnostics += Diagnostic(
-                    contextRange(expression),
+                    range,
                     "Condition must be `bool`, found `${actualType ?: "unknown"}`",
                     DiagnosticSeverity.Error,
                     "mcfpp"
@@ -531,7 +551,9 @@ class MCFPPTypeChecker(
         val position = tokenPosition(ctx.start)
         val symbol = resolveLocalSymbol(identifier, position)
             ?: resolveGlobalSymbol(identifier, position)
-        var typeName = symbol?.typeName
+        var typeName = if (symbol?.kind in setOf(SymbolKind.Function, SymbolKind.Method)) {
+            MCFPPFunctionValue(symbol!!.parameters, symbol.typeName ?: "void").typeName()
+        } else symbol?.functionValue?.typeName() ?: symbol?.typeName
             ?: symbol?.let { inferredSymbolTypes[symbolKey(it)] }
         repeat(ctx.identifierSuffix().size) {
             typeName = applyIndexType(typeName)

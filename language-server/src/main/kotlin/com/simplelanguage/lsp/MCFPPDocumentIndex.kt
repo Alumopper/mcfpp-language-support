@@ -38,13 +38,11 @@ data class MCFPPImport(
 data class MCFPPFunctionParameter(
     val name: String?,
     val typeName: String,
-    val isStatic: Boolean = false,
     val hasDefault: Boolean = false,
     val defaultValue: String? = null,
     val isReadOnly: Boolean = false
 ) {
     fun label(): String = buildString {
-        if (isStatic) append("static ")
         if (isReadOnly && name != null && typeName.equals("type", ignoreCase = true)) {
             append(name)
         } else {
@@ -65,6 +63,16 @@ enum class MCFPPAccessModifier {
     PUBLIC,
     PROTECTED,
     PRIVATE
+}
+
+data class MCFPPFunctionValue(
+    val parameters: List<MCFPPFunctionParameter>,
+    val returnType: String?
+) {
+    fun typeName(): String? = returnType?.let { result ->
+        if (parameters.any { it.typeName == "?" }) null
+        else parameters.joinToString(",", "(", ")->$result") { it.typeName }
+    }
 }
 
 data class MCFPPSymbol(
@@ -90,7 +98,9 @@ data class MCFPPSymbol(
     val isReadOnly: Boolean = false,
     val isStatic: Boolean = false,
     val accessModifier: MCFPPAccessModifier = MCFPPAccessModifier.PUBLIC,
-    val isSynthetic: Boolean = false
+    val isSynthetic: Boolean = false,
+    val initializer: String? = null,
+    val functionValue: MCFPPFunctionValue? = null
 ) {
     val selectionRange: Range = range
 
@@ -105,7 +115,6 @@ data class MCFPPSymbol(
 
     fun toCompletionKind(): CompletionItemKind = when (kind) {
         SymbolKind.Class -> CompletionItemKind.Class
-        SymbolKind.Interface -> CompletionItemKind.Interface
         SymbolKind.Enum -> CompletionItemKind.Enum
         SymbolKind.Method,
         SymbolKind.Function,
@@ -253,7 +262,9 @@ data class MCFPPDocumentAnalysis(
         }
         val functionScope = innermostFunctionScope(position)
         val typeScope = innermostTypeScope(position)
+        val blockScope = innermostBlockScope(position)
         return when {
+            blockScope != null && isScopeInChain(blockScope.id, scopeId) -> true
             functionScope != null && isScopeInChain(functionScope.id, scopeId) -> true
             typeScope != null && isScopeInChain(typeScope.id, scopeId) -> true
             else -> false
@@ -277,7 +288,7 @@ data class MCFPPDocumentAnalysis(
         return false
     }
 
-    private fun scopeDepth(scopeId: String): Int {
+    fun scopeDepth(scopeId: String): Int {
         var current: String? = scopeId
         var depth = 0
         while (current != null) {
@@ -297,30 +308,43 @@ data class MCFPPDocumentAnalysis(
 
 object MCFPPDocumentIndex {
     val keywords: List<String> = listOf(
-        "namespace", "import", "typealias", "data", "object", "interface", "enum", "func",
+        "namespace", "import", "typealias", "data", "object", "enum", "func",
         "constructor", "if", "else", "while", "for", "do", "try", "store", "execute",
-        "return", "break", "continue", "inline", "const", "static", "override", "abstract",
-        "native", "dynamic", "public", "protected", "private", "impl", "extends", "operator",
+        "return", "break", "continue", "inline", "const", "override", "abstract",
+        "native", "external", "public", "protected", "private", "impl", "extends", "operator",
         "global", "var", "get", "set", "from", "as"
     )
 
     val builtinTypes: List<String> = listOf(
         "int", "long", "byte", "short", "float", "double", "bool", "string", "text", "selector",
         "entity", "nbt", "any", "void", "list", "map", "dict", "Type", "ByteArray", "IntArray",
-        "LongArray", "vec2", "vec3", "vec4"
+        "LongArray", "vec2", "vec3", "vec4", "ScoreRef", "NBTRef"
     )
 
     val builtinValues: List<String> = listOf("true", "false", "null", "this", "super")
+    val referenceFactories: List<String> = listOf("scoreRef", "nbtStorageRef", "nbtEntityRef", "nbtBlockRef")
+
+    fun isReferenceType(name: String): Boolean = name.substringBefore('<').substringAfterLast(':').trim() in setOf("ScoreRef", "NBTRef")
+
+    fun referenceFactoryType(expression: String): String? {
+        val head = expression.trim().substringBefore('(').trim()
+        val name = head.substringBefore('<').substringAfterLast(':').trim()
+        return when {
+            name == "scoreRef" && '(' in expression -> "ScoreRef"
+            name in referenceFactories.drop(1) && head.endsWith('>') && '<' in head ->
+                "NBTRef<${head.substringAfter('<').dropLast(1)}>"
+            else -> null
+        }
+    }
 
     private val namespacePattern = Regex("^\\s*namespace\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)")
     private val importPattern = Regex("^\\s*import\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*):([A-Za-z_][A-Za-z0-9_]*|\\*)(?:\\s+as\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+from\\s+([A-Za-z_][A-Za-z0-9_]*))?")
     private val typeAliasPattern = Regex("^\\s*typealias\\s+(.+?)\\s+as\\s+([A-Za-z_][A-Za-z0-9_]*)")
-    private val dataPattern = Regex("^\\s*(?:final\\s+)?(?:object\\s+)?data\\s+(?:abstract\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\b")
-    private val interfacePattern = Regex("^\\s*interface\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
+    private val dataPattern = Regex("^\\s*(?:(?:final|abstract)\\s+)?(?:object\\s+)?data\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
     private val enumPattern = Regex("^\\s*enum\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
     private val functionPattern = Regex("^\\s*(?:inline\\s+|const\\s+)?func\\s+(?:([A-Za-z_][A-Za-z0-9_<>!?|:&\\[\\]]*)\\s*\\.\\s*)?([A-Za-z_][A-Za-z0-9_]*)\\s*(?:<[^>]*>\\s*)?\\(")
     private val constructorPattern = Regex("^\\s*constructor\\s*\\(")
-    private val variablePattern = Regex("^\\s*(?:var|const|dynamic|import\\s+var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^=;]+?))?(?:\\s*=.*)?;?$")
+    private val variablePattern = Regex("^\\s*(?:var|const|external|import\\s+var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^=;]+?))?(?:\\s*=.*)?;?$")
     private val memberFieldPattern = Regex("^\\s*(?:(?:public|protected|private)\\s+)?(?:var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^={;]+?))?(?:\\s*(?:=|\\{|;|$))")
     private val enumMemberPattern = Regex("^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=|,|$)")
 
@@ -396,11 +420,10 @@ object MCFPPDocumentIndex {
                 topLevelSymbols += symbol
             }
 
-            val typeMatch = dataPattern.find(line) ?: interfacePattern.find(line) ?: enumPattern.find(line)
+            val typeMatch = dataPattern.find(line) ?: enumPattern.find(line)
             if (typeMatch != null) {
                 val name = typeMatch.groupValues[1]
                 val kind = when {
-                    line.contains("interface") -> SymbolKind.Interface
                     line.contains("enum") -> SymbolKind.Enum
                     else -> SymbolKind.Class
                 }
@@ -463,7 +486,7 @@ object MCFPPDocumentIndex {
             }
 
             if (currentType != null && currentFunction == null && containers.lastOrNull()?.name == currentType && containers.lastOrNull()?.kind == ContainerKind.TYPE) {
-                if (enumMemberPattern.matches(line.trim()) && !line.contains("func") && !line.contains("var") && !line.contains("data") && !line.contains("interface")) {
+                if (enumMemberPattern.matches(line.trim()) && !line.contains("func") && !line.contains("var") && !line.contains("data")) {
                     val memberName = enumMemberPattern.find(line.trim())?.groupValues?.get(1)
                     if (!memberName.isNullOrBlank()) {
                         val symbol = createSymbol(uri, lineIndex, normalizedText, line, memberName, SymbolKind.EnumMember, null, currentType, currentType, false, namespaceName)

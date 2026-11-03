@@ -14,6 +14,21 @@ class MCFPPProjectIndexTest {
     lateinit var projectRoot: Path
 
     @Test
+    fun `source root files and Java macros share the project namespace`() {
+        projectRoot.resolve("mcfpp.toml").writeText("schema=1\nnamespace=\"wizard-mni\"\nsourcePath=\"src/main/mcfpp\"\n")
+        val source = projectRoot.resolve("src/main/mcfpp/main.mcfpp")
+        source.parent.createDirectories()
+        source.writeText("func main() { answer(); }")
+        val index = MCFPPProjectIndex()
+        index.setWorkspaceRoots(listOf(projectRoot.toUri().toString()))
+        val model = index.refresh(emptyMap())
+        assertEquals("wizard-mni", model.fileAnalyses.getValue(source.toUri().toString()).namespaceName)
+        assertEquals("wizard-mni", index.namespaceForUri(source.toUri().toString()))
+        val project = index.discoverProjects(projectRoot).single()
+        assertEquals("wizard-mni.x_m_l_models", index.projectNamespace(project, source.parent.resolve("XMLModels/value.mcfpp")))
+    }
+
+    @Test
     fun `reads official singular jar key and legacy aliases`() {
         projectRoot.resolve("mcfpp.json").writeText(
             """
@@ -61,6 +76,33 @@ class MCFPPProjectIndexTest {
 
         assertEquals(projectRoot.resolve("libraries/common"), project.includes.single())
         assertEquals(projectRoot, project.configFile?.parent)
+    }
+
+    @Test
+    fun `resolved CLI libraries enter and leave the editor index after synchronization`() {
+        projectRoot.resolve("mcfpp.toml").writeText(
+            "schema=1\nnamespace=\"demo\"\nsourcePath=\"src/main/mcfpp\"\ncompileArgs=[\"-ignoreStdLib\"]\n"
+        )
+        projectRoot.resolve("src/main/mcfpp").createDirectories()
+        val generated = projectRoot.resolve(".mcfpp").createDirectories()
+        val archive = generated.resolve("dependency.mclib")
+        val resource = javaClass.classLoader.getResourceAsStream("datapack/targets/1.21.8/bin.mclib")
+            ?: javaClass.classLoader.getResourceAsStream("datapack/bin.mclib")
+        java.nio.file.Files.write(archive, requireNotNull(resource).use { it.readBytes() })
+        val modelFile = generated.resolve("ide-model.json")
+        modelFile.writeText(com.google.gson.Gson().toJson(mapOf(
+            "schema" to 1, "libraries" to listOf(mapOf("path" to archive.toString()))
+        )))
+        val index = MCFPPProjectIndex()
+        index.setWorkspaceRoots(listOf(projectRoot.toUri().toString()))
+
+        assertTrue(index.isRelevantWorkspaceChange(modelFile.toUri().toString()))
+        val imported = index.refresh(emptyMap()).librarySymbols.filter { it.name == "print" }
+        assertTrue(imported.isNotEmpty())
+        assertTrue(imported.all { !it.isStdlib && it.uri == archive.toUri().toString() })
+
+        modelFile.writeText("{\"schema\":1,\"libraries\":[]}")
+        assertTrue(index.refresh(emptyMap()).librarySymbols.none { it.name == "print" })
     }
 
     @Test

@@ -86,6 +86,11 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
                                 McfppFileModels.get(target.getContainingFile()).namespace()))) return true;
         var configuration = McfppNamespaceResolver.infer(file).dependency();
         if (configuration == null) return false;
+        if ("mcfpp.toml".equals(configuration.getName())) {
+            try { return top.mcfpp.language.ProjectConfiguration.parse(configuration.toNioPath(),
+                    com.intellij.openapi.vfs.VfsUtilCore.loadText(configuration)).ignoreStdLib(); }
+            catch (Exception ignored) { return false; }
+        }
         try {
             var config = com.google.gson.JsonParser.parseString(
                     com.intellij.openapi.vfs.VfsUtilCore.loadText(configuration)).getAsJsonObject();
@@ -170,6 +175,18 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
 
     private static boolean nativeDependenciesAvailable(McfppNamespaceResolver.Inference inference) {
         if (inference.dependency() == null) return true;
+        if ("mcfpp.toml".equals(inference.dependency().getName())) {
+            try {
+                var config = top.mcfpp.language.ProjectConfiguration.parse(inference.dependency().toNioPath(),
+                        com.intellij.openapi.vfs.VfsUtilCore.loadText(inference.dependency()));
+                var model = inference.dependency().toNioPath().getParent().resolve(".mcfpp/ide-model.json");
+                if (java.nio.file.Files.isRegularFile(model)) {
+                    var json = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(model)).getAsJsonObject();
+                    if (json.has("libraries") && !json.getAsJsonArray("libraries").isEmpty()) return false;
+                }
+                return config.includes().isEmpty() && config.jars().isEmpty();
+            } catch (Exception ignored) { return false; }
+        }
         try {
             var config = com.google.gson.JsonParser.parseString(
                     com.intellij.openapi.vfs.VfsUtilCore.loadText(inference.dependency())).getAsJsonObject();

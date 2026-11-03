@@ -6,6 +6,7 @@ import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SymbolKind
 import top.mcfpp.io.LibBinReader
 import top.mcfpp.language.VersionPreprocessor
+import top.mcfpp.language.ProjectConfiguration
 import top.mcfpp.model.Generic
 import top.mcfpp.model.Namespace
 import top.mcfpp.model.compound.CompoundData
@@ -62,6 +63,13 @@ private data class CachedProjectLibraries(
 )
 
 class MCFPPProjectIndex {
+    private val mniSnapshots = java.util.concurrent.ConcurrentHashMap<String, top.mcfpp.language.MniSymbolSnapshot>()
+    fun setMniSymbols(value: top.mcfpp.language.MniSymbolSnapshot) {
+        if (value.projectUri.isNullOrBlank()) return
+        mniSnapshots.compute(value.projectUri) { _, previous ->
+            if (previous != null && previous.generation > value.generation) previous else value
+        }
+    }
     @Volatile
     private var workspaceRoots: List<Path> = emptyList()
 
@@ -126,7 +134,9 @@ class MCFPPProjectIndex {
             val projectLibrarySymbols = if (cachedLibraries?.signature == librarySignature) {
                 cachedLibraries.symbols
             } else {
-                runCatching { loadLibrarySymbols(project) }.getOrDefault(emptyList())
+                runCatching { loadLibrarySymbols(project) }
+                    .onFailure { System.err.println("MCFPP library index: ${it.stackTraceToString()}") }
+                    .getOrDefault(emptyList())
             }
             librarySymbols += projectLibrarySymbols
             nextLibraryCache[libraryCacheKey] = CachedProjectLibraries(librarySignature, projectLibrarySymbols)
@@ -137,7 +147,7 @@ class MCFPPProjectIndex {
         indexedProjects = projects
         snapshot = MCFPPProjectSnapshot(
             fileAnalyses = fileAnalyses,
-            librarySymbols = librarySymbols.distinctBy {
+            librarySymbols = (librarySymbols + mniSnapshots.values.flatMap { it.toSymbols() }).distinctBy {
                 listOf(
                     it.name,
                     it.kind,
@@ -145,7 +155,7 @@ class MCFPPProjectIndex {
                     it.containerName,
                     it.receiverType,
                     it.parameters.joinToString(";") { parameter ->
-                        listOf(parameter.isReadOnly, parameter.typeName, parameter.hasDefault, parameter.isStatic).joinToString(":")
+                        listOf(parameter.isReadOnly, parameter.typeName, parameter.hasDefault).joinToString(":")
                     }
                 ).joinToString("|")
             },
@@ -159,7 +169,7 @@ class MCFPPProjectIndex {
     fun namespaceForUri(uri: String): String? {
         val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return null
         val project = indexedProjects
-            .filter { path.startsWith(it.sourcePath.toAbsolutePath().normalize()) }
+            .filter { project -> sourceRoots(project).any { path.startsWith(it.toAbsolutePath().normalize()) } }
             .maxByOrNull { it.sourcePath.nameCount }
             ?: return null
         return projectNamespace(project, path)
@@ -168,7 +178,7 @@ class MCFPPProjectIndex {
     fun targetVersionForUri(uri: String): String {
         val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return VersionPreprocessor.DEFAULT_VERSION
         return indexedProjects
-            .filter { path.startsWith(it.sourcePath.toAbsolutePath().normalize()) }
+            .filter { project -> sourceRoots(project).any { path.startsWith(it.toAbsolutePath().normalize()) } }
             .maxByOrNull { it.sourcePath.nameCount }
             ?.targetVersion ?: VersionPreprocessor.DEFAULT_VERSION
     }
@@ -182,7 +192,7 @@ class MCFPPProjectIndex {
             }
             when (path.extension.lowercase()) {
                 "mcfpp", "mclib", "jar", "zip" -> true
-                "json" -> path.parent == root
+                "json", "toml", "lock" -> path.parent == root || path.startsWith(root.resolve(".mcfpp"))
                 else -> false
             }
         }
@@ -192,6 +202,7 @@ class MCFPPProjectIndex {
         if (!root.isDirectory()) {
             return emptyList()
         }
+        if (Files.isRegularFile(root.resolve("mcfpp.toml"))) return listOf(parseConfig(root.resolve("mcfpp.toml")))
         val configFiles = Files.list(root).use { paths ->
             paths.filter { it.isRegularFile() && it.extension.equals("json", ignoreCase = true) }
                 .filter { path ->
@@ -226,33 +237,14 @@ class MCFPPProjectIndex {
     }
 
     private fun parseConfig(configFile: Path): MCFPPProjectConfig {
-        val root = configFile.parent
-        val json = com.google.gson.JsonParser.parseString(configFile.readText()).asJsonObject
-        val compileArgs = readStringList(json.get("compileArgs"))
-        val sourcePath = json.get("sourcePath")?.asString
-            ?.let { resolveProjectPath(root, it.replace("/**", "")) }
-            ?: root
-        val includes = sequenceOf("includes", "include")
-            .flatMap { key -> readStringList(json.get(key)).asSequence() }
-            .map { resolveProjectPath(root, it) }
-            .distinct()
-            .toList()
-        val jars = sequenceOf("jars", "jar")
-            .flatMap { key -> readStringList(json.get(key)).asSequence() }
-            .map { resolveProjectPath(root, it) }
-            .distinct()
-            .toList()
-        return MCFPPProjectConfig(
-            configFile = configFile,
-            root = root,
-            sourcePath = sourcePath,
-            rootNamespace = json.get("namespace")?.asString ?: root.name,
-            includes = includes,
-            jars = jars,
-            targetPath = json.get("targetPath")?.asString?.let { resolveProjectPath(root, it) },
-            ignoreStdLib = compileArgs.any { it == "-ignoreStdLib" },
-            targetVersion = json.get("version")?.asString ?: VersionPreprocessor.DEFAULT_VERSION
-        )
+        val config = ProjectConfiguration.read(configFile)
+        val modelFile = config.root().resolve(".mcfpp/ide-model.json")
+        val libraries = runCatching {
+            val model = com.google.gson.JsonParser.parseString(modelFile.readText()).asJsonObject
+            model.getAsJsonArray("libraries").mapNotNull { it.asJsonObject.get("path")?.asString?.let(Path::of) }
+        }.getOrDefault(emptyList())
+        return MCFPPProjectConfig(configFile, config.root(), config.sourcePath(), config.namespace(),
+            config.includes() + libraries, config.jars(), config.targetPath(), config.ignoreStdLib(), config.version())
     }
 
     private fun readStringList(element: JsonElement?): List<String> {
@@ -271,51 +263,55 @@ class MCFPPProjectIndex {
     }
 
     private fun collectWorkspaceFiles(project: MCFPPProjectConfig, openDocuments: Map<String, String>): List<Path> {
-        if (!project.sourcePath.exists()) {
-            return emptyList()
-        }
-        return Files.walk(project.sourcePath).use { paths ->
-            paths.filter { it.isRegularFile() && it.extension.equals("mcfpp", ignoreCase = true) }
-                .filter { it.toUri().toString() !in openDocuments }
-                .toList()
-        }
+        return sourceRoots(project).filter { it.isDirectory() }.flatMap { root ->
+            Files.walk(root).use { paths ->
+                paths.filter { it.isRegularFile() && it.extension.equals("mcfpp", ignoreCase = true) }
+                    .filter { it.toUri().toString() !in openDocuments }
+                    .toList()
+            }
+        }.distinct()
     }
 
+    private fun sourceRoots(project: MCFPPProjectConfig): List<Path> =
+        listOf(project.sourcePath, project.root.resolve("src/test/mcfpp")).distinct()
+
     private fun loadLibrarySymbols(project: MCFPPProjectConfig): List<MCFPPSymbol> {
-        return synchronized(GlobalScope) {
-            GlobalScope.init()
+        return buildList {
+            val testApi = this@MCFPPProjectIndex.javaClass.classLoader.getResource("testing/assertions.mcfpp")
+            if (testApi != null) {
+                val analysis = testApi.openStream().bufferedReader(Charsets.UTF_8).use {
+                    MCFPPDocumentIndex.analyze(testApi.toExternalForm(), it.readText(), project.targetVersion)
+                }
+                addAll(analysis.topLevelSymbols.filter { it.kind == SymbolKind.Function }.map { it.copy(isExternal = true) })
+            }
             if (!project.ignoreStdLib) {
-                loadFromStream(this::class.java.classLoader.getResourceAsStream("datapack/bin.mclib"))
+                val loader = this@MCFPPProjectIndex.javaClass.classLoader
+                val resource = loader.getResource("datapack/targets/${project.targetVersion}/bin.mclib")
+                    ?: loader.getResource("datapack/bin.mclib")
+                resource?.openStream()?.use { addAll(librarySymbols(it.readBytes(), project.configFile?.toUri()?.toString() ?: "", true)) }
             }
-            project.includes.forEach { include ->
-                when {
-                    include.isDirectory() -> loadFromDirectory(include)
-                    include.extension.equals("jar", ignoreCase = true) -> loadFromJar(include)
-                    include.extension.equals("zip", ignoreCase = true) -> loadFromZip(include)
+            (project.includes + project.jars).distinct().forEach { path ->
+                if (!path.exists()) return@forEach
+                val files = if (path.isDirectory()) Files.walk(path).use { entries -> entries.filter { it.isRegularFile() && it.extension == "mclib" }.toList() } else listOf(path)
+                for (file in files) {
+                    val bytes = when (file.extension.lowercase()) {
+                        "mclib" -> Files.readAllBytes(file)
+                        "jar", "zip" -> ZipFile(file.toFile()).use { zip ->
+                            val entry = zip.getEntry("bin.mclib") ?: zip.getEntry("datapack/bin.mclib")
+                            entry?.let { zip.getInputStream(it).use { stream -> stream.readBytes() } }
+                        }
+                        else -> null
+                    }
+                    if (bytes != null) addAll(librarySymbols(bytes, file.toUri().toString(), false))
                 }
             }
-            project.jars.forEach { jar ->
-                when {
-                    jar.extension.equals("jar", ignoreCase = true) -> loadFromJar(jar)
-                    jar.extension.equals("zip", ignoreCase = true) -> loadFromZip(jar)
-                }
-            }
-            GlobalScope.stdNamespaces.values.flatMap { namespaceSymbols(it, project.configFile?.toUri()?.toString(), true) } +
-                GlobalScope.libNamespaces.values.flatMap { namespaceSymbols(it, project.configFile?.toUri()?.toString(), false) }
         }
     }
 
     internal fun projectNamespace(project: MCFPPProjectConfig, file: Path): String {
-        val sourceRoot = project.sourcePath.toAbsolutePath().normalize()
-        val fileParent = file.toAbsolutePath().normalize().parent ?: sourceRoot
-        val relativeParent = runCatching { sourceRoot.relativize(fileParent) }.getOrNull()
-        if (relativeParent == null || relativeParent.nameCount == 0) {
-            return project.rootNamespace
-        }
-        val suffix = relativeParent
-            .joinToString(".") { it.toString() }
-            .toMcfppSnakeCase()
-        return "${project.rootNamespace}.$suffix"
+        val tests = project.root.resolve("src/test/mcfpp").toAbsolutePath().normalize()
+        val source = if (file.toAbsolutePath().normalize().startsWith(tests)) tests else project.sourcePath
+        return ProjectConfiguration.namespaceFor(source, project.rootNamespace, file)
     }
 
     private fun withDefaultNamespace(analysis: MCFPPDocumentAnalysis, defaultNamespace: String): MCFPPDocumentAnalysis {
@@ -421,7 +417,7 @@ class MCFPPProjectIndex {
         }
         runCatching {
             LibBinReader.readFromStream(stream)
-        }
+        }.onFailure { System.err.println("MCFPP library import: ${it.stackTraceToString()}") }
     }
 
     private fun namespaceSymbols(namespace: Namespace, uri: String?, standard: Boolean): List<MCFPPSymbol> {
@@ -446,10 +442,6 @@ class MCFPPProjectIndex {
             null
         }
         namespace.scope.forEachTemplate { template ->
-            symbols.addAll(externalTemplateSymbols(baseUri, baseRange, namespace.identifier, template, standard))
-            null
-        }
-        namespace.scope.forEachInterface { template ->
             symbols.addAll(externalTemplateSymbols(baseUri, baseRange, namespace.identifier, template, standard))
             null
         }
@@ -498,7 +490,7 @@ class MCFPPProjectIndex {
         symbols += MCFPPSymbol(
             uri = uri,
             name = compound.identifier,
-            kind = if (compound is DataTemplate && compound.isInterface) SymbolKind.Interface else SymbolKind.Class,
+            kind = SymbolKind.Class,
             range = range,
             typeName = compound.identifier,
             topLevel = true,
@@ -591,7 +583,6 @@ class MCFPPProjectIndex {
                 add(MCFPPFunctionParameter(
                     name = parameter.identifier,
                     typeName = parameter.typeName,
-                    isStatic = parameter.isStatic,
                     hasDefault = parameter.hasDefault,
                     defaultValue = parameter.defaultVar?.toString(),
                     isReadOnly = true
@@ -601,7 +592,6 @@ class MCFPPProjectIndex {
                 add(MCFPPFunctionParameter(
                     name = parameter.identifier,
                     typeName = parameter.typeName,
-                    isStatic = parameter.isStatic,
                     hasDefault = parameter.hasDefault,
                     defaultValue = parameter.defaultVar?.toString(),
                     isReadOnly = false

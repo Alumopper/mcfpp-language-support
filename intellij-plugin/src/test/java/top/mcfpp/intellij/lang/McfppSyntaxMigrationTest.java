@@ -4,14 +4,44 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class McfppSyntaxMigrationTest {
-    @Test void retainsMarkdownDocumentation() {
+    @Test void recognizesPublicReferenceTypesAndFactoryResults() {
+        McfppLexer lexer = new McfppLexer();
+        for (String type : java.util.List.of("ScoreRef", "NBTRef")) {
+            lexer.start(type);
+            assertEquals(McfppTokenTypes.TYPE_KEYWORD, lexer.getTokenType());
+        }
+        lexer.start("->");
+        assertEquals("->", lexer.getBufferSequence().subSequence(lexer.getTokenStart(), lexer.getTokenEnd()).toString());
+        var model = McfppFileModel.parse("func run() { var score = scoreRef(\"counter\", \"hp\"); var saved = nbtStorageRef<int>(\"demo:state\", \"counter\"); }");
+        assertEquals("ScoreRef", McfppTypes.declaredType(model.symbols().stream().filter(it -> it.name().equals("score")).findFirst().orElseThrow()));
+        assertEquals("NBTRef", McfppTypes.declaredType(model.symbols().stream().filter(it -> it.name().equals("saved")).findFirst().orElseThrow()));
+    }
+
+    @Test void indexesAbstractDataAndExternalDeclarations() {
+        McfppFileModel model = McfppFileModel.parse("abstract data Contract<T> { abstract func read(): T }\nfunc run(){ external count: int = 1 }");
+        assertTrue(model.symbols().stream().anyMatch(symbol -> symbol.name().equals("Contract") && symbol.kind().isType()));
+        assertEquals("int", McfppTypes.declaredType(model.symbols().stream().filter(symbol -> symbol.name().equals("count")).findFirst().orElseThrow()));
+        McfppLexer lexer = new McfppLexer();
+        lexer.start("external");
+        assertEquals(McfppTokenTypes.DECLARATION_KEYWORD, lexer.getTokenType());
+        for (String word : java.util.List.of("dynamic", "interface")) {
+            lexer.start(word);
+            assertEquals(McfppTokenTypes.IDENTIFIER, lexer.getTokenType());
+        }
+    }
+
+    @Test void retainsAndRendersMarkdownDocumentation() {
         String source = "/// # Counter\r\n  /// **value**\r\n  ///\r\n  ///     indented\r\ndata Counter {var value: int;}";
         McfppSymbol type = McfppFileModel.parse(source).symbols().stream().filter(symbol -> symbol.name().equals("Counter")).findFirst().orElseThrow();
         assertEquals("# Counter\n**value**\n\n    indented", type.documentation());
+        String html = McfppDocumentationTargetProvider.renderMarkdown(type.documentation());
+        assertTrue(html.contains("<h1>Counter</h1>"));
+        assertTrue(html.contains("<strong>value</strong>"));
+        assertTrue(html.contains("<pre><code>indented"));
     }
 
     @Test void indexesDirectDeclarationsAndRejectsOldForms() {
-        McfppFileModel model = McfppFileModel.parse("data Box {value: int; const fixed=1; dynamic count: int; var explicit: int; const var old=2; var legacy as int;}");
+        McfppFileModel model = McfppFileModel.parse("data Box {value: int; const fixed=1; external count: int; var explicit: int; const var old=2; var legacy as int;}");
         assertTrue(model.symbols().stream().noneMatch(symbol -> symbol.name().equals("value") || symbol.name().equals("old") || symbol.name().equals("legacy")));
         assertEquals(3, model.symbols().stream().filter(symbol -> symbol.kind() == McfppSymbolKind.FIELD).count());
         McfppLexer lexer = new McfppLexer();

@@ -21,6 +21,17 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class McfppSymbolIntegrationTest extends BasePlatformTestCase {
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        // Namespace inference reads the packaged configuration beside the attached sources.
+        for (var root : top.mcfpp.intellij.mni.McfppLibraryRootsProvider.mcfppSourceRoots(getProject())) {
+            if (root.getFileSystem() instanceof com.intellij.openapi.vfs.JarFileSystem) {
+                com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),
+                    com.intellij.openapi.vfs.JarFileSystem.getInstance().getVirtualFileForJar(root).getPath());
+            }
+        }
+    }
     public void testVersionChangeInvalidatesNativeModelWithExplicitNamespace() throws Exception {
         var config = myFixture.addFileToProject("mcfpp.json", "{\"version\":\"26.3\"}");
         var source = myFixture.addFileToProject("src/versions.mcfpp", """

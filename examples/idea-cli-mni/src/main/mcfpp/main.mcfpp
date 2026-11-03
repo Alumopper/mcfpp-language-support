@@ -1,0 +1,5 @@
+func answer(): int = example.mni.Example.answer
+
+func main() {
+    print(answer())
+}

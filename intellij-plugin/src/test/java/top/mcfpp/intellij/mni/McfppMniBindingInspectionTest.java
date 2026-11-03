@@ -6,7 +6,7 @@ import top.mcfpp.intellij.lang.McfppFileType;
 
 import java.util.List;
 
-public final class McfppMniBindingInspectionTest extends LightJavaCodeInsightFixtureTestCase {
+public final class McfppMniBindingInspectionTest extends McfppJavaFixtureTestCase {
     public void testInactiveNativeBindingsDoNotProduceJavaDiagnostics() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 #if MC >= 26.3
@@ -109,7 +109,7 @@ public final class McfppMniBindingInspectionTest extends LightJavaCodeInsightFix
     public void testReportsUnresolvedFromClass() {
         myFixture.configureByText(
                 McfppFileType.INSTANCE,
-                "@From<example.mni.Missing> data Example {}"
+                "@From(example.mni.Missing) data Example {}"
         );
 
         assertMniProblem("@From class 'example.mni.Missing' cannot be resolved");

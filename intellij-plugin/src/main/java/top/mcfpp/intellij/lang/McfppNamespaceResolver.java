@@ -6,6 +6,7 @@ import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import top.mcfpp.language.VersionPreprocessor;
+import top.mcfpp.language.ProjectConfiguration;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -28,25 +29,14 @@ final class McfppNamespaceResolver {
     static @NotNull Inference infer(@NotNull VirtualFile virtualFile) {
         VirtualFile directory = virtualFile.getParent();
         for (int level = 0; directory != null && level < 10; level++, directory = directory.getParent()) {
-            VirtualFile configuration = directory.findChild("mcfpp.json");
+            VirtualFile configuration = directory.findChild("mcfpp.toml");
+            if (configuration == null) configuration = directory.findChild("mcfpp.json");
             if (configuration == null || configuration.isDirectory()) continue;
             try {
                 String text = VfsUtilCore.loadText(configuration);
-                String baseNamespace = match(NAMESPACE, text);
-                String sourcePath = match(SOURCE_PATH, text);
-                String version = match(VERSION, text);
-                if (version == null) version = VersionPreprocessor.DEFAULT_VERSION;
-                if (baseNamespace == null || sourcePath == null) return new Inference("", configuration, version);
-                VirtualFile sourceRoot = directory.findFileByRelativePath(sourcePath.replace('\\', '/'));
-                if (sourceRoot == null || !VfsUtilCore.isAncestor(sourceRoot, virtualFile, false)) {
-                    return new Inference("", configuration, version);
-                }
-                String relativeDirectory = VfsUtilCore.getRelativePath(virtualFile.getParent(), sourceRoot, '/');
-                String suffix = relativeDirectory == null || relativeDirectory.isEmpty()
-                        ? ""
-                        : "." + relativeDirectory.replace('/', '.');
-                return new Inference(baseNamespace + suffix, configuration, version);
-            } catch (IOException ignored) {
+                var parsed = ProjectConfiguration.parse(java.nio.file.Path.of(configuration.getPath()), text);
+                return new Inference(parsed.namespaceFor(java.nio.file.Path.of(virtualFile.getPath())), configuration, parsed.version());
+            } catch (IOException | RuntimeException ignored) {
                 return new Inference("", configuration, VersionPreprocessor.DEFAULT_VERSION);
             }
         }

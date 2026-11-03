@@ -19,4 +19,8 @@ public final class McfppFile extends PsiFileBase {
     public String toString() {
         return "MCFPP File";
     }
+    @Override public com.intellij.psi.PsiReference findReferenceAt(int offset) {
+        var resource = top.mcfpp.intellij.datapack.PackResourceReference.at(this, offset);
+        return resource != null ? resource : super.findReferenceAt(offset);
+    }
 }

@@ -17,12 +17,27 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
+    public void testPublicReferenceCompletionAndMigrationDiagnostic() {
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var score: ScoreRef; score.<caret> }");
+        var items = myFixture.completeBasic();
+        assertNotNull(items);
+        var names = Arrays.stream(items).map(item -> item.getLookupString()).toList();
+        assertTrue(names.containsAll(List.of("set", "tryRead")));
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { var saved: NBTRef<int>; saved.<caret> }");
+        items = myFixture.completeBasic();
+        assertNotNull(items);
+        assertTrue(Arrays.stream(items).map(item -> item.getLookupString()).toList().containsAll(List.of("set", "tryRead")));
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() { damage(ref local, 1) }");
+        assertTrue(myFixture.doHighlighting().stream().anyMatch(info ->
+                info.getDescription() != null && info.getDescription().contains("'ref expression' has been removed")));
+    }
+
     public void testCompletionDoesNotOfferLegacyDeclarationForms() {
-        for (String source : List.of("func main() { const v<caret> }", "func main() { dynamic v<caret> }",
+        for (String source : List.of("func main() { const v<caret> }", "func main() { external v<caret> }",
                 "func main() { var value a<caret> }", "func transform<T a<caret>>() {}")) {
             myFixture.configureByText(McfppFileType.INSTANCE, source);
             var items = myFixture.completeBasic();
-            String forbidden = source.contains("const ") || source.contains("dynamic ") ? "var" : "as";
+            String forbidden = source.contains("const ") || source.contains("external ") ? "var" : "as";
             assertTrue(source + " " + (items == null ? "auto-inserted" : Arrays.stream(items).map(item -> item.getLookupString()).toList()), items == null || Arrays.stream(items).noneMatch(item ->
                     item.getLookupString().equals(forbidden)));
         }
@@ -157,6 +172,15 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
         myFixture.checkResult("func calculate([]\n        <caret>)");
     }
 
+    public void testEnterBeforeClosingBraceAlignsWithItsOpeningLine() {
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() {\n    print(answer())<caret>}");
+        myFixture.type('\n');
+        myFixture.checkResult("func main() {\n    print(answer())\n<caret>}");
+        myFixture.configureByText(McfppFileType.INSTANCE, "func main() {\n    if true {\n        print(\"}\")<caret>}\n}");
+        myFixture.type('\n');
+        myFixture.checkResult("func main() {\n    if true {\n        print(\"}\")\n    <caret>}\n}");
+    }
+
     public void testStructureViewNestsMembersAndFoldingFindsBodies() {
         myFixture.configureByText(McfppFileType.INSTANCE, """
                 namespace demo;
@@ -212,7 +236,7 @@ public final class McfppEditorFeaturesTest extends BasePlatformTestCase {
     public void testSemanticAnnotatorHighlightsSymbolsAndQuotedMniSegments() {
         String source = """
                 import example.models:Counter;
-                @From<\"example.mni.Base\">
+                @From(\"example.mni.Base\")
                 data Child { func update() {} }
                 func main(value: Child) { var copy: Child = Child(); Child.update(); }
                 """;

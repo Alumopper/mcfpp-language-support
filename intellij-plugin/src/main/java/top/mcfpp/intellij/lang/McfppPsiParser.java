@@ -14,7 +14,7 @@ import java.util.Set;
  * the user is typing incomplete code.
  */
 final class McfppPsiParser implements PsiParser {
-    private static final Set<String> VARIABLE_KEYWORDS = Set.of("var", "const", "dynamic");
+    private static final Set<String> VARIABLE_KEYWORDS = Set.of("var", "const", "external");
 
     @Override
     public @NotNull ASTNode parse(@NotNull IElementType root, @NotNull PsiBuilder builder) {
@@ -158,7 +158,7 @@ final class McfppPsiParser implements PsiParser {
             else if ("<".equals(text)) angles++;
             else if (">".equals(text) && angles > 0) angles--;
 
-            if (atParameterStart && ("static".equals(text) || "var".equals(text))) {
+            if (atParameterStart && "var".equals(text)) {
                 builder.advanceLexer();
                 continue;
             }

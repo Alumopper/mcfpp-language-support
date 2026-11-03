@@ -164,6 +164,12 @@ final class McfppSymbolResolver {
                 }
             }
         }
+        var javaPlugin=com.intellij.ide.plugins.PluginManagerCore.getPlugin(com.intellij.openapi.extensions.PluginId.getId("com.intellij.java"));
+        if(javaPlugin!=null && javaPlugin.isEnabled()) {
+            for(var macro:top.mcfpp.intellij.mni.McfppMacroIndex.visibleAt(usage.getContainingFile(),usage.getText(),usage.getTextOffset())) {
+                if(seen.add(macro.signature())) result.add(McfppCallableInfo.fromSignature(macro.signature()));
+            }
+        }
         return result;
     }
 
