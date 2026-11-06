@@ -32,22 +32,22 @@ public class McfppProjectWizard implements LanguageGeneratorNewProjectWizard {
             @Override public void setupUI(@NotNull Panel panel) {
                 jdk.addBrowseFolderListener(null,FileChooserDescriptorFactory.createSingleFolderDescriptor());
                 jdk.getTextField().setColumns(32);
-                jdk.getTextField().setToolTipText("JDK 21 home directory; leave blank to use a detected JDK 21.");
+                jdk.getTextField().setToolTipText("JDK 25 home directory; leave blank to use a detected JDK 25.");
                 try { jdk.setText(McfppToolchain.javaHome(getContext().getProject()==null
                     ? com.intellij.openapi.project.ProjectManager.getInstance().getDefaultProject() : getContext().getProject()).toString()); }
                 catch(Exception ignored) {}
-                panel.row("JDK 21:",row -> {
+                panel.row("JDK 25:",row -> {
                     row.cell(jdk).validationOnApply((builder,field) -> {
                         String value=field.getText().trim();
                         if(value.isEmpty()) {
                             try { McfppToolchain.javaHome(getContext().getProject()==null
                                 ? com.intellij.openapi.project.ProjectManager.getInstance().getDefaultProject() : getContext().getProject()); }
-                            catch(Exception error) { return new ValidationInfo("Select a JDK 21 installation.",field); }
+                            catch(Exception error) { return new ValidationInfo("Select a JDK 25 installation.",field); }
                             return null;
                         }
-                        try { if(McfppToolchain.isJdk21(Path.of(value))) return null; }
+                        try { if(McfppToolchain.isJdk25(Path.of(value))) return null; }
                         catch(RuntimeException ignored) {}
-                        return new ValidationInfo("Select a JDK 21 home directory containing bin/javac.",field);
+                        return new ValidationInfo("Select a JDK 25 home directory containing bin/javac.",field);
                     });
                     return Unit.INSTANCE;
                 });

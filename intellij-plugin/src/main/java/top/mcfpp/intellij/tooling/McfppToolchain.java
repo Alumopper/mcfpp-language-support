@@ -18,22 +18,22 @@ public final class McfppToolchain {
         String explicit = McfppSettings.get(project).javaHome.trim();
         if (!explicit.isEmpty()) {
             Path path = Path.of(explicit);
-            if (!isJdk21(path)) throw new IOException("Select a JDK 21 installation in Settings | Tools | MCFPP.");
+            if (!isJdk25(path)) throw new IOException("Select a JDK 25 installation in Settings | Tools | MCFPP.");
             return path;
         }
         List<String> candidates = new ArrayList<>();
         var sdk = ProjectRootManager.getInstance(project).getProjectSdk();
         if (sdk != null) candidates.add(sdk.getHomePath());
-        for (String variable : List.of("MCFPP_JAVA_HOME", "JDK21_HOME", "JAVA_HOME")) candidates.add(System.getenv(variable));
+        for (String variable : List.of("MCFPP_JAVA_HOME", "JDK25_HOME", "JAVA_HOME")) candidates.add(System.getenv(variable));
         for (var candidate : ProjectJdkTable.getInstance().getAllJdks()) candidates.add(candidate.getHomePath());
         candidates.add(System.getProperty("java.home"));
-        for (String path : candidates) if (path != null && isJdk21(Path.of(path))) return Path.of(path);
-        throw new IOException("MCFPP requires JDK 21. Select it in Settings | Tools | MCFPP.");
+        for (String path : candidates) if (path != null && isJdk25(Path.of(path))) return Path.of(path);
+        throw new IOException("MCFPP requires JDK 25. Select it in Settings | Tools | MCFPP.");
     }
-    public static boolean isJdk21(Path path) {
+    public static boolean isJdk25(Path path) {
         try {
             return Files.isRegularFile(path.resolve("bin/" + (SystemInfo.isWindows ? "javac.exe" : "javac"))) &&
-                Files.readString(path.resolve("release")).matches("(?s).*JAVA_VERSION=\"21[.\"][^\n]*.*");
+                Files.readString(path.resolve("release")).matches("(?s).*JAVA_VERSION=\"25[.\"][^\n]*.*");
         } catch (IOException | RuntimeException ignored) { return false; }
     }
     public static Path compiler(Project project) throws IOException {

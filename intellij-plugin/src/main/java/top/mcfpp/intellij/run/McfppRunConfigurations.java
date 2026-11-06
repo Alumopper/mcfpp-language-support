@@ -39,6 +39,12 @@ public final class McfppRunConfigurations {
         ExecutionUtil.runConfiguration(get(project,task),DefaultRunExecutor.getRunExecutorInstance());
     }
     public static void runTest(Project project,Path directory,String id) {
+        startTest(project,directory,id,false);
+    }
+    public static void debugTest(Project project,Path directory,String id) {
+        startTest(project,directory,id,true);
+    }
+    private static void startTest(Project project,Path directory,String id,boolean debug) {
         var manager=RunManager.getInstance(project);
         var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
         var settings=manager.createConfiguration("MCFPP "+id,type);
@@ -46,7 +52,16 @@ public final class McfppRunConfigurations {
         configuration.task=McfppTask.TEST; configuration.projectPath=directory.toString();
         configuration.arguments="--tests "+com.intellij.util.execution.ParametersListUtil.join(java.util.List.of(id));
         manager.setTemporaryConfiguration(settings);
-        ExecutionUtil.runConfiguration(settings,DefaultRunExecutor.getRunExecutorInstance());
+        ExecutionUtil.runConfiguration(settings,debug ? com.intellij.execution.executors.DefaultDebugExecutor.getDebugExecutorInstance() : DefaultRunExecutor.getRunExecutorInstance());
+    }
+    public static void debugFunction(Project project,Path directory,String id) {
+        var manager=RunManager.getInstance(project);
+        var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
+        var settings=manager.createConfiguration("Debug "+id,type);
+        var configuration=(McfppRunConfiguration)settings.getConfiguration();
+        configuration.task=McfppTask.BUILD; configuration.projectPath=directory.toString(); configuration.debugFunction=id;
+        manager.setTemporaryConfiguration(settings);
+        ExecutionUtil.runConfiguration(settings,com.intellij.execution.executors.DefaultDebugExecutor.getDebugExecutorInstance());
     }
 }
 

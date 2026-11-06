@@ -29,7 +29,12 @@ public final class McfppTestLineMarker extends RunLineMarkerContributor implemen
                 McfppRunConfigurations.runTest(file.getProject(),configuration.getParent(),id);
             }
         };
-        return new Info(AllIcons.RunConfigurations.TestState.Run,new AnAction[]{action},e -> "Run MCFPP test "+id);
+        var debug=new DumbAwareAction("Debug "+id) {
+            @Override public void actionPerformed(@NotNull AnActionEvent event) {
+                McfppRunConfigurations.debugTest(file.getProject(),configuration.getParent(),id);
+            }
+        };
+        return new Info(AllIcons.RunConfigurations.TestState.Run,new AnAction[]{action,debug},e -> "Run or debug MCFPP test "+id);
     }
 
     private boolean isTest(McfppFile file,McfppFileModel model,McfppSymbol symbol) {

@@ -40,7 +40,7 @@ public final class McfppToolWindowFactory implements ToolWindowFactory {
                 var versions=JsonParser.parseReader(new java.io.InputStreamReader(input,java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
                 heading.add(new JLabel("MCFPP "+versions.get("compilerVersion").getAsString()+" · Prettier "+versions.get("prettierVersion").getAsString()+" · Linter "+versions.get("linterVersion").getAsString()));
             } catch(Exception ignored) {}
-            try { tools.setText("JDK 21: "+McfppToolchain.javaHome(project)); } catch(Exception error) { tools.setText("JDK 21: configure in MCFPP settings"); }
+            try { tools.setText("JDK 25: "+McfppToolchain.javaHome(project)); } catch(Exception error) { tools.setText("JDK 25: configure in MCFPP settings"); }
             var tasks=new JPanel(new GridLayout(0,3,6,6));
             for(var task:McfppTask.values()) {
                 var button=new JButton(task.title); tasks.add(button);

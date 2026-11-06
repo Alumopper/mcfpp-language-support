@@ -1,5 +1,8 @@
-Datapack Sandbox 1.1.1 (local 26.3 build, 2026-10-01)
+Datapack Sandbox 1.1.1 + MCFPP live debugging protocol 1 (2026-11-03)
 Source: https://github.com/Alumopper/DatapackSandbox
 Base commit: cc9ae9634813b0087be0d9d41384f679ec240ca5
-Includes the local working-tree Minecraft 26.3 profile and native float commands.
-SHA-256: 3f67acd6c0f145db962c814ae91f6b65f13564c531f56ec3ac45141954b1a46b
+Source patch: mcfpp-live-debug.patch
+Patch SHA-256: 075907a544ac9a136cbb5c0021a70cae28c981cefa5239d67641bc7c26e7632d
+JAR SHA-256: f8e9589df356f4e6a0a335ddc63e6ab9ac428f20ca949ba23979adf0763ec153
+Build: JDK 25, ./gradlew :cli:fatJar
+Includes restored Minecraft 26.3 profile/native float commands and live debug.* JSONL.

@@ -2,7 +2,7 @@ import org.gradle.api.plugins.antlr.AntlrTask
 import java.security.MessageDigest
 
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "1.9.20"
+    id("org.jetbrains.kotlin.jvm") version "2.4.10"
     id("antlr")
     application
 }
@@ -76,12 +76,12 @@ dependencies {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion.set(JavaLanguageVersion.of(25))
     }
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 tasks.generateGrammarSource {

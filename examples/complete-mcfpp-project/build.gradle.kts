@@ -15,7 +15,7 @@ dependencies {
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
 
 tasks.jar {
@@ -26,7 +26,7 @@ val compileMcfpp by tasks.registering(JavaExec::class) {
     group = "verification"
     description = "Compile the complete MCFPP fixture with its Java MNI implementation."
     dependsOn(tasks.jar)
-    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     mainClass.set("top.mcfpp.MCFPPKt")
     classpath = configurations.runtimeClasspath.get() + sourceSets.main.get().output
     workingDir = projectDir

@@ -28,9 +28,9 @@ public final class McfppSettingsConfigurable implements SearchableConfigurable {
         var constraints = new GridBagConstraints();
         constraints.gridx=0; constraints.gridy=0; constraints.anchor=GridBagConstraints.WEST; constraints.insets=new Insets(5,5,5,5);
         add("Compiler JAR (blank: bundled)", compiler, constraints, false);
-        add("JDK 21 home (blank: automatic)", java, constraints, true);
+        add("JDK 25 home (compiler, MNI, debugger and language server)", java, constraints, true);
         add("Node.js 20+ (blank: PATH)", node, constraints, false);
-        add("Command service Java 25+ (blank: automatic)", dps, constraints, false);
+        add("DSB Java override (blank: use the selected JDK)", dps, constraints, false);
         add("Linter package directory (blank: bundled)", linter, constraints, true);
         add("Prettier 3 package directory (blank: bundled)", prettier, constraints, true);
         for (var checkbox : new JCheckBox[]{format, fix, lint}) {

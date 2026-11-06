@@ -5,7 +5,7 @@
 ## 打开前准备
 
 1. 在 **Settings | Plugins | 齿轮 | Install Plugin from Disk** 安装 `../../intellij-plugin/build/distributions/mcfpp-intellij-0.4.2.zip`，按 IDEA 提示重启。
-2. 启用 Java 插件，设置 **Project SDK** 与 **Gradle JVM** 为 Java 21。自动化测试基准为 **IntelliJ IDEA Ultimate 2025.3.3**，兼容性检查也覆盖本机 IDEA 2026.2 的相同 build **262.10315.125**（使用完整 SDK）；LSP 功能需要 IDEA 的 LSP 模块。
+2. 启用 Java 插件，设置 **Project SDK** 与 **Gradle JVM** 为 Java 25。自动化测试基准为 **IntelliJ IDEA Ultimate 2025.3.3**，兼容性检查也覆盖本机 IDEA 2026.2 的相同 build **262.10315.125**（使用完整 SDK）；LSP 功能需要 IDEA 的 LSP 模块。
 3. 本项目的 Gradle Wrapper 为 9.2.1。Java/MNI 依赖直接使用 `../../language-server/build/libs/mcfpp-language-server.jar`，不下载 MCFPP SNAPSHOT 依赖；当前工作区已构建该文件。换到其他机器时，先构建语言服务器，或用 `-PmcfppApiJar=/绝对路径/mcfpp.jar` 指定真实 MCFPP JAR。
 4. 命令补全和命令诊断需要 Java 25。当前机器可以从终端启动 IDEA，让它继承下面的环境变量；已经运行的 IDEA 需先退出：
 

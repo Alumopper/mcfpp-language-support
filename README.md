@@ -51,7 +51,7 @@ The SDK baseline is IntelliJ IDEA 2025.3.3, with UI acceptance on 2026.2.2. LSP 
 
 ### Language server
 
-Java 21 is required.
+Java 25 is required.
 
 ```powershell
 cd language-server
@@ -75,7 +75,7 @@ Open the repository root or `vscode-extension` directory in VS Code, select `Run
 
 ### IntelliJ IDEA plugin
 
-Gradle 9, Java 21, and IntelliJ IDEA Ultimate 2025.3.x are required.
+Gradle 9, Java 25, and IntelliJ IDEA Ultimate 2025.3.x are required.
 
 ```powershell
 cd intellij-plugin

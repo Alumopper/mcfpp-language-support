@@ -311,6 +311,11 @@ public final class McfppCommandService implements Disposable {
         addCandidate(candidates, top.mcfpp.intellij.tooling.McfppSettings.get(project).dpsJavaPath);
         addCandidate(candidates, System.getProperty("mcfpp.dps.java.path"));
         addCandidate(candidates, System.getenv("MCFPP_DPS_JAVA"));
+        try {
+            addJavaHome(candidates, top.mcfpp.intellij.tooling.McfppToolchain.javaHome(project).toString());
+        } catch (IOException | RuntimeException exception) {
+            LOG.debug("MCFPP JDK is unavailable while locating Java 25", exception);
+        }
         addJavaHome(candidates, System.getenv("JAVA_HOME"));
         candidates.add(isWindows() ? "java.exe" : "java");
         try {

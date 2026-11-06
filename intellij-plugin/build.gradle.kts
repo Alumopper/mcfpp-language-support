@@ -43,7 +43,7 @@ dependencies {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("mcfppBuildJava").orElse("21").get().toInt()))
+        languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("mcfppBuildJava").orElse("25").get().toInt()))
     }
 }
 
@@ -122,7 +122,7 @@ val toolchainManifest by tasks.registering {
     val sourcesFile = compilerSources.get()
     val serverFile = languageServerJar.asFile
     val formatterFile = formatterBundle.get().archiveFile.get().asFile
-    val versionJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }.get().executablePath.asFile
+    val versionJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }.get().executablePath.asFile
     val linterPackage = linterRoot.file("package.json").asFile
     val prettierPackage = linterRoot.file("node_modules/prettier/package.json").asFile
     val pluginVersion = project.version.toString()

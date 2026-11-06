@@ -7,9 +7,9 @@ The `datapack` directory is an IDEA-plugin smoke test for `.mcfunction`,
 Open this directory in VS Code so the MCFPP and Red Hat Java extensions index the
 MCFPP source and `ProjectMni.java` together.
 
-Run the end-to-end compiler check with Java 21:
+Run the end-to-end compiler check with Java 25:
 
 ```powershell
-$env:JAVA_HOME = 'C:\path\to\jdk-21'
+$env:JAVA_HOME = 'C:\path\to\jdk-25'
 ..\..\..\MCFPP\gradlew.bat -p . check
 ```

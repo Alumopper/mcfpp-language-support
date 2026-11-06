@@ -42,11 +42,13 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
 
     @Override
     public @NotNull GeneralCommandLine createCommandLine() {
-        Path javaExecutable = Path.of(
-                System.getProperty("java.home"),
-                "bin",
-                SystemInfo.isWindows ? "java.exe" : "java"
-        );
+        Path javaExecutable;
+        try {
+            javaExecutable = top.mcfpp.intellij.tooling.McfppToolchain.javaHome(getProject())
+                    .resolve("bin").resolve(SystemInfo.isWindows ? "java.exe" : "java");
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException(exception.getMessage(), exception);
+        }
         return new GeneralCommandLine(
                 javaExecutable.toString(),
                 "-Xmx768m",

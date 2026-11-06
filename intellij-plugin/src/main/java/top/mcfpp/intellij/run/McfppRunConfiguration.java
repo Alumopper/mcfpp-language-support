@@ -17,6 +17,8 @@ import java.util.*;
 public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigurationOptions> {
     public McfppTask task=McfppTask.BUILD;
     public String projectPath="",arguments="";
+    public String debugFunction="";
+    public boolean debugStopOnEntry=false;
     public boolean offline=false,locked=false;
     public Map<String,String> environment=new LinkedHashMap<>();
     public McfppRunConfiguration(Project project,ConfigurationFactory factory,String name) { super(project,factory,name); }
@@ -121,12 +123,14 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         super.readExternal(element);
         try { task=McfppTask.valueOf(element.getAttributeValue("task","BUILD")); } catch(IllegalArgumentException ignored) {}
         projectPath=element.getAttributeValue("projectPath",""); arguments=element.getAttributeValue("arguments","");
+        debugFunction=element.getAttributeValue("debugFunction",""); debugStopOnEntry=Boolean.parseBoolean(element.getAttributeValue("debugStopOnEntry","false"));
         offline=Boolean.parseBoolean(element.getAttributeValue("offline","false")); locked=Boolean.parseBoolean(element.getAttributeValue("locked","false"));
         environment.clear(); for(Element entry:element.getChildren("env")) environment.put(entry.getAttributeValue("name"),entry.getAttributeValue("value",""));
     }
     @Override public void writeExternal(@NotNull Element element) {
         super.writeExternal(element);
         element.setAttribute("task",task.name()).setAttribute("projectPath",projectPath).setAttribute("arguments",arguments);
+        element.setAttribute("debugFunction",debugFunction).setAttribute("debugStopOnEntry",Boolean.toString(debugStopOnEntry));
         element.setAttribute("offline",Boolean.toString(offline)).setAttribute("locked",Boolean.toString(locked));
         for(var entry:environment.entrySet()) element.addContent(new Element("env").setAttribute("name",entry.getKey()).setAttribute("value",entry.getValue()));
     }

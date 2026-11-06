@@ -14,7 +14,7 @@ This preview extension provides project-aware language support for MCFPP through
 
 ## Requirements
 
-- Java 21 or newer available through `JAVA_HOME` or `PATH`
+- Java 25 or newer available through `JAVA_HOME` or `PATH`
 - The [Minecraft command syntax extension](https://marketplace.visualstudio.com/items?itemName=MinecraftCommands.syntax-mcfunction), declared as `MinecraftCommands.syntax-mcfunction`
 
 The Java language extension is optional. MCFPP's core language features work without it.

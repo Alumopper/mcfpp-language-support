@@ -148,8 +148,8 @@ public final class McfppProjectService {
             try { if(sdk.getHomePath()!=null && Files.isSameFile(home,Path.of(sdk.getHomePath()))) return sdk; }
             catch(java.io.IOException | RuntimeException ignored) {}
         }
-        String name="MCFPP JDK 21";
-        for(int suffix=2;table.findJdk(name)!=null;suffix++) name="MCFPP JDK 21 ("+suffix+")";
+        String name="MCFPP JDK 25";
+        for(int suffix=2;table.findJdk(name)!=null;suffix++) name="MCFPP JDK 25 ("+suffix+")";
         var sdk=JavaSdk.getInstance().createJdk(name,home.toString(),false);
         table.addJdk(sdk);
         return sdk;

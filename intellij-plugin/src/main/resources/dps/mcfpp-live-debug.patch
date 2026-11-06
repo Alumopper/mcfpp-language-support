@@ -1,0 +1,1302 @@
+diff --git a/api/cli.api b/api/cli.api
+index fb2d32e..3fd3562 100644
+--- a/api/cli.api
++++ b/api/cli.api
+@@ -653,6 +653,46 @@ final class moe.afox.dpsandbox.cli.JvmViewportWindow$createController$5 extends
+   public final void invoke(moe.afox.dpsandbox.cli.JvmViewportEnvironment);
+   public java.lang.Object invoke(java.lang.Object);
+ }
++public final class moe.afox.dpsandbox.cli.LiveDebugSession implements moe.afox.dpsandbox.core.SandboxExecutionObserver {
++  public moe.afox.dpsandbox.cli.LiveDebugSession(moe.afox.dpsandbox.core.DatapackSandbox, kotlin.jvm.functions.Function2<? super java.lang.String, ? super com.google.gson.JsonObject, kotlin.Unit>);
++  public final boolean getActive();
++  public final com.google.gson.JsonObject dispatch(java.lang.String, com.google.gson.JsonObject);
++  public void enterFunction(moe.afox.dpsandbox.core.ResourceLocation, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public void exitFunction();
++  public void beforeCommand(java.lang.String, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public final void stop();
++  public final void close();
++}
++final class moe.afox.dpsandbox.cli.LiveDebugSession$Frame {
++  public moe.afox.dpsandbox.cli.LiveDebugSession$Frame(java.lang.String, long, java.lang.String, java.lang.Integer, java.lang.String, java.lang.String, moe.afox.dpsandbox.core.Position, moe.afox.dpsandbox.core.ExecutionContext);
++  public final java.lang.String getId();
++  public final long getActivation();
++  public final java.lang.String getFile();
++  public final void setFile(java.lang.String);
++  public final java.lang.Integer getLine();
++  public final void setLine(java.lang.Integer);
++  public final java.lang.String getExecutor();
++  public final void setExecutor(java.lang.String);
++  public final java.lang.String getDimension();
++  public final void setDimension(java.lang.String);
++  public final moe.afox.dpsandbox.core.Position getPosition();
++  public final void setPosition(moe.afox.dpsandbox.core.Position);
++  public final moe.afox.dpsandbox.core.ExecutionContext getExecution();
++  public final void setExecution(moe.afox.dpsandbox.core.ExecutionContext);
++  public final java.lang.String component1();
++  public final long component2();
++  public final java.lang.String component3();
++  public final java.lang.Integer component4();
++  public final java.lang.String component5();
++  public final java.lang.String component6();
++  public final moe.afox.dpsandbox.core.Position component7();
++  public final moe.afox.dpsandbox.core.ExecutionContext component8();
++  public final moe.afox.dpsandbox.cli.LiveDebugSession$Frame copy(java.lang.String, long, java.lang.String, java.lang.Integer, java.lang.String, java.lang.String, moe.afox.dpsandbox.core.Position, moe.afox.dpsandbox.core.ExecutionContext);
++  public static moe.afox.dpsandbox.cli.LiveDebugSession$Frame copy$default(moe.afox.dpsandbox.cli.LiveDebugSession$Frame, java.lang.String, long, java.lang.String, java.lang.Integer, java.lang.String, java.lang.String, moe.afox.dpsandbox.core.Position, moe.afox.dpsandbox.core.ExecutionContext, int, java.lang.Object);
++  public java.lang.String toString();
++  public int hashCode();
++  public boolean equals(java.lang.Object);
++}
+ public final class moe.afox.dpsandbox.cli.LootCommand extends com.github.ajalt.clikt.core.CliktCommand {
+   public moe.afox.dpsandbox.cli.LootCommand();
+   public void run();
+@@ -848,6 +888,7 @@ public final class moe.afox.dpsandbox.cli.ReplPresentation {
+   public final java.lang.String success(java.lang.String, java.lang.String);
+   public final java.lang.String warning(java.lang.String);
+ }
++
+ public final class moe.afox.dpsandbox.cli.ResourceSummaryRenderer {
+   public static final moe.afox.dpsandbox.cli.ResourceSummaryRenderer INSTANCE;
+   public final java.util.List<java.lang.String> render(java.lang.String, moe.afox.dpsandbox.core.DatapackResourceSummary);
+@@ -857,7 +898,6 @@ public final class moe.afox.dpsandbox.cli.ResourcesCommand extends com.github.aj
+   public moe.afox.dpsandbox.cli.ResourcesCommand();
+   public void run();
+ }
+-
+ public final class moe.afox.dpsandbox.cli.RunCommand extends com.github.ajalt.clikt.core.CliktCommand {
+   public moe.afox.dpsandbox.cli.RunCommand();
+   public void run();
+diff --git a/api/core.api b/api/core.api
+index 447d132..7ee598f 100644
+--- a/api/core.api
++++ b/api/core.api
+@@ -480,6 +480,11 @@ public final class moe.afox.dpsandbox.core.CommandTraceMode extends java.lang.En
+   public static moe.afox.dpsandbox.core.CommandTraceMode valueOf(java.lang.String);
+   public static kotlin.enums.EnumEntries<moe.afox.dpsandbox.core.CommandTraceMode> getEntries();
+ }
++public final class moe.afox.dpsandbox.core.ContextNumberProviders {
++  public moe.afox.dpsandbox.core.ContextNumberProviders(moe.afox.dpsandbox.core.Datapack, moe.afox.dpsandbox.core.VersionProfile);
++  public final int integer(com.google.gson.JsonElement, moe.afox.dpsandbox.core.PredicateContext);
++  public final float floating(com.google.gson.JsonElement, moe.afox.dpsandbox.core.PredicateContext);
++}
+ public final class moe.afox.dpsandbox.core.Criterion {
+   public moe.afox.dpsandbox.core.Criterion(java.lang.String, moe.afox.dpsandbox.core.ResourceLocation, com.google.gson.JsonObject);
+   public final java.lang.String getName();
+@@ -926,6 +931,8 @@ public final class moe.afox.dpsandbox.core.DatapackSandbox {
+   public final void setCommandsExecuted$moe_afox_dpsandbox_core(int);
+   public final java.lang.Integer getLastFunctionReturnValue$moe_afox_dpsandbox_core();
+   public final void setLastFunctionReturnValue$moe_afox_dpsandbox_core(java.lang.Integer);
++  public final moe.afox.dpsandbox.core.SandboxExecutionObserver getExecutionObserver();
++  public final void setExecutionObserver(moe.afox.dpsandbox.core.SandboxExecutionObserver);
+   public final void requestExecutionCancellation();
+   public final void clearExecutionCancellation();
+   public final moe.afox.dpsandbox.core.ExecutionResult runLoad();
+@@ -941,6 +948,7 @@ public final class moe.afox.dpsandbox.core.DatapackSandbox {
+   public final moe.afox.dpsandbox.core.CommandCheckResult checkCommand(java.lang.String, moe.afox.dpsandbox.core.ExecutionContext);
+   public static moe.afox.dpsandbox.core.CommandCheckResult checkCommand$default(moe.afox.dpsandbox.core.DatapackSandbox, java.lang.String, moe.afox.dpsandbox.core.ExecutionContext, int, java.lang.Object);
+   public final java.util.List<moe.afox.dpsandbox.core.CommandCheckResult> checkCommands(java.util.List<java.lang.String>);
++  public final moe.afox.dpsandbox.core.DatapackSandbox inspectionCopy();
+   public final com.google.gson.JsonObject snapshotJson();
+   public final java.lang.String snapshotString();
+   public final java.lang.String saveCheckpoint(java.lang.String);
+@@ -1347,6 +1355,7 @@ public final class moe.afox.dpsandbox.core.FunctionMacroExpander {
+   public static final moe.afox.dpsandbox.core.FunctionMacroExpander INSTANCE;
+   public final java.lang.String expand(moe.afox.dpsandbox.core.VersionProfile, moe.afox.dpsandbox.core.ResourceLocation, moe.afox.dpsandbox.core.FunctionLine, com.google.gson.JsonObject);
+ }
++
+ public final class moe.afox.dpsandbox.core.FunctionSource {
+   public static final moe.afox.dpsandbox.core.FunctionSource$Companion Companion;
+   public final moe.afox.dpsandbox.core.ResourceLocation getId();
+@@ -1358,7 +1367,6 @@ public final class moe.afox.dpsandbox.core.FunctionSource {
+   public static final moe.afox.dpsandbox.core.FunctionSource text(java.lang.String, java.lang.String);
+   public moe.afox.dpsandbox.core.FunctionSource(moe.afox.dpsandbox.core.ResourceLocation, java.lang.String, java.nio.file.Path, java.lang.String, kotlin.jvm.internal.DefaultConstructorMarker);
+ }
+-
+ public final class moe.afox.dpsandbox.core.FunctionSource$Companion {
+   public final moe.afox.dpsandbox.core.FunctionSource text(java.lang.String, java.lang.String, java.lang.String);
+   public static moe.afox.dpsandbox.core.FunctionSource text$default(moe.afox.dpsandbox.core.FunctionSource$Companion, java.lang.String, java.lang.String, java.lang.String, int, java.lang.Object);
+@@ -2688,6 +2696,19 @@ public class moe.afox.dpsandbox.core.SandboxException extends java.lang.RuntimeE
+   public final java.lang.String getCommand();
+   public final java.lang.String render();
+ }
++public interface moe.afox.dpsandbox.core.SandboxExecutionObserver {
++  public default void enterFunction(moe.afox.dpsandbox.core.ResourceLocation, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public default void beforeCommand(java.lang.String, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public default void exitFunction();
++  public static void access$enterFunction$jd(moe.afox.dpsandbox.core.SandboxExecutionObserver, moe.afox.dpsandbox.core.ResourceLocation, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public static void access$beforeCommand$jd(moe.afox.dpsandbox.core.SandboxExecutionObserver, java.lang.String, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public static void access$exitFunction$jd(moe.afox.dpsandbox.core.SandboxExecutionObserver);
++}
++public final class moe.afox.dpsandbox.core.SandboxExecutionObserver$DefaultImpls {
++  public static void enterFunction(moe.afox.dpsandbox.core.SandboxExecutionObserver, moe.afox.dpsandbox.core.ResourceLocation, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public static void beforeCommand(moe.afox.dpsandbox.core.SandboxExecutionObserver, java.lang.String, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++  public static void exitFunction(moe.afox.dpsandbox.core.SandboxExecutionObserver);
++}
+ public final class moe.afox.dpsandbox.core.SandboxGameMode extends java.lang.Enum<moe.afox.dpsandbox.core.SandboxGameMode> {
+   public static final moe.afox.dpsandbox.core.SandboxGameMode SURVIVAL;
+   public static final moe.afox.dpsandbox.core.SandboxGameMode CREATIVE;
+@@ -2928,6 +2949,7 @@ public final class moe.afox.dpsandbox.core.SandboxWeather extends java.lang.Enum
+   public static moe.afox.dpsandbox.core.SandboxWeather valueOf(java.lang.String);
+   public static kotlin.enums.EnumEntries<moe.afox.dpsandbox.core.SandboxWeather> getEntries();
+ }
++
+ public final class moe.afox.dpsandbox.core.SandboxWorld {
+   public moe.afox.dpsandbox.core.SandboxWorld();
+   public final moe.afox.dpsandbox.core.CommandTraceMode getCommandTraceMode();
+@@ -3003,7 +3025,6 @@ public final class moe.afox.dpsandbox.core.SandboxWorld$snapshot$$inlined$compar
+   public moe.afox.dpsandbox.core.SandboxWorld$snapshot$$inlined$compareBy$2();
+   public final int compare(T, T);
+ }
+-
+ public final class moe.afox.dpsandbox.core.SandboxWorld$snapshot$$inlined$thenBy$1<T> implements java.util.Comparator {
+   public moe.afox.dpsandbox.core.SandboxWorld$snapshot$$inlined$thenBy$1(java.util.Comparator);
+   public final int compare(T, T);
+@@ -3830,6 +3851,7 @@ public final class moe.afox.dpsandbox.core.VersionProfiles {
+   public final moe.afox.dpsandbox.core.VersionProfile getMinecraft2611();
+   public final moe.afox.dpsandbox.core.VersionProfile getMinecraft2612();
+   public final moe.afox.dpsandbox.core.VersionProfile getMinecraft262();
++  public final moe.afox.dpsandbox.core.VersionProfile getMinecraft263();
+   public final moe.afox.dpsandbox.core.VersionProfile getDefault();
+   public final java.util.List<moe.afox.dpsandbox.core.VersionProfile> getAll();
+   public final moe.afox.dpsandbox.core.VersionProfile get(java.lang.String);
+@@ -3865,6 +3887,22 @@ public final class moe.afox.dpsandbox.core.WorldKt$toJson$lambda$8$0$0$$inlined$
+   public moe.afox.dpsandbox.core.WorldKt$toJson$lambda$8$0$0$$inlined$sortedBy$1();
+   public final int compare(T, T);
+ }
++public final class moe.afox.dpsandbox.core.command.ComputedValue {
++  public moe.afox.dpsandbox.core.command.ComputedValue(com.google.gson.JsonPrimitive, int);
++  public final com.google.gson.JsonPrimitive getValue();
++  public final int getNextIndex();
++  public final com.google.gson.JsonPrimitive component1();
++  public final int component2();
++  public final moe.afox.dpsandbox.core.command.ComputedValue copy(com.google.gson.JsonPrimitive, int);
++  public static moe.afox.dpsandbox.core.command.ComputedValue copy$default(moe.afox.dpsandbox.core.command.ComputedValue, com.google.gson.JsonPrimitive, int, int, java.lang.Object);
++  public java.lang.String toString();
++  public int hashCode();
++  public boolean equals(java.lang.Object);
++}
++public final class moe.afox.dpsandbox.core.command.SandboxComputeCommandsKt {
++  public static final moe.afox.dpsandbox.core.command.ComputedValue computeValue(moe.afox.dpsandbox.core.DatapackSandbox, java.util.List<moe.afox.dpsandbox.core.CommandToken>, int, moe.afox.dpsandbox.core.ExecutionContext, moe.afox.dpsandbox.core.SourceLocation);
++  public static final void executeCompute(moe.afox.dpsandbox.core.DatapackSandbox, java.util.List<moe.afox.dpsandbox.core.CommandToken>, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
++}
+ public final class moe.afox.dpsandbox.core.command.SandboxEntityCommandsKt {
+   public static final void executeTag(moe.afox.dpsandbox.core.DatapackSandbox, java.util.List<moe.afox.dpsandbox.core.CommandToken>, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
+   public static final void executeSummon(moe.afox.dpsandbox.core.DatapackSandbox, java.lang.String, java.util.List<moe.afox.dpsandbox.core.CommandToken>, moe.afox.dpsandbox.core.SourceLocation, moe.afox.dpsandbox.core.ExecutionContext);
+diff --git a/cli/build.gradle.kts b/cli/build.gradle.kts
+index eecff02..d67178c 100644
+--- a/cli/build.gradle.kts
++++ b/cli/build.gradle.kts
+@@ -81,6 +81,8 @@ tasks.register<Jar>("fatJar") {
+     group = "build"
+     description = "Builds a standalone CLI jar."
+     archiveFileName.set("datapack-sandbox-cli.jar")
++    isPreserveFileTimestamps = false
++    isReproducibleFileOrder = true
+     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+ 
+     manifest {
+diff --git a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/ServeCommand.kt b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/ServeCommand.kt
+index e508d2e..70374e3 100644
+--- a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/ServeCommand.kt
++++ b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/ServeCommand.kt
+@@ -101,12 +101,23 @@ internal class ServeSession {
+     @Volatile
+     private var sandbox: DatapackSandbox? = null
+     private var config: SessionConfig? = null
++
++    @Volatile private var liveDebug: LiveDebugSession? = null
++    private var debugEvents: (String, JsonObject) -> Unit = { _, _ -> }
+     private val gson = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
+ 
+     fun run(
+         input: BufferedReader,
+         output: BufferedWriter,
+     ) {
++        debugEvents = { event, body ->
++            output.writeLine(
++                JsonObject().apply {
++                    addProperty("event", event)
++                    add("body", body)
++                },
++            )
++        }
+         output.writeLine(success(JsonNull.INSTANCE, helloJson()))
+         val executor =
+             ThreadPoolExecutor(
+@@ -159,6 +170,7 @@ internal class ServeSession {
+                 }
+             }
+         } finally {
++            liveDebug?.close()
+             executor.shutdown()
+             if (!executor.awaitTermination(30, TimeUnit.SECONDS)) executor.shutdownNow()
+         }
+@@ -211,7 +223,8 @@ internal class ServeSession {
+                 .parseString(line)
+                 .takeIf { it.isJsonObject }
+                 ?.asJsonObject
+-                ?.string("method") == "interrupt"
++                ?.string("method")
++                ?.let { it == "interrupt" || it.startsWith("debug.") } == true
+         } catch (_: Exception) {
+             false
+         }
+@@ -230,7 +243,19 @@ internal class ServeSession {
+             request.string("method") ?: return failure(id, SandboxException(DiagnosticCode.INPUT_FORMAT, "Serve request is missing method"))
+         val params = request.getAsJsonObjectOrNull("params") ?: JsonObject()
+         return try {
+-            success(id, dispatch(method, params))
++            if (method.startsWith("debug.")) {
++                val session = liveDebug ?: LiveDebugSession(current(), debugEvents).also { liveDebug = it }
++                success(id, session.dispatch(method, params))
++            } else {
++                require(liveDebug?.active != true || method in setOf("hello", "versions", "interrupt")) {
++                    "A debug execution owns the world; use debug.state while paused"
++                }
++                if (method in setOf("createSandbox", "createFunctionSandbox", "open", "reload", "resetWorld")) {
++                    liveDebug?.close()
++                    liveDebug = null
++                }
++                success(id, dispatch(method, params))
++            }
+         } catch (error: SandboxException) {
+             failure(id, error)
+         } catch (error: Exception) {
+@@ -305,6 +330,8 @@ internal class ServeSession {
+                     capabilities.addProperty("richOutput", true)
+                     capabilities.addProperty("coverage", true)
+                     capabilities.addProperty("commandDiagnostics", true)
++                    capabilities.addProperty("liveDebug", true)
++                    capabilities.addProperty("debugProtocolVersion", 1)
+                 },
+             )
+             json.add("versions", JsonArray().also { versions -> VersionProfiles.all.forEach { versions.add(it.id) } })
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/Predicates.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/Predicates.kt
+index 9301e93..b920581 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/Predicates.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/Predicates.kt
+@@ -126,7 +126,7 @@ class PredicateEngine(
+         context: PredicateContext,
+     ): Boolean {
+         val type =
+-            root.string("condition") ?: root.string("predicate")
++            root.string("condition") ?: root.string("predicate") ?: root.string("type")?.takeIf { profile.id == "26.3" }
+                 ?: return testEntityPredicate(context.thisEntity ?: context.player, root, context)
+         return when (canonical(type)) {
+             "all_of" -> root.terms().all { testElement(it, context) }
+@@ -137,6 +137,20 @@ class PredicateEngine(
+             "random_chance_with_enchanted_bonus", "random_chance_with_looting" -> testRandomChanceWithEnchantedBonus(root, context)
+             "table_bonus" -> testTableBonus(root, context)
+             "value_check" -> testRange(numberProviderValue(root.get("value"), context), root.get("range"), context)
++            "float_value_check", "int_value_check" -> {
++                val providers = ContextNumberProviders(datapack, profile)
++                val floating = canonical(type) == "float_value_check"
++
++                fun number(element: JsonElement?): Double = if (floating) providers.floating(element, context).toDouble() else providers.integer(element, context).toDouble()
++                val value = number(root.get("value"))
++                val range = root.get("test") ?: return true
++                if (range.isJsonPrimitive) {
++                    value == number(range)
++                } else {
++                    (range.asJsonObject.get("min")?.let { value >= number(it) } ?: true) &&
++                        (range.asJsonObject.get("max")?.let { value <= number(it) } ?: true)
++                }
++            }
+             "killed_by_player" -> context.attackingPlayer != null
+             "survives_explosion" -> true
+             "time_check" -> testRange(context.world.gameTime, root.get("value") ?: root.get("period"), context)
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+index 1f04d70..46d9c00 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+@@ -14,6 +14,7 @@ import moe.afox.dpsandbox.core.command.executeAttribute
+ import moe.afox.dpsandbox.core.command.executeBossbar
+ import moe.afox.dpsandbox.core.command.executeClear
+ import moe.afox.dpsandbox.core.command.executeClone
++import moe.afox.dpsandbox.core.command.executeCompute
+ import moe.afox.dpsandbox.core.command.executeData
+ import moe.afox.dpsandbox.core.command.executeDefaultGameMode
+ import moe.afox.dpsandbox.core.command.executeDifficulty
+@@ -215,6 +216,9 @@ class DatapackSandbox(
+     private var validationOnly = false
+     internal var lastFunctionReturnValue: Int? = null
+     private val functionStack = mutableListOf<FunctionTraceFrame>()
++
++    /** Installed by a debugger before starting execution; callbacks run on the world owner. */
++    var executionObserver: SandboxExecutionObserver? = null
+     private val coverageTracker = DatapackCoverageTracker(datapack)
+     private val placementCommands = SandboxPlacementCommands(this)
+     private val itemCommands = SandboxItemCommands(this)
+@@ -360,6 +364,7 @@ class DatapackSandbox(
+                         ?.location
+                         ?.file,
+                 )
++            executionObserver?.enterFunction(id, function.lines.firstOrNull()?.location, context)
+             for ((lineIndex, line) in function.lines.withIndex()) {
+                 checkExecutionCancellation(line.location)
+                 coverageTracker.recordLine(id, lineIndex, function.lines.size)
+@@ -370,6 +375,7 @@ class DatapackSandbox(
+             returnValue = signal.value
+             // A return command stops the current function only.
+         } finally {
++            executionObserver?.exitFunction()
+             functionStack.removeLast()
+             functionDepth -= 1
+         }
+@@ -410,6 +416,8 @@ class DatapackSandbox(
+         checkExecutionCancellation(location)
+         val normalized = command.trim().removePrefix("/")
+         if (normalized.isBlank()) return ExecutionResult(0)
++        executionObserver?.beforeCommand(normalized, location, context)
++        checkExecutionCancellation(location)
+         val runtimeContext = context.copy(predicateEngine = predicates)
+         val before = commandsExecuted
+         val outputsBefore = world.outputs.size
+@@ -504,6 +512,9 @@ class DatapackSandbox(
+         return commands.map { command -> preview.checkCommandInPlace(command, ExecutionContext()) }
+     }
+ 
++    /** Detached inspection state; capture on the world owner before permitting concurrent debugger reads. */
++    fun inspectionCopy(): DatapackSandbox = validationPreview()
++
+     private fun validationPreview(): DatapackSandbox =
+         DatapackSandbox(
+             profile = profile,
+@@ -912,6 +923,7 @@ class DatapackSandbox(
+                 "difficulty" -> executeDifficulty(tokens, location)
+                 "execute" -> return executeExecute(command, tokens, location, context)
+                 "data" -> return executeData(command, tokens, location, context)
++                "compute" -> executeCompute(tokens, location, context)
+                 "effect" -> executeEffect(tokens, location, context)
+                 "enchant" -> executeEnchant(tokens, location, context)
+                 "experience", "xp" -> executeExperience(tokens, location, context)
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/VersionProfile.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/VersionProfile.kt
+index 7cb2f31..874b958 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/VersionProfile.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/VersionProfile.kt
+@@ -293,7 +293,15 @@ object VersionProfiles {
+             commands = CommandProfile.minecraft262,
+         )
+ 
+-    val default: VersionProfile = minecraft262
++    val minecraft263 =
++        minecraft262.copy(
++            id = "26.3",
++            dataVersion = 5023,
++            dataPackFormat = DataPackFormat.of("121.0"),
++            description = "Minecraft Java 26.3 datapack profile",
++            commands = CommandProfile(CommandProfile.minecraft262.roots + "compute"),
++        )
++    val default: VersionProfile = minecraft263
+     val all: List<VersionProfile> =
+         listOf(
+             minecraft1204,
+@@ -315,6 +323,7 @@ object VersionProfiles {
+             minecraft2611,
+             minecraft2612,
+             minecraft262,
++            minecraft263,
+         )
+ 
+     /**
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
+index 936ca76..e77419a 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
+@@ -261,7 +261,14 @@ internal fun DatapackSandbox.evaluateCondition(
+         "blocks" -> evaluateBlocksCondition(tokens, index, location, context)
+         "predicate" -> {
+             requireIndex(tokens, index + 1, "execute if|unless predicate <id>", location)
+-            predicates.test(ResourceLocation.parse(tokens[index + 1].text), executePredicateContext(context)) to index + 2
++            val argument = tokens[index + 1].text
++            val result =
++                if (argument.startsWith("{")) {
++                    predicates.testElement(JsonValues.parse(argument, location), executePredicateContext(context))
++                } else {
++                    predicates.test(ResourceLocation.parse(argument), executePredicateContext(context))
++                }
++            result to index + 2
+         }
+         "function" -> {
+             requireIndex(tokens, index + 1, "execute if|unless function <id|#tag>", location)
+@@ -583,6 +590,11 @@ internal fun DatapackSandbox.readDataModifyValues(
+     location: SourceLocation?,
+ ): List<JsonElement> =
+     when (tokens[sourceKindIndex].text) {
++        "compute" -> {
++            val computed = computeValue(tokens, sourceKindIndex + 1, context, location)
++            if (computed.nextIndex != tokens.size) throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Unexpected data compute arguments", location)
++            listOf(computed.value)
++        }
+         "value" -> {
+             requireIndex(tokens, sourceKindIndex + 1, "data modify ... value <value>", location)
+             listOf(JsonValues.parse(CommandTokenizer.tailFrom(command, tokens[sourceKindIndex + 1]), location))
+diff --git a/core/src/test/kotlin/moe/afox/dpsandbox/core/VersionProfileTest.kt b/core/src/test/kotlin/moe/afox/dpsandbox/core/VersionProfileTest.kt
+index 545f4a2..a822a37 100644
+--- a/core/src/test/kotlin/moe/afox/dpsandbox/core/VersionProfileTest.kt
++++ b/core/src/test/kotlin/moe/afox/dpsandbox/core/VersionProfileTest.kt
+@@ -19,13 +19,13 @@ class VersionProfileTest {
+     }
+ 
+     @Test
+-    fun `version profiles include the latest 26_2 datapack version as default`() {
+-        val profile = VersionProfiles.get("26.2")
++    fun `version profiles include the latest 26_3 datapack version as default`() {
++        val profile = VersionProfiles.get("26.3")
+ 
+         assertEquals(profile, VersionProfiles.default)
+         assertEquals(25, profile.javaMajor)
+-        assertEquals(4903, profile.dataVersion)
+-        assertEquals("107.1", profile.dataPackFormat.toString())
++        assertEquals(5023, profile.dataVersion)
++        assertEquals("121", profile.dataPackFormat.toString())
+         assertEquals(listOf("function", "functions"), profile.resourceDirectories.functions)
+         assertTrue(profile.commands.hasRoot("transfer"))
+         assertTrue(profile.commands.hasRoot("dialog"))
+@@ -61,6 +61,7 @@ class VersionProfileTest {
+                 "26.1.1",
+                 "26.1.2",
+                 "26.2",
++                "26.3",
+             ),
+             VersionProfiles.all.map { it.id },
+         )
+diff --git a/LIVE_DEBUG.md b/LIVE_DEBUG.md
+new file mode 100644
+index 0000000..579605e
+--- /dev/null
++++ b/LIVE_DEBUG.md
+@@ -0,0 +1,34 @@
++# Live debugging over JSONL
++
++Run the CLI with Java 25: `java -jar datapack-sandbox-cli.jar serve --protocol jsonl`.
++The greeting advertises `capabilities.liveDebug: true` and `debugProtocolVersion: 1`.
++Requests retain the normal `{id, method, params}` envelope and independent responses.
++
++Create a sandbox and apply its world fixture before starting. Install breakpoints before
++load initialization so they also apply to `#minecraft:load`.
++
++| Method | Parameters | Result |
++| --- | --- | --- |
++| `debug.setBreakpoints` | `breakpoints: [{function, line}]`, one-based physical command lines | Replaces all command breakpoints |
++| `debug.start` | `load` (default true), `functions`, `stopOnEntry` | Starts one execution worker |
++| `debug.continue` | none | Resumes the suspended command |
++| `debug.step` | `mode: into / over / out` | Pauses before the next command at the selected physical depth |
++| `debug.pause` | none | Requests suspension at the next command boundary |
++| `debug.state` | none | Reads a copy of the frozen pause snapshot and active/paused status |
++| `debug.inspect` | `frame` (activation ID), `command` (`data get` or `scoreboard players get`) | Reads a value using the frame's entity, position, rotation and dimension on a detached pause snapshot |
++| `debug.stop` | none | Cancels execution and wakes a paused worker |
++
++Events have `{event, body}` and no request ID. `debug.stopped` includes the reason,
++command, physical frames with activation IDs and execution context, and a world
++snapshot. The callback runs before command side effects. `debug.error` includes the
++diagnostic, generated location and final snapshot; `debug.terminated` follows both
++successful execution and errors. Cancellation sets `cancelled` in the termination event.
++
++While execution owns the world, use the debug controls and frozen snapshot. Other
++world queries and mutations are rejected. Standard input EOF cancels the session,
++wakes a suspended execution, and joins its worker. Source statements, logical stacks,
++and variable addresses are responsibilities of the MCFPP adapter.
++
++The same patch restores the local bundled 26.3 profile (data version 5023, data pack
++format 121), `compute`, native floating point data writes, and inline numeric predicates.
++Build with `./gradlew :cli:fatJar`; the artifact is `cli/build/libs/datapack-sandbox-cli.jar`.
+diff --git a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/LiveDebugSession.kt b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/LiveDebugSession.kt
+new file mode 100644
+index 0000000..77e5673
+--- /dev/null
++++ b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/LiveDebugSession.kt
+@@ -0,0 +1,266 @@
++package moe.afox.dpsandbox.cli
++
++import com.google.gson.Gson
++import com.google.gson.JsonObject
++import moe.afox.dpsandbox.core.CommandTraceMode
++import moe.afox.dpsandbox.core.DatapackSandbox
++import moe.afox.dpsandbox.core.DiagnosticCode
++import moe.afox.dpsandbox.core.ExecutionContext
++import moe.afox.dpsandbox.core.Position
++import moe.afox.dpsandbox.core.ResourceLocation
++import moe.afox.dpsandbox.core.SandboxException
++import moe.afox.dpsandbox.core.SandboxExecutionObserver
++import moe.afox.dpsandbox.core.ScoreKey
++import moe.afox.dpsandbox.core.SourceLocation
++import java.util.concurrent.locks.ReentrantLock
++import kotlin.concurrent.withLock
++
++/** One owner executes the world; the protocol reader only changes control state or reads frozen data. */
++internal class LiveDebugSession(
++    private val sandbox: DatapackSandbox,
++    private val emit: (String, JsonObject) -> Unit,
++) : SandboxExecutionObserver {
++    private data class Frame(
++        val id: String,
++        val activation: Long,
++        var file: String?,
++        var line: Int?,
++        var executor: String,
++        var dimension: String,
++        var position: Position,
++        @Transient var execution: ExecutionContext,
++    )
++
++    private val lock = ReentrantLock()
++    private val changed = lock.newCondition()
++    private val gson = Gson()
++    private val frames = mutableListOf<Frame>()
++    private var breakpoints = emptySet<Pair<String, Int>>()
++    private var sequence = 0L
++    private var mode = "continue"
++    private var stepDepth = 0
++    private var pauseRequested = false
++    private var stopRequested = false
++    private var worker: Thread? = null
++    private var frozen = JsonObject()
++    private var inspection: DatapackSandbox? = null
++
++    @Volatile var active = false
++        private set
++
++    @Volatile private var paused = false
++
++    fun dispatch(method: String, params: JsonObject): JsonObject =
++        when (method) {
++            "debug.setBreakpoints" ->
++                lock.withLock {
++                    breakpoints =
++                        params
++                            .getAsJsonArray("breakpoints")
++                            ?.map {
++                                it.asJsonObject.let { point -> point.get("function").asString to point.get("line").asInt }
++                            }?.toSet()
++                            .orEmpty()
++                    JsonObject().apply { addProperty("count", breakpoints.size) }
++                }
++            "debug.start" -> start(params)
++            "debug.continue", "debug.step" ->
++                lock.withLock {
++                    require(active && paused) { "The debugger is not paused" }
++                    mode = if (method == "debug.continue") "continue" else params.get("mode")?.asString ?: "into"
++                    require(mode in setOf("continue", "into", "over", "out")) { "Invalid debug step mode" }
++                    stepDepth = frames.size
++                    paused = false
++                    frozen = JsonObject()
++                    inspection = null
++                    changed.signalAll()
++                    JsonObject().apply { addProperty("running", true) }
++                }
++            "debug.pause" ->
++                lock.withLock {
++                    require(active) { "The debugger is not running" }
++                    pauseRequested = true
++                    JsonObject().apply { addProperty("requested", true) }
++                }
++            "debug.state" ->
++                lock.withLock {
++                    frozen.deepCopy().apply {
++                        addProperty("active", active)
++                        addProperty("paused", paused)
++                    }
++                }
++            "debug.inspect" -> inspect(params)
++            "debug.stop" -> {
++                stop()
++                JsonObject().apply { addProperty("requested", true) }
++            }
++            else -> throw IllegalArgumentException("Unknown debug method '$method'")
++        }
++
++    private fun start(params: JsonObject): JsonObject =
++        lock.withLock {
++            require(!active) { "A debug execution is already active" }
++            active = true
++            paused = false
++            stopRequested = false
++            pauseRequested = params.get("stopOnEntry")?.asBoolean == true
++            mode = "continue"
++            frames.clear()
++            frozen = JsonObject()
++            inspection = null
++            sandbox.clearExecutionCancellation()
++            sandbox.executionObserver = this
++            val previousTraceMode = sandbox.world.commandTraceMode
++            sandbox.world.commandTraceMode = CommandTraceMode.OFF
++            val functions = params.getAsJsonArray("functions")?.map { it.asString }.orEmpty()
++            worker =
++                Thread({
++                    val completion = JsonObject()
++                    try {
++                        if (params.get("load")?.asBoolean != false) sandbox.runLoad()
++                        functions.forEach { sandbox.runFunction(it) }
++                        completion.add("snapshot", sandbox.snapshotJson())
++                    } catch (error: Exception) {
++                        if (!stopRequested) {
++                            emit(
++                                "debug.error",
++                                JsonObject().apply {
++                                    addProperty("message", error.message)
++                                    if (error is SandboxException) {
++                                        addProperty("code", error.code.name)
++                                        add("location", gson.toJsonTree(error.location))
++                                    }
++                                    add("snapshot", sandbox.snapshotJson())
++                                },
++                            )
++                        }
++                        completion.addProperty("cancelled", stopRequested)
++                    } finally {
++                        lock.withLock {
++                            sandbox.executionObserver = null
++                            sandbox.world.commandTraceMode = previousTraceMode
++                            sandbox.clearExecutionCancellation()
++                            active = false
++                            paused = false
++                            inspection = null
++                            changed.signalAll()
++                        }
++                    }
++                    emit("debug.terminated", completion)
++                }, "dps-live-debug").also {
++                    it.isDaemon = true
++                    it.start()
++                }
++            JsonObject().apply { addProperty("started", true) }
++        }
++
++    override fun enterFunction(id: ResourceLocation, location: SourceLocation?, context: ExecutionContext) =
++        lock.withLock {
++            frames.add(
++                Frame(
++                    id.toString(),
++                    ++sequence,
++                    location?.file,
++                    location?.line,
++                    context.entity?.scoreHolder ?: "Server",
++                    context.dimension.toString(),
++                    context.position,
++                    context,
++                ),
++            )
++            Unit
++        }
++
++    override fun exitFunction() =
++        lock.withLock {
++            if (frames.isNotEmpty()) frames.removeLast()
++            Unit
++        }
++
++    override fun beforeCommand(command: String, location: SourceLocation?, context: ExecutionContext) =
++        lock.withLock {
++            frames.lastOrNull()?.apply {
++                file = location?.file
++                line = location?.line
++                executor = context.entity?.scoreHolder ?: "Server"
++                dimension = context.dimension.toString()
++                position = context.position
++                execution = context
++            }
++            if (stopRequested) throw SandboxException(DiagnosticCode.EXECUTION_INTERRUPTED, "Debug session stopped")
++            val breakpoint = frames.lastOrNull()?.let { it.id to (location?.line ?: -1) } in breakpoints
++            val stepping = mode == "into" || mode == "over" && frames.size <= stepDepth || mode == "out" && frames.size < stepDepth
++            if (!pauseRequested && !breakpoint && !stepping) return@withLock
++            val reason =
++                if (breakpoint) {
++                    "breakpoint"
++                } else if (pauseRequested) {
++                    "pause"
++                } else {
++                    "step"
++                }
++            pauseRequested = false
++            paused = true
++            mode = "continue"
++            inspection = sandbox.inspectionCopy()
++            frozen =
++                JsonObject().apply {
++                    addProperty("reason", reason)
++                    addProperty("command", command)
++                    add("frames", gson.toJsonTree(frames))
++                    add("snapshot", sandbox.snapshotJson())
++                }
++            emit("debug.stopped", frozen.deepCopy())
++            while (paused && !stopRequested) changed.await()
++            if (stopRequested) throw SandboxException(DiagnosticCode.EXECUTION_INTERRUPTED, "Debug session stopped")
++        }
++
++    private fun inspect(params: JsonObject): JsonObject =
++        lock.withLock {
++            require(active && paused) { "The debugger is not paused" }
++            val command = params.get("command")?.asString ?: error("Inspection requires a read command")
++            val score = command.startsWith("scoreboard players get ")
++            require(score || command.startsWith("data get ")) { "Inspection accepts only data get and scoreboard players get" }
++            val frame = frames.singleOrNull { it.activation == params.get("frame")?.asLong } ?: error("Unknown inspection frame")
++            val copy = requireNotNull(inspection).inspectionCopy()
++            val executor =
++                frame.execution.entity?.uuid?.let { uuid ->
++                    copy.world.entities.firstOrNull { it.uuid == uuid }
++                        ?: copy.world.players.values
++                            .firstOrNull { it.uuid == uuid }
++                }
++            val context = frame.execution.copy(entity = executor, predicateEngine = copy.predicates)
++            val cursor = copy.world.outputs.size
++            copy.executeCommand(command, context = context)
++            val values =
++                copy.world.outputs
++                    .drop(cursor)
++                    .filter { it.channel == "data" }
++            require(values.size == 1) { "The address is uninitialized or does not identify one value" }
++            val payload = requireNotNull(values.single().payload) { "No readable value at this address" }
++            if (score) {
++                require(
++                    requireNotNull(inspection).world.scores.containsKey(
++                        ScoreKey(
++                            payload.asJsonObject.get("target").asString,
++                            payload.asJsonObject.get("objective").asString,
++                        ),
++                    ),
++                ) { "Score is not initialized at this position" }
++            }
++            JsonObject().apply { add("value", (if (score) payload.asJsonObject.get("value") else payload).deepCopy()) }
++        }
++
++    fun stop() =
++        lock.withLock {
++            stopRequested = true
++            sandbox.requestExecutionCancellation()
++            paused = false
++            changed.signalAll()
++        }
++
++    fun close() {
++        stop()
++        worker?.join(5000)
++    }
++}
+diff --git a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/LiveDebugSessionTest.kt b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/LiveDebugSessionTest.kt
+new file mode 100644
+index 0000000..f786350
+--- /dev/null
++++ b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/LiveDebugSessionTest.kt
+@@ -0,0 +1,212 @@
++package moe.afox.dpsandbox.cli
++
++import com.google.gson.JsonObject
++import com.google.gson.JsonParser
++import moe.afox.dpsandbox.core.CommandTraceMode
++import moe.afox.dpsandbox.core.FunctionSource
++import moe.afox.dpsandbox.core.ResourceLocation
++import moe.afox.dpsandbox.core.createFunctionSandbox
++import moe.afox.dpsandbox.core.createFunctionSandboxFromString
++import java.util.concurrent.LinkedBlockingQueue
++import java.util.concurrent.TimeUnit
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFailsWith
++import kotlin.test.assertFalse
++import kotlin.test.assertTrue
++
++class LiveDebugSessionTest {
++    @Test
++    fun `breakpoint suspends before side effects and stepping resumes exactly once`() {
++        val sandbox =
++            createFunctionSandboxFromString(
++                functionText =
++                    """
++                    scoreboard objectives add value dummy
++                    scoreboard players set counter value 0
++                    scoreboard players add counter value 1
++                    scoreboard players add counter value 10
++                    """.trimIndent(),
++                version = "26.3",
++            )
++        val events = LinkedBlockingQueue<Pair<String, JsonObject>>()
++        val debug = LiveDebugSession(sandbox) { name, body -> events.add(name to body) }
++        try {
++            debug.dispatch("debug.setBreakpoints", json("""{"breakpoints":[{"function":"sandbox:main","line":3}]}"""))
++            debug.dispatch("debug.start", json("""{"load":false,"functions":["sandbox:main"]}"""))
++            val stop = events.poll(10, TimeUnit.SECONDS)!!
++            assertEquals("debug.stopped", stop.first)
++            assertEquals(
++                0,
++                stop.second
++                    .getAsJsonObject("snapshot")
++                    .getAsJsonObject("scores")
++                    .getAsJsonObject("value")
++                    .get("counter")
++                    .asInt,
++            )
++            assertEquals(
++                3,
++                stop.second
++                    .getAsJsonArray("frames")
++                    .last()
++                    .asJsonObject
++                    .get("line")
++                    .asInt,
++            )
++            debug.dispatch("debug.step", json("""{"mode":"into"}"""))
++            val next = events.poll(10, TimeUnit.SECONDS)!!
++            assertEquals("debug.stopped", next.first)
++            assertEquals(
++                1,
++                next.second
++                    .getAsJsonObject("snapshot")
++                    .getAsJsonObject("scores")
++                    .getAsJsonObject("value")
++                    .get("counter")
++                    .asInt,
++            )
++            debug.dispatch("debug.continue", JsonObject())
++            assertEquals("debug.terminated", events.poll(10, TimeUnit.SECONDS)!!.first)
++            assertEquals(11, sandbox.world.getScore("counter", "value"))
++        } finally {
++            debug.close()
++        }
++    }
++
++    @Test
++    fun `close releases a suspended execution`() {
++        val sandbox = createFunctionSandboxFromString(functionText = "say must not run", version = "26.3")
++        val events = LinkedBlockingQueue<Pair<String, JsonObject>>()
++        val debug = LiveDebugSession(sandbox) { name, body -> events.add(name to body) }
++        debug.dispatch("debug.start", json("""{"load":false,"functions":["sandbox:main"],"stopOnEntry":true}"""))
++        assertEquals("debug.stopped", events.poll(10, TimeUnit.SECONDS)!!.first)
++        debug.close()
++        assertFalse(debug.active)
++        assertTrue(sandbox.world.outputs.none { it.command == "say" })
++    }
++
++    @Test
++    fun `263 native float storage predicates and integer conversion execute`() {
++        val sandbox =
++            createFunctionSandboxFromString(
++                functionText =
++                    """
++                    data modify storage test:state a set value -3.75f
++                    data modify storage test:state b set compute default float {type:"minecraft:add",inputs:[{type:"minecraft:storage",storage:"test:state",path:"a"},0.5]}
++                    scoreboard objectives add values dummy
++                    execute store result score result values run compute default integer {type:"minecraft:from_float",input:{type:"minecraft:storage",storage:"test:state",path:"b"}}
++                    execute if predicate {type:"minecraft:float_value_check",value:{type:"minecraft:storage",storage:"test:state",path:"b"},test:{max:-3.0}} run scoreboard players set comparison values 1
++                    """.trimIndent(),
++                version = "26.3",
++            )
++        sandbox.runFunction("sandbox:main")
++        assertEquals(
++            -3.25f,
++            sandbox.world
++                .storage(ResourceLocation.parse("test:state"))
++                .get("b")
++                .asFloat,
++        )
++        assertEquals(-3, sandbox.world.getScore("result", "values"))
++        assertEquals(1, sandbox.world.getScore("comparison", "values"))
++    }
++
++    @Test
++    fun `running controls remain responsive and frozen state cannot be mutated by a client`() {
++        val sandbox =
++            createFunctionSandboxFromString(
++                functionText = "scoreboard objectives add counter dummy\n" + "scoreboard players add value counter 1\n".repeat(500),
++                version = "26.3",
++            )
++        sandbox.world.commandTraceMode = CommandTraceMode.OFF
++        val events = LinkedBlockingQueue<Pair<String, JsonObject>>()
++        val debug = LiveDebugSession(sandbox) { name, body -> events.add(name to body) }
++        try {
++            debug.dispatch("debug.start", json("""{"load":false,"functions":["sandbox:main"]}"""))
++            debug.dispatch("debug.pause", JsonObject())
++            assertEquals("debug.stopped", events.poll(10, TimeUnit.SECONDS)!!.first)
++            val copy = debug.dispatch("debug.state", JsonObject())
++            copy.addProperty("command", "changed by client")
++            assertTrue(debug.dispatch("debug.state", JsonObject()).get("command").asString != "changed by client")
++            debug.dispatch("debug.continue", JsonObject())
++            debug.dispatch("debug.stop", JsonObject())
++            assertEquals("debug.terminated", events.poll(10, TimeUnit.SECONDS)!!.first)
++            assertFalse(debug.active)
++        } finally {
++            debug.close()
++        }
++    }
++
++    @Test
++    fun `command errors emit a diagnostic followed by termination`() {
++        val sandbox = createFunctionSandboxFromString(functionText = "unknown_command", version = "26.3")
++        val events = LinkedBlockingQueue<Pair<String, JsonObject>>()
++        val debug = LiveDebugSession(sandbox) { name, body -> events.add(name to body) }
++        try {
++            debug.dispatch("debug.start", json("""{"load":false,"functions":["sandbox:main"]}"""))
++            assertEquals("debug.error", events.poll(10, TimeUnit.SECONDS)!!.first)
++            assertEquals("debug.terminated", events.poll(10, TimeUnit.SECONDS)!!.first)
++            assertFalse(debug.active)
++        } finally {
++            debug.close()
++        }
++    }
++
++    @Test
++    fun `inspection reads entity block and contextual scores from detached state`() {
++        val sandbox =
++            createFunctionSandbox(
++                "26.3",
++                listOf(
++                    FunctionSource.text("sandbox:main", "execute as @e[tag=probe,limit=1] at @s run function sandbox:read"),
++                    FunctionSource.text("sandbox:read", "say must not run"),
++                ),
++            )
++        sandbox.world.commandTraceMode = CommandTraceMode.OFF
++        listOf(
++            "summon minecraft:pig 12 64 0 {Health:7.0f,Tags:[\"probe\"]}",
++            "setblock 12 63 0 minecraft:chest",
++            "scoreboard objectives add points dummy",
++            "scoreboard players set @e[tag=probe] points 13",
++        ).forEach { sandbox.executeCommand(it) }
++        val outputsBefore = sandbox.world.outputs.size
++        val events = LinkedBlockingQueue<Pair<String, JsonObject>>()
++        val debug = LiveDebugSession(sandbox) { name, body -> events.add(name to body) }
++        try {
++            debug.dispatch("debug.setBreakpoints", json("""{"breakpoints":[{"function":"sandbox:read","line":1}]}"""))
++            debug.dispatch("debug.start", json("""{"load":false,"functions":["sandbox:main"]}"""))
++            val stop = events.poll(10, TimeUnit.SECONDS)!!
++            assertEquals("debug.stopped", stop.first)
++            val activation =
++                stop.second
++                    .getAsJsonArray("frames")
++                    .last()
++                    .asJsonObject
++                    .get("activation")
++                    .asLong
++            val frozen = debug.dispatch("debug.state", JsonObject())
++
++            fun inspect(command: String) =
++                debug
++                    .dispatch(
++                        "debug.inspect",
++                        JsonObject().apply {
++                            addProperty("frame", activation)
++                            addProperty("command", command)
++                        },
++                    ).get("value")
++            assertEquals(7.0f, inspect("data get entity @s Health").asFloat)
++            assertEquals(12, inspect("data get block ~ ~-1 ~ x").asInt)
++            assertEquals(12, inspect("data get block ^ ^-1 ^ x").asInt)
++            assertEquals(13, inspect("scoreboard players get @s points").asInt)
++            assertFailsWith<IllegalArgumentException> { inspect("scoreboard players set @s points 99") }
++            assertEquals(frozen, debug.dispatch("debug.state", JsonObject()))
++        } finally {
++            debug.close()
++        }
++        assertEquals(outputsBefore, sandbox.world.outputs.size)
++    }
++
++    private fun json(text: String) = JsonParser.parseString(text).asJsonObject
++}
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/ContextNumberProviders.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/ContextNumberProviders.kt
+new file mode 100644
+index 0000000..6931628
+--- /dev/null
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/ContextNumberProviders.kt
+@@ -0,0 +1,218 @@
++package moe.afox.dpsandbox.core
++
++import com.google.gson.JsonElement
++import java.math.BigInteger
++import kotlin.math.abs
++import kotlin.math.ceil
++import kotlin.math.cos
++import kotlin.math.floor
++import kotlin.math.pow
++import kotlin.math.sin
++import kotlin.math.sqrt
++import kotlin.math.truncate
++
++/** Minecraft 26.3 context providers. Float intermediates are rounded to IEEE 754 binary32. */
++internal class ContextNumberProviders(
++    private val datapack: Datapack,
++    private val profile: VersionProfile,
++) {
++    fun integer(element: JsonElement?, context: PredicateContext): Int = evaluate(element, context, true).toInt()
++
++    fun floating(element: JsonElement?, context: PredicateContext): Float = evaluate(element, context, false).toFloat()
++
++    private fun evaluate(element: JsonElement?, context: PredicateContext, integral: Boolean, depth: Int = 0): Double {
++        if (profile.id != "26.3") fail("Context number providers require Minecraft 26.3")
++        if (depth > 64) fail("Number provider nesting exceeds 64")
++
++        fun eval(value: JsonElement?, integer: Boolean = integral) = evaluate(value, context, integer, depth + 1)
++        val result: Double =
++            when {
++                element == null || element.isJsonNull -> 0.0
++                element.isJsonPrimitive && element.asJsonPrimitive.isNumber -> element.asDouble
++                element.isJsonPrimitive && element.asJsonPrimitive.isString -> {
++                    val kind = if (integral) "context_int_provider" else "context_float_provider"
++                    val id = ResourceLocation.parse(element.asString)
++                    eval(
++                        datapack.rawResources[kind]?.get(id)?.root
++                            ?: throw SandboxException(DiagnosticCode.RESOURCE_NOT_FOUND, "Missing $kind '$id'"),
++                    )
++                }
++                element.isJsonObject -> {
++                    val root = element.asJsonObject
++
++                    fun value(key: String, integer: Boolean = integral) = eval(root.get(key), integer)
++                    val id = ResourceLocation.parse(root.get("type")?.asString ?: fail("Number provider requires type"))
++                    if (id.namespace != "minecraft") throw SandboxException(DiagnosticCode.UNSUPPORTED_FEATURE, "Number provider '$id' is not implemented")
++                    val type = id.path
++                    val common = setOf("abs", "add", "avg", "conditional", "constant", "div", "environment_attribute", "max", "min", "mod", "mul", "negate", "number_dispatcher", "pow", "storage", "sub", "uniform", "weighted_list")
++                    val specific =
++                        if (integral) {
++                            setOf("binomial", "floor_div", "floor_mod", "from_float", "score")
++                        } else {
++                            setOf("ceil", "cos", "enchantment_level", "floor", "from_int", "length", "round", "sin", "sqrt", "truncate")
++                        }
++                    if (type !in common + specific) throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Number provider '$id' is not valid for ${if (integral) "integers" else "floats"}")
++                    when (type) {
++                        "constant" -> root.get("value")?.asDouble ?: fail("Constant requires value")
++                        "storage" -> {
++                            val storage = context.world.storages[ResourceLocation.parse(root.get("storage").asString)]
++                            val found =
++                                storage
++                                    ?.let { JsonPaths.getAll(it, root.get("path").asString) }
++                                    ?.singleOrNull()
++                                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
++                            if (found == null) {
++                                value("fallback")
++                            } else if (integral) {
++                                found.asInt.toDouble()
++                            } else {
++                                found.asFloat.toDouble()
++                            }
++                        }
++                        "score" -> {
++                            val target = root.get("target") ?: fail("Score provider requires target")
++                            val targetType =
++                                if (target.isJsonPrimitive) {
++                                    "context"
++                                } else {
++                                    target.asJsonObject
++                                        .get("type")
++                                        ?.asString
++                                        ?.removePrefix("minecraft:")
++                                }
++                            val holder =
++                                when (targetType) {
++                                    "fixed" -> target.asJsonObject.get("name").asString
++                                    "context" -> {
++                                        val name = if (target.isJsonPrimitive) target.asString else target.asJsonObject.get("target")?.asString ?: "this"
++                                        val entity =
++                                            when (name) {
++                                                "this" -> context.thisEntity ?: context.player
++                                                "target_entity" -> context.targetEntity
++                                                "attacker" -> context.attacker
++                                                "direct_attacker" -> context.directEntity
++                                                "attacking_player" -> context.attackingPlayer
++                                                "interacting_entity" -> context.interactingEntity
++                                                else -> null
++                                            }
++                                        entity?.scoreHolder ?: throw MissingPredicateContext("Score provider requires '$name' context")
++                                    }
++                                    else -> throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Invalid score provider target")
++                                }
++                            context.world.scores[ScoreKey(holder, root.get("score").asString)]?.toDouble() ?: value("fallback")
++                        }
++                        "negate" -> -value("input")
++                        "abs" -> abs(value("input"))
++                        "sub" -> value("left") - value("right")
++                        "add", "mul", "avg", "min", "max", "length" -> {
++                            val values = root.getAsJsonArray("inputs")?.map { eval(it) }.orEmpty()
++                            if (values.isEmpty() && type !in setOf("add", "mul", "length")) fail("$type requires inputs")
++                            if (integral && type in setOf("add", "mul", "avg")) {
++                                val total =
++                                    values.fold(if (type == "mul") BigInteger.ONE else BigInteger.ZERO) { acc, n ->
++                                        if (type == "mul") acc * BigInteger.valueOf(n.toLong()) else acc + BigInteger.valueOf(n.toLong())
++                                    }
++                                val number = if (type == "avg") total / BigInteger.valueOf(values.size.toLong()) else total
++                                try {
++                                    number.intValueExact().toDouble()
++                                } catch (_: ArithmeticException) {
++                                    fail("Integer calculation overflow")
++                                }
++                            } else {
++                                when (type) {
++                                    "add" -> values.fold(0f) { acc, n -> acc + n.toFloat() }.toDouble()
++                                    "mul" -> values.fold(1f) { acc, n -> acc * n.toFloat() }.toDouble()
++                                    "avg" -> (values.fold(0f) { acc, n -> acc + n.toFloat() } / values.size).toDouble()
++                                    "min" -> values.min()
++                                    "max" -> values.max()
++                                    else -> sqrt(values.fold(0f) { acc, n -> acc + n.toFloat() * n.toFloat() }).toDouble()
++                                }
++                            }
++                        }
++                        "div", "mod", "floor_div", "floor_mod" -> {
++                            val a = value("left")
++                            val b = value("right")
++                            if (b == 0.0) fail("Number provider division by zero")
++                            if (integral) {
++                                when (type) {
++                                    "div" -> (a.toInt() / b.toInt()).toDouble()
++                                    "mod" -> (a.toInt() % b.toInt()).toDouble()
++                                    "floor_div" -> Math.floorDiv(a.toLong(), b.toLong()).toDouble()
++                                    else -> Math.floorMod(a.toLong(), b.toLong()).toDouble()
++                                }
++                            } else if (type == "mod") {
++                                (a.toFloat() % b.toFloat()).toDouble()
++                            } else {
++                                (a.toFloat() / b.toFloat()).toDouble()
++                            }
++                        }
++                        "from_int" -> value("input", true)
++                        "from_float" -> {
++                            val number = value("input", false)
++                            if (!number.isFinite() || number < Int.MIN_VALUE || number > Int.MAX_VALUE) fail("Integer conversion overflow")
++                            number.toInt().toDouble()
++                        }
++                        "pow" -> {
++                            val base = value("base")
++                            val exponent = value("exponent")
++                            if (integral && (exponent < 0 || base == 0.0 && exponent == 0.0)) fail("Invalid integer exponent")
++                            base.pow(exponent)
++                        }
++                        "ceil" -> ceil(value("input"))
++                        "floor" -> floor(value("input"))
++                        "round" -> floor(value("input") + 0.5)
++                        "truncate" -> truncate(value("input"))
++                        "sin" -> sin(value("input"))
++                        "cos" -> cos(value("input"))
++                        "sqrt" -> sqrt(value("input"))
++                        "conditional" -> value(if (PredicateEngine(datapack, profile).testElement(root.get("condition"), context)) "on_true" else "on_false")
++                        "number_dispatcher" -> {
++                            val chosen = root.getAsJsonArray("cases")?.firstOrNull { PredicateEngine(datapack, profile).testElement(it.asJsonObject.get("condition"), context) }
++                            eval(chosen?.asJsonObject?.get("value") ?: root.get("default"))
++                        }
++                        "uniform" -> {
++                            val min = value("min")
++                            val max = value("max")
++                            if (max < min) fail("Uniform provider maximum is below minimum")
++                            if (integral) {
++                                context.random.nextLong(min.toLong(), max.toLong() + 1).toDouble()
++                            } else {
++                                (min.toFloat() + context.random.nextFloat() * (max.toFloat() - min.toFloat())).toDouble()
++                            }
++                        }
++                        "binomial" -> {
++                            val n = value("n", true).toInt()
++                            val p = value("p", false)
++                            if (n !in 0..1_000_000 || p !in 0.0..1.0) fail("Invalid binomial parameters")
++                            (0 until n).count { context.random.nextFloat() < p }.toDouble()
++                        }
++                        "weighted_list" -> {
++                            val entries = root.getAsJsonArray("distribution")?.map { it.asJsonObject }.orEmpty()
++                            val weights = entries.map { it.get("weight")?.asInt ?: 1 }
++                            if (entries.isEmpty() || weights.any { it <= 0 }) fail("Weighted provider requires positive weights")
++                            var cursor = context.random.nextLong(weights.sumOf { it.toLong() })
++                            val selected =
++                                weights.indices.first { index ->
++                                    cursor -= weights[index]
++                                    cursor < 0
++                                }
++                            eval(entries[selected].get("data"))
++                        }
++                        "enchantment_level" -> throw MissingPredicateContext("Enchantment level number provider requires enchantment level context")
++                        "environment_attribute" -> throw SandboxException(DiagnosticCode.UNSUPPORTED_FEATURE, "Environment attribute number providers are not simulated")
++                        else -> throw SandboxException(DiagnosticCode.UNSUPPORTED_FEATURE, "Number provider '$type' is not implemented")
++                    }
++                }
++                else -> fail("Number provider must be a number, reference or object")
++            }
++        if (!result.isFinite()) fail("Number provider result is not finite")
++        if (integral) {
++            if (result < Int.MIN_VALUE || result > Int.MAX_VALUE || result != truncate(result)) fail("Integer calculation overflow or fractional value")
++            return result
++        }
++        if (!result.toFloat().isFinite()) fail("Float calculation overflow")
++        return result.toFloat().toDouble()
++    }
++
++    private fun fail(message: String): Nothing = throw SandboxException(DiagnosticCode.COMMAND_ERROR, message)
++}
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/SandboxExecutionObserver.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/SandboxExecutionObserver.kt
+new file mode 100644
+index 0000000..105fa20
+--- /dev/null
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/SandboxExecutionObserver.kt
+@@ -0,0 +1,10 @@
++package moe.afox.dpsandbox.core
++
++/** Synchronous execution boundaries. Observers may suspend the owning execution thread. */
++interface SandboxExecutionObserver {
++    fun enterFunction(id: ResourceLocation, location: SourceLocation?, context: ExecutionContext) {}
++
++    fun beforeCommand(command: String, location: SourceLocation?, context: ExecutionContext) {}
++
++    fun exitFunction() {}
++}
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxComputeCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxComputeCommands.kt
+new file mode 100644
+index 0000000..7be7f62
+--- /dev/null
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxComputeCommands.kt
+@@ -0,0 +1,64 @@
++package moe.afox.dpsandbox.core.command
++
++import com.google.gson.JsonPrimitive
++import moe.afox.dpsandbox.core.CommandToken
++import moe.afox.dpsandbox.core.ContextNumberProviders
++import moe.afox.dpsandbox.core.DatapackSandbox
++import moe.afox.dpsandbox.core.DiagnosticCode
++import moe.afox.dpsandbox.core.EntitySelectors
++import moe.afox.dpsandbox.core.ExecutionContext
++import moe.afox.dpsandbox.core.JsonValues
++import moe.afox.dpsandbox.core.PredicateContext
++import moe.afox.dpsandbox.core.SandboxException
++import moe.afox.dpsandbox.core.SandboxPlayer
++import moe.afox.dpsandbox.core.SourceLocation
++import kotlin.math.floor
++
++internal data class ComputedValue(
++    val value: JsonPrimitive,
++    val nextIndex: Int,
++)
++
++internal fun DatapackSandbox.computeValue(tokens: List<CommandToken>, start: Int, context: ExecutionContext, location: SourceLocation?): ComputedValue {
++    require(profile.id == "26.3") { "Compute requires Minecraft 26.3" }
++    requireSizeFrom(tokens, start, 3, "compute <default|entity target|block pos> <integer|float> <provider>", location)
++    var index = start + 1
++    var predicate = PredicateContext(world, context.position, context.dimension, context.entity, player = context.entity as? SandboxPlayer)
++    when (tokens[start].text) {
++        "default" -> Unit
++        "entity" -> {
++            val entity =
++                EntitySelectors.select(world, tokens[index].text, context, location).singleOrNull()
++                    ?: throw SandboxException(DiagnosticCode.COMMAND_ERROR, "Compute entity requires exactly one target", location)
++            predicate = predicate.copy(targetEntity = entity)
++            index++
++        }
++        "block" -> {
++            val pos = parseBlockPos(tokens, index, context, location)
++            val block = world.block(pos)
++            predicate = predicate.copy(block = block?.id, blockState = block)
++            index += 3
++        }
++        else -> throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Unknown compute context '${tokens[start].text}'", location)
++    }
++    requireIndex(tokens, index + 1, "compute <context> <integer|float> <provider>", location)
++    val engine = ContextNumberProviders(datapack, profile)
++    val provider = JsonValues.parse(tokens[index + 1].text, location)
++    val value =
++        when (tokens[index].text) {
++            "integer" -> JsonPrimitive(engine.integer(provider, predicate))
++            "float" -> JsonPrimitive(engine.floating(provider, predicate))
++            else -> throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Compute expects integer or float", location)
++        }
++    return ComputedValue(value, index + 2)
++}
++
++internal fun DatapackSandbox.executeCompute(tokens: List<CommandToken>, location: SourceLocation?, context: ExecutionContext) {
++    val computed = computeValue(tokens, 1, context, location)
++    val floating = computed.value.asNumber is Float
++    val scale = tokens.getOrNull(computed.nextIndex)?.text?.let { parseDouble(it, "compute scale", location) } ?: 1.0
++    if (tokens.size > computed.nextIndex + if (floating) 1 else 0) throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Unexpected compute arguments", location)
++    val result = if (floating) floor(computed.value.asDouble * scale) else computed.value.asDouble
++    if (!result.isFinite() || result < Int.MIN_VALUE || result > Int.MAX_VALUE) throw SandboxException(DiagnosticCode.COMMAND_ERROR, "Compute result is outside the integer range", location)
++    world.recordOutput("compute", "data", text = result.toInt().toString())
++}

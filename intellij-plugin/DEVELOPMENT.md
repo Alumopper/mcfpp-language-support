@@ -10,13 +10,13 @@
 
 0.6.0 接通原版数据包与资源包工程：`dataPath` 和 `assetsPath` 中的内容随同一次构建输出。`[entrypoints]` 将稳定的原版函数 ID 映射到公开无参数 void MCFPP 函数。命令和 JSON 中的常用资源字段支持按类型补全、跳转、缺失提示和资源文件重命名更新；入口跳转进入 MCFPP 实现，声明重命名更新 TOML 目标并保留公开 ID。资源包附带模型、物品定义、blockstate、字体和声音的基础 schema。
 
-开发基线为 IDEA 2025.3.3；LSP 功能需要带 `com.intellij.modules.lsp` 的 JetBrains IDEA 发行版，不支持开源构建和 Android Studio。JDK 21 用于 CLI 和 Java MNI，Node.js 20 或更新版本用于格式化与 Linter。Minecraft 命令服务使用 Java 25。插件携带 CLI、标准库源码、LSP、Prettier、Linter 和命令服务，运行时不需要编译器源码仓库或全局 npm 包。
+开发基线为 IDEA 2025.3.3；LSP 功能需要带 `com.intellij.modules.lsp` 的 JetBrains IDEA 发行版，不支持开源构建和 Android Studio。JDK 25 用于 CLI 和 Java MNI，Node.js 20 或更新版本用于格式化与 Linter。Minecraft 命令服务使用 Java 25。插件携带 CLI、标准库源码、LSP、Prettier、Linter 和命令服务，运行时不需要编译器源码仓库或全局 npm 包。
 
-打开 **Settings → Tools → MCFPP**。通常自动发现项目 SDK、已登记的 JDK 和 PATH 中的 Node；也可指定 JDK 21、Node、命令服务 Java、外部 CLI JAR、Prettier 包目录和 Linter 包目录。默认使用内置工具。安装包内 `toolchain/toolchain.json` 记录版本及 CLI、LSP、格式化工具的 SHA-256；构建时校验 CLI 与 LSP 使用同一编译器。
+打开 **Settings → Tools → MCFPP**。通常自动发现项目 SDK、已登记的 JDK 和 PATH 中的 Node；也可指定 JDK 25、Node、命令服务 Java、外部 CLI JAR、Prettier 包目录和 Linter 包目录。默认使用内置工具。安装包内 `toolchain/toolchain.json` 记录版本及 CLI、LSP、格式化工具的 SHA-256；构建时校验 CLI 与 LSP 使用同一编译器。
 
 ## 创建工程
 
-1. **File → New → Project → MCFPP**，输入名称、目录和 JDK 21。创建过程调用内置 `mcfpp init .`。
+1. **File → New → Project → MCFPP**，输入名称、目录和 JDK 25。创建过程调用内置 `mcfpp init .`。
 2. Java 原生函数工程选择 **MCFPP MNI**，创建过程调用 `mcfpp init . --mni`，包含 `@MNIFunction` provider、显式 MNI 函数声明和 JUnit 示例。
 3. 等待后台同步，入口 `src/main/mcfpp/main.mcfpp` 自动打开。
 
@@ -59,7 +59,7 @@ Build 成功后点击 **Data Pack** 查看数据包，点击 **Resource Pack** �
 
 ## 从源码构建
 
-需要将 `MCFPP`、`MCFPP-Linter` 和本仓库放在同一父目录。先在 MCFPP 中使用 JDK 21 构建 CLI，再打包同版本 LSP 和插件：
+需要将 `MCFPP`、`MCFPP-Linter` 和本仓库放在同一父目录。先在 MCFPP 中使用 JDK 25 构建 CLI，再打包同版本 LSP 和插件：
 
 ```powershell
 cd ../MCFPP
@@ -74,4 +74,4 @@ cd ../intellij-plugin
 
 非默认 CLI 制品可通过两次 Gradle 构建都传入 `-PmcfppCompilerJar=<absolute-jar>` 指定。语法文件必须与编译器一致，LSP 构建会检查差异。
 
-本机 SDK 可用 `-PideaLocalPath=<IDEA目录>` 指定；SDK 使用 Java 25 字节码时，使用 Java 25 启动 Gradle（`JAVA_HOME` 指向 JDK 25），并传入 `-PmcfppBuildJava=25`。插件仍输出 Java 21 字节码。GUI 沙盒使用 `runIde --args="<工程绝对路径>"`。
+本机 SDK 可用 `-PideaLocalPath=<IDEA目录>` 指定。使用 JDK 25 启动 Gradle（`JAVA_HOME` 指向 JDK 25）；这是默认构建工具链。插件宿主代码仍输出 Java 21 字节码以匹配 IDEA 基线，独立 CLI、LSP、调试适配器与 DSB 均使用所选 JDK 25。GUI 沙盒使用 `runIde --args="<工程绝对路径>"`。

@@ -5,6 +5,7 @@
 /language-server/build/
 /language-server/docs/
 /language-server/.gradle/
+/language-server/.kotlin/
 /language-server/grammar-output.txt
 /.release/
 /.trae/

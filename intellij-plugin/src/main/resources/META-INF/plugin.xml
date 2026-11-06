@@ -28,6 +28,9 @@
         <externalAnnotator language="MCFPP" implementationClass="top.mcfpp.intellij.format.McfppLintAnnotator"/>
         <configurationType implementation="top.mcfpp.intellij.run.McfppRunConfigurationType"/>
         <programRunner implementation="top.mcfpp.intellij.run.McfppProgramRunner"/>
+        <programRunner implementation="top.mcfpp.intellij.debug.McfppDebugRunner"/>
+        <xdebugger.breakpointType implementation="top.mcfpp.intellij.debug.McfppLineBreakpointType"/>
+        <runLineMarkerContributor language="MCFPP" implementationClass="top.mcfpp.intellij.debug.McfppFunctionDebugLineMarker"/>
         <runLineMarkerContributor language="MCFPP" implementationClass="top.mcfpp.intellij.run.McfppTestLineMarker"/>
         <toolWindow id="MCFPP" anchor="right" factoryClass="top.mcfpp.intellij.project.McfppToolWindowFactory" icon="/icons/mcfpp.svg"/>
         <postStartupActivity implementation="top.mcfpp.intellij.project.McfppProjectStartup"/>

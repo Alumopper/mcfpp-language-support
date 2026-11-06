@@ -57,9 +57,9 @@ The parser is generated from the same ANTLR grammar as the language server. Diag
 ## Requirements
 
 - JetBrains IntelliJ IDEA 2025.3 or newer (SDK baseline: 2025.3.3, build 253.31033.145; UI acceptance: 2026.2.2)
-- JDK 21 for the bundled CLI and Java MNI development
+- JDK 25 for the bundled CLI and Java MNI development
 - Node.js 20 or newer for bundled Prettier and Linter services
-- Java 25 available on `PATH` for Datapack Sandbox-powered Minecraft command completion; alternatively set `MCFPP_DPS_JAVA` or `-Dmcfpp.dps.java.path=/path/to/java`
+- Datapack Sandbox reuses the selected JDK 25 for Minecraft command completion; `MCFPP_DPS_JAVA` or `-Dmcfpp.dps.java.path=/path/to/java` can override it
 
 The JetBrains LSP API requires an IDEA distribution providing `com.intellij.modules.lsp`; it is unavailable in open-source builds and Android Studio. The Java plugin is an optional dependency: Java PSI-based MNI features and project wizards activate when it is available. The bundled IDEA JSON module is optional in the same way; only datapack JSON schema features are omitted when it is unavailable.
 
