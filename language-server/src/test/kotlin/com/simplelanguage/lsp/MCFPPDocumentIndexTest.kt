@@ -125,7 +125,7 @@ class MCFPPDocumentIndexTest {
                 data Empty {}
                 data Wrapped as int;
                 data Explicit {
-                    constructor(value: string) {}
+                    var value: string; new(value: string) { return { value } }
                 }
             """.trimIndent()
         )
@@ -158,7 +158,7 @@ class MCFPPDocumentIndexTest {
             "file:///generic-constructors.mcfpp",
             """
                 data Box<T> {
-                    constructor(value: T) {}
+                    var value: T; new(value: T) { return { value } }
                 }
                 data EmptyBox<T> {}
                 data Wrapped<T> as T;

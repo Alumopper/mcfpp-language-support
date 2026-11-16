@@ -15,7 +15,9 @@ record MniFunctionSignature(
         @NotNull String name,
         @NotNull List<String> readOnlyTypes,
         @NotNull List<String> normalTypes,
-        @NotNull String returnType
+        @NotNull String returnType,
+        @NotNull List<String> readOnlyNames,
+        @NotNull List<String> normalNames
 ) {
     private static final Pattern FUNCTION_NAME = Pattern.compile(
             "\\bfunc\\s+([A-Za-z_$][A-Za-z0-9_$]*)"
@@ -24,6 +26,8 @@ record MniFunctionSignature(
     MniFunctionSignature {
         readOnlyTypes = List.copyOf(readOnlyTypes);
         normalTypes = List.copyOf(normalTypes);
+        readOnlyNames = List.copyOf(readOnlyNames);
+        normalNames = List.copyOf(normalNames);
     }
 
     static Optional<MniFunctionSignature> from(
@@ -42,16 +46,19 @@ record MniFunctionSignature(
         int cursor = skipWhitespace(header, function.end());
 
         List<String> readOnly = List.of();
+        List<String> readOnlyNames = List.of();
         if (cursor < header.length() && header.charAt(cursor) == '<') {
             int close = matchingDelimiter(header, cursor, '<', '>');
             if (close < 0) return Optional.empty();
             readOnly = parameterTypes(header.substring(cursor + 1, close), true);
+            readOnlyNames = parameterNames(header.substring(cursor + 1, close), true);
             cursor = skipWhitespace(header, close + 1);
         }
         if (cursor >= header.length() || header.charAt(cursor) != '(') return Optional.empty();
         int normalClose = matchingDelimiter(header, cursor, '(', ')');
         if (normalClose < 0) return Optional.empty();
         List<String> normal = parameterTypes(header.substring(cursor + 1, normalClose), false);
+        List<String> normalNames = parameterNames(header.substring(cursor + 1, normalClose), false);
 
         cursor = skipWhitespace(header, normalClose + 1);
         String returnType = "void";
@@ -59,10 +66,12 @@ record MniFunctionSignature(
             returnType = normalizeType(header.substring(cursor + 1));
             if (returnType.isEmpty()) returnType = "void";
         }
-        return Optional.of(new MniFunctionSignature(function.group(1), readOnly, normal, returnType));
+        return Optional.of(new MniFunctionSignature(function.group(1), readOnly, normal, returnType,
+                readOnlyNames, normalNames));
     }
 
     boolean parametersMatch(MniJavaAnnotation annotation) {
+        if (annotation.macro()) return readOnlyTypes.isEmpty() && normalTypes.equals(annotation.normalTypes());
         return readOnlyTypes.equals(annotation.readOnlyTypes()) && normalTypes.equals(annotation.normalTypes());
     }
 
@@ -70,9 +79,36 @@ record MniFunctionSignature(
         return readOnlyTypes.size() + normalTypes.size() + ("void".equals(returnType) ? 0 : 1);
     }
 
+    int macroArgumentCount() {
+        return normalTypes.size() + 1;
+    }
+
     String parametersText() {
         String readOnly = readOnlyTypes.isEmpty() ? "" : "<" + String.join(", ", readOnlyTypes) + ">";
         return readOnly + "(" + String.join(", ", normalTypes) + ")";
+    }
+
+    private static List<String> parameterNames(String parameters, boolean readOnly) {
+        List<String> result = new ArrayList<>();
+        for (String parameter : splitTopLevel(parameters)) {
+            String name = parameterName(parameter, readOnly);
+            if (!name.isEmpty()) result.add(name);
+        }
+        return List.copyOf(result);
+    }
+
+    private static String parameterName(String parameter, boolean readOnly) {
+        int assignment = topLevelCharacter(parameter, '=');
+        String declaration = (assignment < 0 ? parameter : parameter.substring(0, assignment)).strip();
+        int colon = topLevelCharacter(declaration, ':');
+        String beforeType = colon < 0 ? declaration : declaration.substring(0, colon).strip();
+        while (startsWithWord(beforeType, "var") || startsWithWord(beforeType, "out") || startsWithWord(beforeType, "in")) {
+            int space = beforeType.indexOf(' ');
+            if (space < 0) break;
+            beforeType = beforeType.substring(space + 1).strip();
+        }
+        int space = beforeType.lastIndexOf(' ');
+        return space < 0 ? beforeType : beforeType.substring(space + 1).strip();
     }
 
     private static List<String> parameterTypes(String parameters, boolean readOnly) {

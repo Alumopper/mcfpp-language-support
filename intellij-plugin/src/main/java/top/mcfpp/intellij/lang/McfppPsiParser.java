@@ -27,11 +27,20 @@ final class McfppPsiParser implements PsiParser {
                 parseNamedAfter(builder, 2, McfppElementTypes.TYPE_DECLARATION);
             } else if ("data".equals(text)) {
                 parseNamedAfter(builder, 1, McfppElementTypes.TYPE_DECLARATION);
+            } else if ("entity".equals(text) && atDeclarationStart(builder)) {
+                // `entity` opens a template declaration, while `entity var` and
+                // `entity func` are members of an existing template.
+                String next = nextWord(builder);
+                if ("var".equals(next) || "const".equals(next) || "func".equals(next)) {
+                    builder.advanceLexer();
+                } else {
+                    parseNamedAfter(builder, 1, McfppElementTypes.TYPE_DECLARATION);
+                }
             } else if ("enum".equals(text)) {
                 parseNamedAfter(builder, 1, McfppElementTypes.ENUM_DECLARATION);
             } else if ("typealias".equals(text)) {
                 parseTypeAlias(builder);
-            } else if ("constructor".equals(text)) {
+            } else if ("constructor".equals(text) || "new".equals(text)) {
                 parseConstructor(builder);
             } else if ("import".equals(text)) {
                 builder.advanceLexer();
@@ -278,6 +287,28 @@ final class McfppPsiParser implements PsiParser {
             builder.advanceLexer();
         }
         declaration.drop();
+    }
+
+    private static boolean atDeclarationStart(PsiBuilder builder) {
+        CharSequence text = builder.getOriginalText();
+        int index = builder.getCurrentOffset() - 1;
+        while (index >= 0 && (text.charAt(index) == ' ' || text.charAt(index) == '\t')) index--;
+        if (index < 0) return true;
+        char previous = text.charAt(index);
+        if (previous == '\n' || previous == '\r' || previous == '{' || previous == '}' || previous == ';') return true;
+        int end = index + 1;
+        while (index >= 0 && Character.isJavaIdentifierPart(text.charAt(index))) index--;
+        String word = text.subSequence(index + 1, end).toString();
+        return "final".equals(word) || "abstract".equals(word);
+    }
+
+    private static String nextWord(PsiBuilder builder) {
+        CharSequence text = builder.getOriginalText();
+        int index = builder.getCurrentOffset() + (builder.getTokenText() == null ? 0 : builder.getTokenText().length());
+        while (index < text.length() && Character.isWhitespace(text.charAt(index))) index++;
+        int end = index;
+        while (end < text.length() && Character.isJavaIdentifierPart(text.charAt(end))) end++;
+        return text.subSequence(index, end).toString();
     }
 
     private record FunctionHeader(int nameOrdinal, boolean hasReadOnlyParameters) {

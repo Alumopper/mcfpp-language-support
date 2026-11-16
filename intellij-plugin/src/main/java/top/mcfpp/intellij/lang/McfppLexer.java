@@ -6,30 +6,32 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import top.mcfpp.language.VersionPreprocessor;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 public final class McfppLexer extends LexerBase {
     private static final Set<String> CONTROL_KEYWORDS = Set.of(
-            "if", "else", "while", "for", "do", "try", "execute", "break", "continue", "return", "store"
+            "if", "else", "while", "for", "do", "try", "context", "break", "continue", "return", "store"
     );
     private static final Set<String> DECLARATION_KEYWORDS = Set.of(
-            "import", "object", "data", "func", "enum", "operator", "typealias", "constructor",
-            "global", "var", "const", "external", "get", "set", "namespace"
+            "import", "object", "data", "entity", "func", "enum", "operator", "typealias", "constructor",
+            "new", "global", "var", "const", "external", "get", "set", "namespace"
     );
     private static final Set<String> MODIFIER_KEYWORDS = Set.of(
             "extends", "native", "concrete", "final", "public", "protected", "private", "override",
             "abstract", "impl", "inline"
     );
     private static final Set<String> TYPE_KEYWORDS = Set.of(
-            "vec", "int", "entity", "bool", "byte", "short", "long", "float", "double", "selector", "string",
-            "text", "nbt", "any", "void", "list", "map", "dict", "type", "Type", "ByteArray", "IntArray", "LongArray", "ScoreRef", "NBTRef"
+            "vec", "int", "bool", "byte", "short", "long", "float", "double", "selector", "string",
+            "text", "nbt", "any", "void", "list", "map", "dict", "type", "Type", "ByteArray", "IntArray", "LongArray", "ScoreRef", "NBTRef", "EntityRef"
     );
     private static final Set<String> KEYWORDS = Set.of(
             "this", "super", "as", "from"
     );
     private static final String[] MULTI_CHARACTER_OPERATORS = {
             "...", "++", "--", "&&", "||", "+=", "-=", "*=", "/=", "%=", "=>", "->", "..", "::",
-            "<=", ">=", "!=", "==", "~="
+            "<=", ">=", "!=", "==", "~=", "?:", "!!"
     };
 
     private CharSequence buffer = "";
@@ -37,13 +39,28 @@ public final class McfppLexer extends LexerBase {
     private int tokenStart;
     private int tokenEnd;
     private IElementType tokenType;
+    private final Map<Integer, McfppCommandBlocks.Kind> commandBlockLines = new HashMap<>();
 
     @Override
     public void start(@NotNull CharSequence buffer, int startOffset, int endOffset, int initialState) {
         this.buffer = buffer;
         this.bufferEnd = endOffset;
         this.tokenStart = startOffset;
+        indexCommandBlocks();
         locateToken();
+    }
+
+    /**
+     * Command blocks are a lexical mode in the compiler. Rebuild the line map on each
+     * start so incremental highlighting does not depend on lexer state restoration.
+     */
+    private void indexCommandBlocks() {
+        commandBlockLines.clear();
+        for (McfppCommandBlocks.Line line : McfppCommandBlocks.lines(buffer)) {
+            if (line.kind() != McfppCommandBlocks.Kind.ORDINARY || line.insideBlock()) {
+                commandBlockLines.put(line.contentStart(), line.kind());
+            }
+        }
     }
 
     @Override
@@ -96,6 +113,23 @@ public final class McfppLexer extends LexerBase {
             return;
         }
 
+        McfppCommandBlocks.Kind blockLine = commandBlockLines.get(tokenStart);
+        if (blockLine == McfppCommandBlocks.Kind.OPEN) {
+            tokenEnd = tokenStart + 2;
+            tokenType = McfppTokenTypes.COMMAND_BLOCK_OPEN;
+            return;
+        }
+        if (blockLine == McfppCommandBlocks.Kind.CLOSE) {
+            tokenEnd = tokenStart + 1;
+            tokenType = McfppTokenTypes.RIGHT_BRACE;
+            return;
+        }
+        if (blockLine == McfppCommandBlocks.Kind.COMMAND) {
+            tokenEnd = consumeLine(tokenStart);
+            tokenType = McfppTokenTypes.COMMAND;
+            return;
+        }
+
         if (current == '#') {
             int lineEnd = consumeLine(tokenStart);
             if (isAtLineStart(tokenStart) && VersionPreprocessor.isDirective(buffer.subSequence(tokenStart, lineEnd).toString())) {
@@ -123,6 +157,13 @@ public final class McfppLexer extends LexerBase {
             return;
         }
 
+        // Lines starting with `/` inside a command block are ordinary MCFPP statements,
+        // not raw command lines. The compiler removes that slash before parsing.
+        if (blockLine == McfppCommandBlocks.Kind.ORDINARY && current == '/' && isAtLineStart(tokenStart)) {
+            tokenEnd = tokenStart + 1;
+            tokenType = McfppTokenTypes.WHITE_SPACE;
+            return;
+        }
         if (current == '/' && isAtLineStart(tokenStart)) {
             tokenEnd = consumeLine(tokenStart + 1);
             tokenType = McfppTokenTypes.COMMAND;
@@ -153,10 +194,18 @@ public final class McfppLexer extends LexerBase {
         if (isIdentifierStart(current)) {
             tokenEnd = consumeWhile(tokenStart + 1, McfppLexer::isIdentifierPart);
             String text = buffer.subSequence(tokenStart, tokenEnd).toString();
-            tokenType = keywordType(text);
+            int previous = tokenStart - 1;
+            while (previous >= 0 && Character.isWhitespace(buffer.charAt(previous))) previous--;
+            tokenType = (text.equals("text") || text.equals("new")) && previous >= 0 && buffer.charAt(previous) == '.'
+                    ? McfppTokenTypes.IDENTIFIER : keywordType(text);
             return;
         }
 
+        if (startsWith(tokenStart, "?.")) {
+            tokenEnd = tokenStart + 2;
+            tokenType = McfppTokenTypes.DOT;
+            return;
+        }
         for (String operator : MULTI_CHARACTER_OPERATORS) {
             if (startsWith(tokenStart, operator)) {
                 tokenEnd = tokenStart + operator.length();
@@ -246,6 +295,8 @@ public final class McfppLexer extends LexerBase {
         int offset = start + 1;
         boolean escaped = false;
         while (offset < bufferEnd) {
+            // An unfinished single-line string must not swallow the next line while typing.
+            if (buffer.charAt(offset) == '\r' || buffer.charAt(offset) == '\n') break;
             char character = buffer.charAt(offset++);
             if (character == quote && !escaped) {
                 break;

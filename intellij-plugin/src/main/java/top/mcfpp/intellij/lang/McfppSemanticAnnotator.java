@@ -50,6 +50,13 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
                 return;
             }
             var key = analysis.attributes().get(element.getTextOffset());
+            var javaPlugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
+                    com.intellij.openapi.extensions.PluginId.getId("com.intellij.java"));
+            if ((key == McfppSyntaxHighlighter.FUNCTION_DECLARATION || key == McfppSyntaxHighlighter.FUNCTION_CALL) &&
+                    javaPlugin != null && javaPlugin.isEnabled() && !com.intellij.openapi.project.DumbService.isDumb(element.getProject())) {
+                var nativeKey = top.mcfpp.intellij.mni.McfppNativeFunctionHighlighting.keyFor(element);
+                if (nativeKey != null) key = nativeKey;
+            }
             if (key == null) return;
             holder.newSilentAnnotation(HighlightSeverity.INFORMATION)
                     .range(element)

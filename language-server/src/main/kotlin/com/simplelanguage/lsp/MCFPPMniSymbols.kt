@@ -9,7 +9,7 @@ internal fun MniSymbolSnapshot.toSymbols(): List<MCFPPSymbol> = symbols.orEmpty(
     val range = Range(Position(symbol.line, symbol.character), Position(symbol.endLine, symbol.endCharacter))
     MCFPPSymbol(uri = symbol.uri, name = symbol.name, kind = SymbolKind.Function, range = range,
         detail = symbol.detail, typeName = symbol.typeName, topLevel = true, namespaceName = symbol.namespace,
-        documentation = symbol.documentation, isExternal = true,
+        documentation = symbol.documentation, isExternal = true, isNative = true, isMacro = symbol.macro,
         parameters = symbol.parameters.orEmpty().map { MCFPPFunctionParameter(it.name, it.typeName) })
 }
 

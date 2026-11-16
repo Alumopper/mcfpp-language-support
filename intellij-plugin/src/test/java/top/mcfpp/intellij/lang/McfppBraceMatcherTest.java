@@ -10,12 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class McfppBraceMatcherTest {
     @Test
-    void registersAllThreeBracePairs() {
+    void registersAllBracePairsIncludingCommandBlocks() {
         BracePair[] pairs = new McfppBraceMatcher().getPairs();
 
-        assertEquals(3, pairs.length);
+        assertEquals(4, pairs.length);
         assertTrue(Arrays.stream(pairs).anyMatch(pair ->
                 pair.getLeftBraceType() == McfppTokenTypes.LEFT_BRACE &&
+                        pair.getRightBraceType() == McfppTokenTypes.RIGHT_BRACE));
+        assertTrue(Arrays.stream(pairs).anyMatch(pair ->
+                pair.getLeftBraceType() == McfppTokenTypes.COMMAND_BLOCK_OPEN &&
                         pair.getRightBraceType() == McfppTokenTypes.RIGHT_BRACE));
         assertTrue(Arrays.stream(pairs).anyMatch(pair ->
                 pair.getLeftBraceType() == McfppTokenTypes.LEFT_BRACKET &&

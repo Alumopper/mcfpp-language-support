@@ -63,6 +63,10 @@ public final class McfppSyntaxHighlighter extends SyntaxHighlighterBase {
             "MCFPP_FUNCTION_DECLARATION", DefaultLanguageHighlighterColors.FUNCTION_DECLARATION);
     public static final TextAttributesKey FUNCTION_CALL = createTextAttributesKey(
             "MCFPP_FUNCTION_CALL", DefaultLanguageHighlighterColors.FUNCTION_CALL);
+    public static final TextAttributesKey MACRO_FUNCTION = createTextAttributesKey(
+            "MCFPP_MACRO_FUNCTION", DefaultLanguageHighlighterColors.METADATA);
+    public static final TextAttributesKey MNI_FUNCTION = createTextAttributesKey(
+            "MCFPP_MNI_FUNCTION", DefaultLanguageHighlighterColors.STATIC_METHOD);
     public static final TextAttributesKey TYPE_NAME = createTextAttributesKey(
             "MCFPP_TYPE_NAME", DefaultLanguageHighlighterColors.CLASS_NAME);
     public static final TextAttributesKey VARIABLE = createTextAttributesKey(
@@ -107,6 +111,7 @@ public final class McfppSyntaxHighlighter extends SyntaxHighlighterBase {
         if (tokenType == McfppTokenTypes.COMMENT) return pack(COMMENT);
         if (tokenType == McfppTokenTypes.DOC_COMMENT) return pack(DOC_COMMENT);
         if (tokenType == McfppTokenTypes.COMMAND) return pack(COMMAND);
+        if (tokenType == McfppTokenTypes.COMMAND_BLOCK_OPEN) return pack(BRACES);
         if (tokenType == McfppTokenTypes.ANNOTATION) return pack(ANNOTATION);
         if (tokenType == McfppTokenTypes.TARGET_SELECTOR) return pack(TARGET_SELECTOR);
         if (tokenType == McfppTokenTypes.BOOLEAN_LITERAL) return pack(BOOLEAN);

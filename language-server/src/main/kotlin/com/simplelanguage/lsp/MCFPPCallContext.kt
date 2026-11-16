@@ -136,6 +136,7 @@ internal object MCFPPCallContextFinder {
         val beforeName = skipWhitespaceBackward(text, index)
         val separator = text.getOrNull(beforeName)?.takeIf { it == '.' || it == ':' }
         val qualifier = separator?.let {
+            if (it == '.') return@let top.mcfpp.language.MemberExpressions.receiverBefore(text, beforeName)
             var qualifierEnd = skipWhitespaceBackward(text, beforeName - 1) + 1
             var qualifierStart = qualifierEnd - 1
             while (qualifierStart >= 0 && (isIdentifierPart(text[qualifierStart]) || text[qualifierStart] == '.')) {

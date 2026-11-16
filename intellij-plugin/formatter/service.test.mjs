@@ -78,3 +78,14 @@ test('malformed source reports an error without supplying a replacement',()=>fix
   assert.equal(result.source,undefined);
 }));
 
+test('save preserves factory and optional operator syntax',()=>fixture(async({request})=>{
+  const source='data Holder {\nvar value: int?\nnew(value: int) { return { value } }\n}\nfunc main(h: Holder) { var x=h.value?:0; var y=h.value!!; h?.value }';
+  const result=await request('format',source);
+  assert.equal(result.ok,true,JSON.stringify(result));
+  assert.ok(result.source.includes('new(value: int)'),result.source);
+  assert.ok(result.source.includes('h.value ?: 0'),result.source);
+  assert.ok(result.source.includes('h.value!!'),result.source);
+  assert.ok(result.source.includes('h?.value'),result.source);
+  assert.equal((await request('format',result.source)).source,result.source);
+}));
+

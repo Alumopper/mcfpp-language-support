@@ -46,10 +46,10 @@ public final class McfppLibraryRootsIntegrationTest extends BasePlatformTestCase
         }
     }
 
-    public void testBundledCompilerSourcesIncludeJavaAndKotlinImplementation() {
+    public void testBundledCompilerSourcesIncludeKotlinImplementation() {
         VirtualFile root = McfppLibraryRootsProvider.bundledCompilerSourcesRoot();
         assertNotNull("Compiler sources must be available without a local checkout", root);
-        assertNotNull(root.findFileByRelativePath("top/mcfpp/mni/MCIntData.java"));
+        assertNotNull(root.findFileByRelativePath("top/mcfpp/mni/MCIntData.kt"));
         assertNotNull(root.findFileByRelativePath("top/mcfpp/core/lang/MCInt.kt"));
     }
 

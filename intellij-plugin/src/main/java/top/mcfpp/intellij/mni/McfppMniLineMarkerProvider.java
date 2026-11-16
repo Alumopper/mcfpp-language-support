@@ -111,7 +111,8 @@ public final class McfppMniLineMarkerProvider extends RelatedItemLineMarkerProvi
             Optional<MniFunctionSignature> signature = MniFunctionSignature.from(
                     target.file().getViewProvider().getContents(), target.target());
             return signature.filter(value -> value.parametersMatch(annotation.get()))
-                    .filter(value -> value.javaArgumentCount() == method.getParameterList().getParametersCount())
+                    .filter(value -> (annotation.get().macro() ? value.macroArgumentCount() : value.javaArgumentCount()) ==
+                            method.getParameterList().getParametersCount())
                     .isPresent();
         });
     }

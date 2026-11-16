@@ -91,7 +91,7 @@ public final class McfppMniBindingInspection extends LocalInspectionTool {
         }
 
         List<PsiMethod> annotatedMethods = publicMethods.stream()
-                .filter(method -> method.getAnnotation(MniJavaAnnotation.QUALIFIED_NAME) != null)
+                .filter(method -> MniJavaAnnotation.from(method).isPresent())
                 .toList();
         if (annotatedMethods.isEmpty()) {
             report(holder, file, methodSegment,
@@ -103,8 +103,10 @@ public final class McfppMniBindingInspection extends LocalInspectionTool {
                 .filter(method -> MniJavaAnnotation.from(method).filter(signature::parametersMatch).isPresent())
                 .toList();
         if (matchingMethods.isEmpty()) {
+            String annotation = annotatedMethods.stream().allMatch(MniJavaAnnotation::isMacro)
+                    ? "@MNIMacro" : "@MNIFunction";
             report(holder, file, methodSegment,
-                    "No @MNIFunction overload matches MCFPP parameters " + signature.parametersText());
+                    "No " + annotation + " overload matches MCFPP parameters " + signature.parametersText());
             return;
         }
 
@@ -116,7 +118,8 @@ public final class McfppMniBindingInspection extends LocalInspectionTool {
             return;
         }
 
-        int expectedCount = signature.javaArgumentCount();
+        boolean macro = staticMethods.stream().anyMatch(MniJavaAnnotation::isMacro);
+        int expectedCount = macro ? signature.macroArgumentCount() : signature.javaArgumentCount();
         boolean validCount = staticMethods.stream()
                 .anyMatch(method -> method.getParameterList().getParametersCount() == expectedCount);
         if (!validCount) {

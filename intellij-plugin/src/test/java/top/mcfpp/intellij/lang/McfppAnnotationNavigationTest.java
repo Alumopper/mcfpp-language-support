@@ -21,9 +21,9 @@ public final class McfppAnnotationNavigationTest extends BasePlatformTestCase {
     }
 
     public void testCompilerAnnotationsNavigateToTheirImplementations() {
-        assertNavigation("From", "From.java");
-        assertNavigation("Name", "Name.java");
-        assertNavigation("Load", "Load.java");
+        assertNavigation("From", "From.kt");
+        assertNavigation("Name", "Name.kt");
+        assertNavigation("Load", "Load.kt");
     }
 
     private void assertNavigation(String name, String fileName) {

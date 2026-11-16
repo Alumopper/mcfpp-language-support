@@ -154,7 +154,10 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
                 continue;
             }
             if (header || token.type() != McfppTokenTypes.IDENTIFIER || model.declarationAt(token.start()) != null ||
+                    next.equals("=") && (previous.equals("(") || previous.equals(",")) ||
                     next.equals(":") || next.equals(".") || previous.equals("::") || previous.equals("@") ||
+                    // Entity templates receive `summon` from the compiler rather than a declaration.
+                    token.text().equals("summon") && previous.equals(".") ||
                     McfppReferenceContributor.isNativeJavaTarget(file.findElementAt(token.start()))) continue;
             // The tolerant model does not fully understand generic/type headers or structured literal keys.
             if (model.symbols().stream().anyMatch(symbol ->

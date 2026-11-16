@@ -13,6 +13,7 @@ Public address values use `ScoreRef` and `NBTRef<T>`, with synchronous `tryRead`
 - Incremental document synchronization, debounced background analysis, and syntax/semantic diagnostics
 - Workspace and multi-root indexing, project namespaces, imports, standard-library sources, and `.mclib`/JAR/ZIP dependencies
 - Context-aware completion, hover documentation, overloads, generic functions/types, constructors, and signature help
+- Structural object types, intersection/union member completion, `new` factory signatures/navigation, and optional field operators (`?.`, `?:`, `!!`)
 - Definition, declaration, type-definition, implementation, reference, and document-highlight navigation
 - Safe rename with prepare-rename validation, including import aliases
 - Document/workspace symbols, folding, selection ranges, linked editing, call hierarchy, and type hierarchy
@@ -22,7 +23,10 @@ Public address values use `ScoreRef` and `NBTRef<T>`, with synchronous `tryRead`
 - Compiler-compatible arithmetic: unary minus, compound assignments (`+=`, `-=`, `*=`, `/=`, `%=`), and continuation after a trailing operator
 - Minecraft version directives (`#if`, `#elif`, `#else`, `#endif`), directive completion/highlighting, and diagnostics for invalid conditions or nesting
 - Minecraft command diagnostics, completion, selectors, resource locations, and semantic highlighting
-- Java/MNI navigation and completion when Java support is available; core MCFPP support does not require a Java editor plugin
+- Command blocks (`/{ ... }`) with command-line classification, `${...}` expression references, folding, and indentation
+- Entity templates (`entity Name: Parent`) with separate template and `EntityRef<T>` member completion, `summon()` inference, `entity var`/`entity func` members, and display/entity base interfaces
+- Context entries including `forEach`/`forEachAt`, scoped `this` typing inside `entity func`, and the compiler's synchronous context callbacks
+- Java/Kotlin MNI navigation and completion when Java or Kotlin support is available; explicit `func ... = Provider.method` macros use `@MNIMacro(normalParams, returnType)` and wrapper-derived parameter modes
 - Semantic diagnostics and quick fixes for calls, types, returns, visibility, unresolved members, and duplicate declarations
 
 ## Components

@@ -22,6 +22,42 @@ final class McfppCompletionInsertHandler implements InsertHandler<LookupElement>
         return new McfppCompletionInsertHandler(symbol, unqualified);
     }
 
+    static InsertHandler<LookupElement> entityMethod(String name) {
+        return (context, item) -> {
+            int tail = context.getTailOffset();
+            CharSequence source = context.getDocument().getCharsSequence();
+            int next = tail;
+            while (next < source.length() && Character.isWhitespace(source.charAt(next))) next++;
+            if (next < source.length() && (source.charAt(next) == '(' || source.charAt(next) == '<')) {
+                if (context.getCompletionChar() == '(' || context.getCompletionChar() == '<') context.setAddCompletionChar(false);
+                return;
+            }
+            String suffix = name.equals("checkType") ? "<>()" : "()";
+            context.getDocument().insertString(tail, suffix);
+            context.setTailOffset(tail + suffix.length());
+            context.getEditor().getCaretModel().moveToOffset(tail + 1);
+            if (context.getCompletionChar() == '(' || context.getCompletionChar() == '<') context.setAddCompletionChar(false);
+        };
+    }
+    static InsertHandler<LookupElement> contextEntry(boolean operand) {
+        return (context, item) -> {
+            int tail = context.getTailOffset();
+            String source = context.getDocument().getText();
+            int next = tail;
+            while (next < source.length() && Character.isWhitespace(source.charAt(next))) next++;
+            if (next < source.length() && (source.charAt(next) == '(' || source.charAt(next) == '{')) return;
+            int line = context.getDocument().getLineNumber(tail);
+            String prefix = source.substring(context.getDocument().getLineStartOffset(line), tail);
+            String indent = prefix.substring(0, prefix.length() - prefix.stripLeading().length());
+            String start = operand ? "()" : "";
+            String suffix = start + " { ctx ->\n" + indent + "    \n" + indent + "}";
+            context.getDocument().insertString(tail, suffix);
+            context.setTailOffset(tail + suffix.length());
+            context.getEditor().getCaretModel().moveToOffset(operand ? tail + 1 : tail + suffix.indexOf('\n') + 1 + indent.length() + 4);
+            if (context.getCompletionChar() == '(' || context.getCompletionChar() == '{') context.setAddCompletionChar(false);
+        };
+    }
+
     @Override
     public void handleInsert(InsertionContext context, LookupElement item) {
         context.commitDocument();

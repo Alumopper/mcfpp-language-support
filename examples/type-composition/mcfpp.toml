@@ -1,0 +1,4 @@
+schema = 1
+name = "type-composition-editor"
+namespace = "example.composition"
+version = "26.3"

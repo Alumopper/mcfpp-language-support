@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Highlight resolved Macro functions and ordinary MNI functions separately in IDEA, with independent color settings and light/dark defaults. Preserve classification for declarations, calls and import aliases, and publish `macro` / `mniFunction` semantic tokens through LSP metadata.
+- Synchronize IDEA and LSP with structural object types, intersections/unions, `new` factories and `?.` / `?:` / `!!`. Provide factory signatures, navigation, return-literal field completion and migration diagnostics for `constructor` and factory `this`. Data inheritance contributes fields; explicit literals accept additional fields and require all nonoptional fields, including fields with initializers. Read the compiler's object/literal library metadata and bundle matching CLI/LSP artifacts.
+- Validate contextual data-template literals in variables and function arguments, including defaults, inheritance, nested templates, lists, generic types, and compiled library schemas. Complete unused accessible fields with `name: value` insertion and field documentation in IDEA and LSP; resolve literal keys to their declarations.
+- Fix duplicate IDEA documentation by yielding to an available LSP documentation target and retaining native documentation when LSP hover has no result.
+- Resolve chained data-template members to the final receiver type in IDEA, including inherited field completion and navigation. Keep LSP template members scoped to their declaring namespace so custom types do not pick up members from same-named standard-library types.
+- Resolve and complete `nbt.merge(d: nbt): nbt` in IDEA and the language server, including multiline compound receivers, chained results, navigation, and argument diagnostics. Reconstruct imported entity templates' intrinsic `summon` members for `super.summon(...)`.
+- Synchronize the ANTLR grammar with the compiler's command blocks (`/{ ... }`), entity templates (`entity Name: Parent`, `entity var`, `entity func`), selector callbacks, member keywords, constructor delegation, and NBT keys.
+- Add `EntityRef<T>` editor semantics: template members and entity members are completed separately; `summon()` and typed entity factories infer the reference type; display/entity base members remain available through inheritance.
+- Recognize `forEach`/`forEachAt` entity context entries and keep `this` typed as `EntityRef<T>` inside `entity func` bodies.
+- Parse and format command blocks in the language server, including `${...}` references, and classify command-block lines for IDEA lexer, command completion, highlighting, folding, and brace matching.
+- Update Kotlin-first MNI support: macros are discovered from explicit `func ... = Provider.method` declarations, `@MNIMacro(normalParams, returnType)` is validated, and parameter modes are inferred from JVM `Value`/`Ref`/`Const`/`InlineFn` wrappers instead of the removed `params` array. `injectedBy` no longer contributes macros.
 - Fix IDEA validation issues: keep LSP undefined-symbol diagnostics when native inspection cannot run, diagnose missing declared types, and offer native declaration/import fixes on LSP errors and at identifier ends.
 - Resolve imported type aliases in assignment, argument, and return checks, and prevent unrelated members from resolving as unqualified names.
 - Warn and dim unused imports; remove individual unused imports without losing attached comments or version directives.

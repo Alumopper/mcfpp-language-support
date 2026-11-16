@@ -7,6 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 record McfppCallableInfo(@NotNull String signature, @NotNull List<TextRange> parameters) {
+    String returnType() {
+        int open = signature.indexOf('(', Math.max(0, signature.indexOf("func ")));
+        int close = open < 0 ? -1 : matchingParenthesis(signature, open);
+        if (close < 0) return "void";
+        String tail = signature.substring(close + 1).strip();
+        return tail.startsWith(":") ? tail.substring(1).strip() : "void";
+    }
     static @NotNull McfppCallableInfo from(@NotNull McfppSymbol symbol) {
         return fromSignature(symbol.signature());
     }
@@ -16,7 +23,8 @@ record McfppCallableInfo(@NotNull String signature, @NotNull List<TextRange> par
     }
 
     static @NotNull McfppCallableInfo fromSignature(@NotNull String signature) {
-        int open = signature.indexOf('(');
+        int function = signature.indexOf("func ");
+        int open = signature.indexOf('(', function < 0 ? 0 : function + 5);
         if (open < 0) return new McfppCallableInfo(signature, List.of());
         int close = matchingParenthesis(signature, open);
         if (close < 0) close = signature.length();

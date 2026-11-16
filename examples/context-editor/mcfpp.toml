@@ -1,0 +1,4 @@
+schema = 1
+name = "context-editor"
+namespace = "example.contexteditor"
+version = "26.3"

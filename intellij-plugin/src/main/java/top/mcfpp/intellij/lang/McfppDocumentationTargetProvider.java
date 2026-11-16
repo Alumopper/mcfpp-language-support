@@ -40,6 +40,14 @@ public final class McfppDocumentationTargetProvider implements DocumentationTarg
             @NotNull PsiFile file,
             int offset
     ) {
+        // Reuse the LSP target, including compiler-injected APIs; retain native hover as a fallback.
+        // https://plugins.jetbrains.com/docs/intellij/documentation.html#documentation-target-api
+        if (file instanceof McfppFile) {
+            for (DocumentationTargetProvider provider : DocumentationTargetProvider.EP_NAME.getExtensionList()) {
+                if (provider.getClass().getName().startsWith("com.intellij.platform.lsp.") &&
+                        !provider.documentationTargets(file, offset).isEmpty()) return List.of();
+            }
+        }
         if (!(file instanceof McfppFile)) {
             PsiReference reference = file.findReferenceAt(offset);
             if (reference == null) return List.of();
@@ -51,6 +59,13 @@ public final class McfppDocumentationTargetProvider implements DocumentationTarg
             return targets;
         }
         int safeOffset = Math.max(0, Math.min(offset, Math.max(0, file.getTextLength() - 1)));
+        List<PsiElement> fields = McfppTemplateLiterals.fieldTargets(file, safeOffset);
+        if (fields != null) {
+            List<DocumentationTarget> targets = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            fields.forEach(field -> addTarget(field, targets, seen));
+            return targets;
+        }
         McfppSymbol declaration = McfppFileModels.get(file).declarationAt(safeOffset);
         if (declaration != null) return List.of(new McfppDocumentationTarget(file, declaration));
 

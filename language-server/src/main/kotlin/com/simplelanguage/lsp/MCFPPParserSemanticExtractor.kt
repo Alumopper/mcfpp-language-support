@@ -14,6 +14,7 @@ import org.eclipse.lsp4j.DiagnosticSeverity
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SymbolKind
+import top.mcfpp.language.ContextBuiltins
 
 enum class MCFPPScopeKind {
     TYPE,
@@ -39,7 +40,8 @@ data class MCFPPReferenceOccurrence(
     val readOnlyArguments: List<String> = emptyList(),
     val normalArguments: List<String> = emptyList(),
     val readOnlyArgumentRanges: List<Range> = emptyList(),
-    val normalArgumentRanges: List<Range> = emptyList()
+    val normalArgumentRanges: List<Range> = emptyList(),
+    val isNamedArgument: Boolean = false
 )
 
 data class MCFPPParserSemanticData(
@@ -156,9 +158,11 @@ object MCFPPParserSemanticExtractor {
                 is mcfppParser.InlineFunctionDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
                 is mcfppParser.CompileTimeFuncDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
                 is mcfppParser.NativeFuncDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
-                is mcfppParser.TemplateFunctionDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
+                is mcfppParser.TemplateFunctionDeclarationContext ->
+                    recordFunction(ctx.functionDeclarationPart(), null, ctx, isEntityMember = ctx.ENTITY() != null)
                 is mcfppParser.ExtensionFunctionDeclarationContext -> recordExtensionFunction(ctx)
                 is mcfppParser.TemplateConstructorDeclarationContext -> recordConstructor(ctx)
+                is mcfppParser.TemplateFactoryDeclarationContext -> recordFactory(ctx)
                 is mcfppParser.OperationOverrideDeclarationContext -> recordOperator(
                     operator = ctx.supportOperator(),
                     parameters = ctx.functionParams(),
@@ -179,6 +183,7 @@ object MCFPPParserSemanticExtractor {
                 is mcfppParser.CurlBlockContext -> recordBlockScope(ctx)
                 is mcfppParser.InlineLambdaContext -> recordLambdaScope(ctx)
                 is mcfppParser.LambdaParameterContext -> recordParameter(ctx, false)
+                is mcfppParser.ContextParameterContext -> recordParameter(ctx, false)
                 is mcfppParser.ForeachStatementContext -> recordForeachVariable(ctx)
             }
         }
@@ -217,6 +222,8 @@ object MCFPPParserSemanticExtractor {
             if (token.tokenIndex in declarationTokenIndexes) {
                 return
             }
+            val namedArgument = node.parent is mcfppParser.CallArgumentContext &&
+                (node.parent as mcfppParser.CallArgumentContext).ASSIGNMENT() != null
             val range = tokenRange(token)
             val namespaceId = node.parent as? mcfppParser.NamespaceIDContext
             if (namespaceId != null) {
@@ -242,17 +249,18 @@ object MCFPPParserSemanticExtractor {
                     isCall = isCall,
                     namespaceQualifier = namespaceQualifier,
                     readOnlyArguments = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map { it.text }.orEmpty(),
-                    normalArguments = functionCall?.arguments()?.normalArgs()?.expressionList()?.expression()?.map { it.text }.orEmpty(),
+                    normalArguments = functionCall?.arguments()?.normalArgs().argumentExpressions()?.map { it.text }.orEmpty(),
                     readOnlyArgumentRanges = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map(::contextRange).orEmpty(),
-                    normalArgumentRanges = functionCall?.arguments()?.normalArgs()?.expressionList()?.expression()?.map(::contextRange).orEmpty()
+                    normalArgumentRanges = functionCall?.arguments()?.normalArgs().argumentExpressions()?.map(::contextRange).orEmpty()
+                    , isNamedArgument = namedArgument
                 )
             )
         }
 
         fun build(diagnostics: List<Diagnostic>): MCFPPParserSemanticData {
-            val dedupedSymbols = symbols.distinctBy { listOf(it.name, it.kind.name, it.range.start.line, it.range.start.character, it.containerName, it.receiverType).joinToString("|") }
+            val dedupedSymbols = symbols.distinctBy { listOf(it.name, it.kind.name, it.range.start.line, it.range.start.character, it.containerName, it.receiverType, it.parameters).joinToString("|") }
             val mergedTypeMembers = typeMembers.mapValues { (_, members) ->
-                members.distinctBy { listOf(it.name, it.kind.name, it.range.start.line, it.range.start.character, it.containerName).joinToString("|") }
+                members.distinctBy { listOf(it.name, it.kind.name, it.range.start.line, it.range.start.character, it.containerName, it.parameters).joinToString("|") }
             }
             val dedupedTopLevel = topLevelSymbols.distinctBy { listOf(it.name, it.kind.name, it.range.start.line, it.range.start.character).joinToString("|") }
             val dedupedReferences = referencesByName.mapValues { (_, ranges) ->
@@ -313,6 +321,7 @@ object MCFPPParserSemanticExtractor {
             val nameToken = declarationName.classWithoutNamespace()?.Identifier() ?: return
             markDeclaration(nameToken)
             val name = nameToken.text
+            val entityTemplate = ctx.ENTITY() != null
             val aliasTarget = ctx.type()?.text?.trim()
             val superTypes = collectSuperTypes(ctx.compoundDeclaration())
             val readOnlyParameters = extractParameters(
@@ -331,9 +340,13 @@ object MCFPPParserSemanticExtractor {
                 containerName = null,
                 superTypes = superTypes,
                 fullRange = contextRange(ctx),
-                parameters = readOnlyParameters
+                parameters = readOnlyParameters,
+                isEntityTemplate = entityTemplate,
+                isDataTemplate = !entityTemplate,
+                isAbstract = ctx.ABSTRACT() != null
             )
             typeStack.addLast(createScopeFrame(ctx, MCFPPScopeKind.TYPE, symbol.name))
+            if (entityTemplate) recordEntitySummon(name, nameToken.symbol, ctx)
             if (aliasTarget != null) {
                 val delegatedValue = recordSymbol(
                     declarationToken = nameToken.symbol,
@@ -351,14 +364,41 @@ object MCFPPParserSemanticExtractor {
             }
         }
 
+        private fun recordEntitySummon(owner: String, token: Token, ownerCtx: ParserRuleContext) {
+            for (parameters in listOf(
+                emptyList(),
+                listOf(MCFPPFunctionParameter("d", "nbt")),
+                listOf(MCFPPFunctionParameter("position", "pos3")),
+                listOf(MCFPPFunctionParameter("position", "ContextPosition"))
+            )) {
+                val symbol = recordSymbol(
+                    declarationToken = token,
+                    name = "summon",
+                    kind = SymbolKind.Method,
+                    detail = "EntityRef<$owner>",
+                    typeName = "EntityRef<$owner>",
+                    receiverType = owner,
+                    topLevel = false,
+                    containerName = owner,
+                    fullRange = contextRange(ownerCtx),
+                    parameters = parameters,
+                    isSynthetic = true
+                )
+                typeMembers.getOrPut(owner) { mutableListOf() }.add(symbol)
+            }
+        }
+
         private fun recordDefaultTemplateConstructor(ctx: mcfppParser.TemplateDeclarationContext) {
             if (ctx.ABSTRACT() != null) {
                 return
             }
             val owner = currentTypeName() ?: return
-            if (typeMembers[owner].orEmpty().any { it.kind == SymbolKind.Constructor }) {
+            if (typeMembers[owner].orEmpty().any { it.kind == SymbolKind.Constructor && it.parameters.none { p -> !p.isReadOnly && !p.hasDefault } }) {
                 return
             }
+            if (ctx.ENTITY() == null && typeMembers[owner].orEmpty().any {
+                it.kind == SymbolKind.Field && !it.isSynthetic && it.initializer == null && it.typeName?.endsWith('?') != true
+            }) return
             val delegatedType = ctx.type()?.text?.trim()?.takeIf { it.isNotEmpty() }
             recordSyntheticConstructor(
                 owner = owner,
@@ -405,6 +445,9 @@ object MCFPPParserSemanticExtractor {
                 isSynthetic = true
             )
             typeMembers.getOrPut(owner) { mutableListOf() }.add(symbol)
+            val factory = symbol.copy(name = "new", kind = SymbolKind.Method, isStatic = true)
+            symbols.add(factory)
+            typeMembers.getOrPut(owner) { mutableListOf() }.add(factory)
         }
 
         private fun recordObjectTemplate(ctx: mcfppParser.ObjectTemplateDeclarationContext) {
@@ -450,7 +493,12 @@ object MCFPPParserSemanticExtractor {
             typeStack.addLast(createScopeFrame(ctx, MCFPPScopeKind.TYPE, symbol.name))
         }
 
-        private fun recordFunction(part: mcfppParser.FunctionDeclarationPartContext?, receiverType: String?, ownerCtx: ParserRuleContext) {
+        private fun recordFunction(
+            part: mcfppParser.FunctionDeclarationPartContext?,
+            receiverType: String?,
+            ownerCtx: ParserRuleContext,
+            isEntityMember: Boolean = false
+        ) {
             if (part == null) {
                 return
             }
@@ -470,7 +518,10 @@ object MCFPPParserSemanticExtractor {
                 containerName = currentType,
                 fullRange = contextRange(ownerCtx),
                 parameters = extractFunctionParameters(part.functionParams()),
-                accessModifier = accessModifier(ownerCtx)
+                contextParameters = contextParameters(part.contextParameters() ?: ownerCtx.getRuleContext(mcfppParser.ContextParametersContext::class.java, 0)),
+                accessModifier = accessModifier(ownerCtx),
+                isEntityMember = isEntityMember,
+                isNative = ownerCtx is mcfppParser.NativeFuncDeclarationContext
             )
             val memberOwner = receiverType ?: currentType
             if (memberOwner != null) {
@@ -497,6 +548,7 @@ object MCFPPParserSemanticExtractor {
                 containerName = currentType,
                 fullRange = contextRange(ctx),
                 parameters = extractFunctionParameters(ctx.functionParams())
+                , contextParameters = contextParameters(ctx.contextParameters())
             )
             if (receiverType != null) {
                 typeMembers.getOrPut(receiverType) { mutableListOf() }.add(symbol)
@@ -523,6 +575,20 @@ object MCFPPParserSemanticExtractor {
             )
             typeMembers.getOrPut(owner) { mutableListOf() }.add(symbol)
             functionStack.addLast(createScopeFrame(ctx, MCFPPScopeKind.FUNCTION, owner))
+        }
+
+        private fun recordFactory(ctx: mcfppParser.TemplateFactoryDeclarationContext) {
+            val owner = currentTypeName() ?: return
+            val token = ctx.NEW()?.symbol ?: return
+            val parameters = extractParameters(ctx.normalParams()?.parameterList()?.parameter().orEmpty(), false)
+            val symbol = recordSymbol(token, owner, SymbolKind.Constructor, owner, owner, null, false, owner,
+                fullRange = contextRange(ctx), parameters = typeReadOnlyParameters[owner].orEmpty() + parameters,
+                accessModifier = accessModifier(ctx))
+            typeMembers.getOrPut(owner) { mutableListOf() }.add(symbol)
+            val factory = symbol.copy(name = "new", kind = SymbolKind.Method, isStatic = true)
+            symbols.add(factory)
+            typeMembers.getOrPut(owner) { mutableListOf() }.add(factory)
+            functionStack.addLast(createScopeFrame(ctx, MCFPPScopeKind.FUNCTION, "new"))
         }
 
         private fun recordOperator(
@@ -562,6 +628,8 @@ object MCFPPParserSemanticExtractor {
             val currentFunction = currentFunctionName()
             val typeName = ctx.getRuleContext(mcfppParser.TypeContext::class.java, 0)?.text?.trim()
                 ?: MCFPPDocumentIndex.referenceFactoryType(ctx.text.substringAfter('=', ""))
+                ?: inferContextInitializer(ctx.expression()?.text)
+                ?: inferCallInitializer(ctx.expression()?.text)
             variables[nameToken.text] = typeName
             val kind = if (currentType != null && currentFunction == null) SymbolKind.Field else SymbolKind.Variable
             val symbol = recordSymbol(
@@ -599,7 +667,9 @@ object MCFPPParserSemanticExtractor {
                 receiverType = null,
                 topLevel = currentType == null,
                 containerName = currentFunction ?: currentType,
-                accessModifier = accessModifier(ctx)
+                accessModifier = accessModifier(ctx),
+                isEntityMember = ctx.ENTITY() != null,
+                initializer = ctx.expression()?.text
             )
             if (currentType != null && currentFunction == null) {
                 typeMembers.getOrPut(currentType) { mutableListOf() }.add(symbol)
@@ -609,8 +679,11 @@ object MCFPPParserSemanticExtractor {
         private fun recordParameter(ctx: ParserRuleContext, isReadOnly: Boolean) {
             val nameToken = ctx.getToken(mcfppParser.Identifier, 0)?.symbol ?: return
             markDeclaration(nameToken)
+            val lambda = generateSequence(ctx.parent) { it.parent }.filterIsInstance<mcfppParser.InlineLambdaContext>().firstOrNull()
+            val entry = lambda?.let { ContextBuiltins.entryBefore(text, it.start.startIndex) }
             val typeName = ctx.getRuleContext(mcfppParser.TypeContext::class.java, 0)?.text?.trim()
-                ?: if (isReadOnly) "Type" else null
+                ?: if (isReadOnly) "Type" else if (ctx is mcfppParser.LambdaParameterContext && entry != null)
+                    blockStack.lastOrNull()?.name?.removePrefix("context:") else null
             val isTypeParameter = isReadOnly && typeName.equals("Type", ignoreCase = true)
             variables[nameToken.text] = typeName
             recordSymbol(
@@ -623,6 +696,7 @@ object MCFPPParserSemanticExtractor {
                 topLevel = false,
                 containerName = currentFunctionName() ?: currentTypeName(),
                 isParameter = true,
+                isContextProvider = ctx is mcfppParser.ContextParameterContext || ctx is mcfppParser.LambdaParameterContext && entry != null,
                 isReadOnly = isReadOnly,
                 functionValue = functionValue(ctx.getRuleContext(mcfppParser.TypeContext::class.java, 0), null)
             )
@@ -712,7 +786,7 @@ object MCFPPParserSemanticExtractor {
         private fun functionValue(type: mcfppParser.TypeContext?, expression: mcfppParser.ExpressionContext?): MCFPPFunctionValue? {
             type?.typeBody()?.functionType()?.let { signature ->
                 return MCFPPFunctionValue(signature.type().map { MCFPPFunctionParameter(null, it.text) },
-                    signature.functionReturnType().text)
+                    signature.functionReturnType().text, signature.contextTypeParameters()?.type()?.map { it.text }.orEmpty())
             }
             if (expression == null || !expression.text.startsWith("{")) return null
             fun findLambda(node: org.antlr.v4.runtime.tree.ParseTree): mcfppParser.InlineLambdaContext? {
@@ -757,7 +831,14 @@ object MCFPPParserSemanticExtractor {
             accessModifier: MCFPPAccessModifier = MCFPPAccessModifier.PUBLIC,
             isSynthetic: Boolean = false,
             initializer: String? = null,
-            functionValue: MCFPPFunctionValue? = null
+            functionValue: MCFPPFunctionValue? = null,
+            contextParameters: List<MCFPPFunctionParameter> = emptyList(),
+            isContextProvider: Boolean = false,
+            isEntityTemplate: Boolean = false,
+            isEntityMember: Boolean = false,
+            isDataTemplate: Boolean = false,
+            isAbstract: Boolean = false,
+            isNative: Boolean = false
         ): MCFPPSymbol {
             val symbol = MCFPPSymbol(
                 uri = uri,
@@ -782,7 +863,14 @@ object MCFPPParserSemanticExtractor {
                 accessModifier = accessModifier,
                 isSynthetic = isSynthetic,
                 initializer = initializer,
-                functionValue = functionValue
+                functionValue = functionValue,
+                contextParameters = contextParameters,
+                isContextProvider = isContextProvider,
+                isEntityTemplate = isEntityTemplate,
+                isEntityMember = isEntityMember,
+                isDataTemplate = isDataTemplate,
+                isAbstract = isAbstract,
+                isNative = isNative
             )
             symbols += symbol
             if (topLevel) {
@@ -837,7 +925,11 @@ object MCFPPParserSemanticExtractor {
         }
 
         private fun recordLambdaScope(ctx: mcfppParser.InlineLambdaContext) {
-            blockStack.addLast(createScopeFrame(ctx, MCFPPScopeKind.BLOCK, "lambda"))
+            val entry = ContextBuiltins.entryBefore(text, ctx.start.startIndex)
+            val ambient = blockStack.lastOrNull { it.name.startsWith("context:") }?.name?.removePrefix("context:")
+            val name = if (entry == null) "lambda" else "context:${ContextBuiltins.callbackType(entry, ambient)}"
+            blockStack.addLast(createScopeFrame(ctx, MCFPPScopeKind.BLOCK, name))
+            if (entry != null) return // Context callbacks require an explicit parameter.
             if (ctx.lambdaParameterList() != null) return
             val body = ctx.lambdaBody() ?: return
             val uses = Regex("\\bit\\b").findAll(body.text).toList()
@@ -846,6 +938,48 @@ object MCFPPParserSemanticExtractor {
             symbols += MCFPPSymbol(uri, "it", SymbolKind.Variable, range,
                 containerName = currentFunctionName(), enclosingFunctionScopeId = currentBlockScopeId(),
                 isParameter = true, isSynthetic = true, detail = "implicit lambda parameter")
+        }
+
+        private fun contextParameters(ctx: mcfppParser.ContextParametersContext?): List<MCFPPFunctionParameter> =
+            ctx?.contextParameter()?.map { MCFPPFunctionParameter(it.Identifier().text, it.type().text) }.orEmpty()
+
+        private fun inferContextInitializer(expression: String?): String? {
+            if (expression == null) return null
+            if (expression.startsWith('@')) return "entity"
+            if (!expression.matches(Regex("[A-Za-z_][\\w]*(?:\\.[A-Za-z_][\\w]*)*"))) return null
+            val parts = expression.split('.')
+            val scopes = (blockStack.map { it.id } + functionStack.map { it.id }).toSet()
+            var type = symbols.lastOrNull { it.name == parts.first() && it.enclosingFunctionScopeId in scopes }?.typeName ?: return null
+            for (member in parts.drop(1)) type = top.mcfpp.language.EntityBuiltins.member(type, member)?.type() ?: return null
+            return type
+        }
+
+        /** Infers `Type(...)`, `factory(...)` and `template.summon(...)` initializers. */
+        private fun inferCallInitializer(expression: String?): String? {
+            val text = expression?.trim() ?: return null
+            top.mcfpp.language.MemberExpressions.calledMemberReceiver(text, "merge")?.let { receiver ->
+                val owner = if (receiver.startsWith('{') && receiver.endsWith('}')) "nbt"
+                    else variables[receiver] ?: inferCallInitializer(receiver)
+                top.mcfpp.language.NbtBuiltins.member(owner, "merge")?.let { return it.type() }
+            }
+            val direct = Regex("^(?:[A-Za-z_][\\w.]*:)?([A-Za-z_]\\w*)\\s*(?:<[^<>]*>)?\\s*\\(").find(text)
+            if (direct != null) {
+                val name = direct.groupValues[1]
+                symbols.lastOrNull { it.name == name && it.topLevel && it.kind == SymbolKind.Class }?.let { return it.name }
+                symbols.lastOrNull {
+                    it.name == name && it.typeName != null &&
+                        it.kind in setOf(SymbolKind.Function, SymbolKind.Method, SymbolKind.Constructor)
+                }?.let { return it.typeName }
+            }
+            val member = Regex("^([A-Za-z_]\\w*)\\s*\\.\\s*([A-Za-z_]\\w*)\\s*(?:<[^<>]*>)?\\s*\\(").find(text) ?: return null
+            val receiver = member.groupValues[1]
+            val name = member.groupValues[2]
+            val owner = variables[receiver]?.substringBefore('<')?.trim()
+                ?: symbols.lastOrNull { it.name == receiver && it.typeName != null }?.typeName?.substringBefore('<')
+                ?: return null
+            return typeMembers[owner].orEmpty().firstOrNull { it.name == name }?.typeName
+                ?: top.mcfpp.language.EntityBuiltins.member(owner, name)?.type()
+                ?: top.mcfpp.language.NbtBuiltins.member(owner, name)?.type()
         }
 
         private fun recordForeachVariable(ctx: mcfppParser.ForeachStatementContext) {

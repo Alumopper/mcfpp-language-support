@@ -19,6 +19,8 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
             descriptor("Keywords//Built-in types", McfppSyntaxHighlighter.TYPE_KEYWORD),
             descriptor("Identifiers//Function declaration", McfppSyntaxHighlighter.FUNCTION_DECLARATION),
             descriptor("Identifiers//Function call", McfppSyntaxHighlighter.FUNCTION_CALL),
+            descriptor("Identifiers//Macro function", McfppSyntaxHighlighter.MACRO_FUNCTION),
+            descriptor("Identifiers//MNI function", McfppSyntaxHighlighter.MNI_FUNCTION),
             descriptor("Identifiers//Type", McfppSyntaxHighlighter.TYPE_NAME),
             descriptor("Identifiers//Variable", McfppSyntaxHighlighter.VARIABLE),
             descriptor("Identifiers//Parameter", McfppSyntaxHighlighter.PARAMETER),
@@ -76,6 +78,11 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
                     }
                 }
                 enum <type>Direction</type> { <enumMember>NORTH</enumMember>, SOUTH }
+                func <macroFunction>expand</macroFunction>(value: int): int = example.Provider.expand
+                func <mniFunction>nativeValue</mniFunction>(): int = example.Provider.nativeValue
+                func <function>main</function>() {
+                    <macroFunction>expand</macroFunction>(<mniFunction>nativeValue</mniFunction>())
+                }
                 /<commandRoot>execute</commandRoot> as <selector>@e</selector>[type=<commandResource>minecraft:zombie</commandResource>] run give @s <commandResource>minecraft:stone</commandResource>
                 """;
     }
@@ -84,6 +91,8 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
     public Map<String, TextAttributesKey> getAdditionalHighlightingTagToDescriptorMap() {
         return Map.ofEntries(
                 Map.entry("function", McfppSyntaxHighlighter.FUNCTION_DECLARATION),
+                Map.entry("macroFunction", McfppSyntaxHighlighter.MACRO_FUNCTION),
+                Map.entry("mniFunction", McfppSyntaxHighlighter.MNI_FUNCTION),
                 Map.entry("parameter", McfppSyntaxHighlighter.PARAMETER),
                 Map.entry("type", McfppSyntaxHighlighter.TYPE_NAME),
                 Map.entry("variable", McfppSyntaxHighlighter.VARIABLE),

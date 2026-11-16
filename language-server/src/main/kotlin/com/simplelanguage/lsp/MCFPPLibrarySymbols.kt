@@ -13,8 +13,11 @@ import top.mcfpp.library.syntax.*
 internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): List<MCFPPSymbol> {
     val model = LibraryModelCodec(listOf(CompoundCodec, NativeCodec)).decode(bytes)
     val declarations = model.declarations
-    fun declarationName(reference: DeclarationReference): String = when (reference) {
-        is DeclarationReference.Local -> declarations.declaration(reference.target).common.name
+    fun qualifiedDeclarationName(reference: DeclarationReference): String = when (reference) {
+        is DeclarationReference.Local -> declarations.declaration(reference.target).common.let { common ->
+            val namespace = declarations.environment(common.environment).namespace
+            if (namespace.isEmpty()) common.name else "$namespace:${common.name}"
+        }
         is DeclarationReference.Dependency -> reference.key.name
     }
     fun typeName(reference: TypeRef?, depth: Int = 0): String {
@@ -22,8 +25,23 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
         if (depth > 24) return "any"
         fun nested(value: TypeRef) = typeName(value, depth + 1)
         return when (val type = model.tables.type(reference)) {
-            is LibraryType.Builtin -> type.key
-            is LibraryType.Declaration -> declarationName(type.target)
+            is LibraryType.Builtin -> when (type.key) {
+                "context.base" -> "Context"
+                "context.dimension" -> "DimensionContext"
+                "context.pos" -> "PosContext"
+                "context.rotation" -> "RotationContext"
+                "context.anchor" -> "AnchorContext"
+                "context.entity" -> "EntityContext"
+                "context.execution" -> "ExecutionContext"
+                "context.entity_execution" -> "EntityExecutionContext"
+                "context.relation" -> "RelationContext"
+                "context.position" -> "ContextPosition"
+                "context.bound.rotation" -> "ContextRotation"
+                "context.bound.dimension" -> "ContextDimension"
+                "context.bound.anchor" -> "ContextAnchor"
+                else -> type.key.removePrefix("entity.")
+            }
+            is LibraryType.Declaration -> qualifiedDeclarationName(type.target)
             is LibraryType.Parameter -> {
                 val owner = (type.owner as? DeclarationReference.Local)?.let { declarations.declaration(it.target) }
                 val parameters = when (owner) {
@@ -35,9 +53,12 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
             }
             is LibraryType.Applied -> "${nested(type.constructor)}<${type.arguments.joinToString(", ", transform = ::nested)}>"
             is LibraryType.Specialized -> nested(type.constructor)
-            is LibraryType.Union -> type.alternatives.joinToString(" | ", transform = ::nested)
-            is LibraryType.Intersection -> type.components.joinToString(" & ", transform = ::nested)
-            is LibraryType.Function -> "(${type.parameters.joinToString(", ", transform = ::nested)}) -> ${nested(type.result)}"
+            is LibraryType.Union -> type.alternatives.joinToString(" | ", "(", ")", transform = ::nested)
+            is LibraryType.Intersection -> type.components.joinToString(" & ", "(", ")", transform = ::nested)
+            is LibraryType.Object -> type.fields.joinToString(", ", "{ ", " }") { "${it.name}: ${nested(it.type)}${if (it.optional) "?" else ""}" }
+            is LibraryType.Literal -> nested(type.primitive)
+            is LibraryType.Function -> (if (type.contexts.isEmpty()) "" else "context(${type.contexts.joinToString(", ", transform = ::nested)}) ") +
+                "(${type.parameters.joinToString(", ", transform = ::nested)}) -> ${nested(type.result)}"
             is LibraryType.NbtRef -> "NBTRef<${nested(type.value)}>"
             is LibraryType.UnresolvedNominal -> type.name
             is LibraryType.Dependent -> "any"
@@ -54,22 +75,28 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
         is MacroType.Callback -> "(${type.parameters.joinToString(", ") { macroType(it.type) }}) -> ${macroType(type.result)}"
     }
     val range = Range(Position(0, 0), Position(0, 0))
-    return declarations.declarations.mapIndexedNotNull { index, declaration ->
+    val symbols = declarations.declarations.mapIndexedNotNull { index, declaration ->
         val common = declaration.common
-        if (common.access == DeclarationAccess.PRIVATE) return@mapIndexedNotNull null
+        if (common.access == DeclarationAccess.PRIVATE &&
+            !(declaration is ValueDeclaration && declaration.role == ValueRole.MEMBER) && declaration !is ConstructorDeclaration)
+            return@mapIndexedNotNull null
         val owner = common.owner?.let { declarations.declaration(it) }
         val container = owner?.takeUnless { it is NamespaceDeclaration }?.common?.name
         val kind: SymbolKind
         val type: String?
         var params = emptyList<MCFPPFunctionParameter>()
+        var contexts = emptyList<MCFPPFunctionParameter>()
         var parents = emptyList<String>()
         var receiver: String? = null
         var name = common.name
         when (declaration) {
             is FunctionDeclaration -> {
-                kind = if (container == null) SymbolKind.Function else SymbolKind.Method
+                val factory = common.flags and DeclarationFlags.FACTORY != 0L
+                kind = if (factory) SymbolKind.Constructor else if (container == null) SymbolKind.Function else SymbolKind.Method
+                if (factory) name = container ?: name
                 type = typeName(declaration.result)
                 params = parameters(declaration.readonly, declaration.normal)
+                contexts = parameters(emptyList(), declaration.contexts)
                 receiver = declaration.receiver?.let { typeName(it) }
             }
             is MacroDeclaration -> {
@@ -87,18 +114,34 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
             }
             is ValueDeclaration -> {
                 if (declaration.role !in setOf(ValueRole.MEMBER, ValueRole.GLOBAL)) return@mapIndexedNotNull null
-                kind = if (container == null) SymbolKind.Variable else SymbolKind.Field; type = typeName(declaration.type)
+                kind = if (container == null) SymbolKind.Variable else SymbolKind.Field
+                type = typeName(declaration.type) + if (common.flags and DeclarationFlags.NULLABLE != 0L) "?" else ""
             }
             is EnumDeclaration -> { kind = SymbolKind.Enum; type = name }
             is EnumMemberDeclaration -> { kind = SymbolKind.EnumMember; type = container }
-            is TypeAliasDeclaration -> { kind = SymbolKind.Class; type = typeName(declaration.target) }
+            is TypeAliasDeclaration -> { kind = SymbolKind.TypeParameter; type = typeName(declaration.target) }
             is AnnotationProviderDeclaration -> { kind = SymbolKind.Class; type = name }
             else -> return@mapIndexedNotNull null
         }
         MCFPPSymbol(uri = uri, name = name, kind = kind, range = range, detail = type, typeName = type,
             containerName = container, topLevel = container == null, namespaceName = declarations.environment(common.environment).namespace,
-            isExternal = true, isStdlib = standard, parameters = params, receiverType = receiver, superTypes = parents,
+            isExternal = true, isStdlib = standard, parameters = params, contextParameters = contexts, receiverType = receiver, superTypes = parents,
             isStatic = common.flags and DeclarationFlags.STATIC != 0L,
+            accessModifier = when (common.access) {
+                DeclarationAccess.PRIVATE -> MCFPPAccessModifier.PRIVATE
+                DeclarationAccess.PROTECTED -> MCFPPAccessModifier.PROTECTED
+                else -> MCFPPAccessModifier.PUBLIC
+            },
+            isDataTemplate = declaration is CompoundDeclaration && declaration.category == CompoundCategory.DATA && common.flags and DeclarationFlags.ENTITY == 0L,
+            isAbstract = common.flags and DeclarationFlags.ABSTRACT != 0L,
+            isNative = declaration is FunctionDeclaration && declaration.native != null || declaration is MacroDeclaration,
+            isMacro = declaration is MacroDeclaration,
+            initializer = if (declaration is ValueDeclaration && (declaration.defaultBody != null || declaration.frozen != null)) "<library default>" else null,
+            isEntityTemplate = declaration is CompoundDeclaration && common.flags and 256L != 0L,
+            isEntityMember = common.flags and 256L != 0L, // DeclarationFlags.ENTITY in current compiler
             documentation = model.debug?.documents?.firstOrNull { it.declaration.value == index + 1L }?.text)
+    }
+    return symbols + symbols.filter { it.kind == SymbolKind.Constructor }.map {
+        it.copy(name = "new", kind = SymbolKind.Method, isStatic = true)
     }
 }

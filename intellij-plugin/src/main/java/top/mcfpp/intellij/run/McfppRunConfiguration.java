@@ -20,6 +20,8 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
     public String debugFunction="";
     public boolean debugStopOnEntry=false;
     public boolean offline=false,locked=false;
+    public boolean deployAfterBuild=false;
+    public String deploymentDirectory="";
     public Map<String,String> environment=new LinkedHashMap<>();
     public McfppRunConfiguration(Project project,ConfigurationFactory factory,String name) { super(project,factory,name); }
     @Override public McfppRunConfiguration clone() {
@@ -27,11 +29,17 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         copy.environment=new LinkedHashMap<>(environment);
         return copy;
     }
-    @Override public @NotNull SettingsEditor<? extends RunConfiguration> getConfigurationEditor() { return new McfppRunSettingsEditor(); }
+    @Override public @NotNull SettingsEditor<? extends RunConfiguration> getConfigurationEditor() { return new McfppRunSettingsEditor(getProject()); }
     @Override public void checkConfiguration() throws RuntimeConfigurationException {
         Path root=directory();
         if(!Files.isRegularFile(root.resolve("mcfpp.toml"))) throw new RuntimeConfigurationError("Select an MCFPP project containing mcfpp.toml.");
         if(task==McfppTask.UPDATE && locked) throw new RuntimeConfigurationError("Update cannot be used with --locked.");
+        if(deploymentEnabled()) try { deployment(); }
+        catch(Exception e) { throw new RuntimeConfigurationError("Cannot deploy datapack: "+e.getMessage()); }
+    }
+    private boolean deploymentEnabled() { return deployAfterBuild && (task==McfppTask.BUILD || task==McfppTask.DUMP_IR); }
+    private McfppDatapackDeployment deployment() throws java.io.IOException {
+        return McfppDatapackDeployment.forProject(directory(),deploymentDirectory,ParametersListUtil.parse(arguments));
     }
     public Path directory() { return Path.of(projectPath.isBlank() ? Objects.requireNonNullElse(getProject().getBasePath(),".") : projectPath).toAbsolutePath().normalize(); }
     public GeneralCommandLine commandLine() throws Exception {
@@ -77,7 +85,13 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
                 service.acquire();
                 try {
                     long startedAt=System.currentTimeMillis();
-                    var handler=new McfppProcessHandler(commandLine());
+                    var deployment=deploymentEnabled() ? deployment() : null;
+                    var handler=new McfppProcessHandler(commandLine(),(exitCode,process) -> {
+                        if(exitCode!=0 || deployment==null) return exitCode;
+                        return deployment.finish(exitCode,(message,error) -> {
+                            process.notifyTextAvailable(message,error ? ProcessOutputTypes.STDERR : ProcessOutputTypes.SYSTEM);
+                        });
+                    });
                     handler.setShouldDestroyProcessRecursively(true);
                     handler.addProcessListener(new ProcessAdapter() {
                         @Override public void processTerminated(@NotNull ProcessEvent event) {
@@ -125,6 +139,8 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         projectPath=element.getAttributeValue("projectPath",""); arguments=element.getAttributeValue("arguments","");
         debugFunction=element.getAttributeValue("debugFunction",""); debugStopOnEntry=Boolean.parseBoolean(element.getAttributeValue("debugStopOnEntry","false"));
         offline=Boolean.parseBoolean(element.getAttributeValue("offline","false")); locked=Boolean.parseBoolean(element.getAttributeValue("locked","false"));
+        deployAfterBuild=Boolean.parseBoolean(element.getAttributeValue("deployAfterBuild","false"));
+        deploymentDirectory=element.getAttributeValue("deploymentDirectory","");
         environment.clear(); for(Element entry:element.getChildren("env")) environment.put(entry.getAttributeValue("name"),entry.getAttributeValue("value",""));
     }
     @Override public void writeExternal(@NotNull Element element) {
@@ -132,6 +148,7 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         element.setAttribute("task",task.name()).setAttribute("projectPath",projectPath).setAttribute("arguments",arguments);
         element.setAttribute("debugFunction",debugFunction).setAttribute("debugStopOnEntry",Boolean.toString(debugStopOnEntry));
         element.setAttribute("offline",Boolean.toString(offline)).setAttribute("locked",Boolean.toString(locked));
+        element.setAttribute("deployAfterBuild",Boolean.toString(deployAfterBuild)).setAttribute("deploymentDirectory",deploymentDirectory);
         for(var entry:environment.entrySet()) element.addContent(new Element("env").setAttribute("name",entry.getKey()).setAttribute("value",entry.getValue()));
     }
 }

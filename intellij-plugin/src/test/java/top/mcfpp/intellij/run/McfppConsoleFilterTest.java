@@ -9,6 +9,7 @@ public final class McfppConsoleFilterTest extends BasePlatformTestCase {
         var path=java.nio.file.Files.createTempFile("mcfpp-console-", ".mcfpp");
         java.nio.file.Files.writeString(path,"func first() {}\nfunc main() { missing(); }\n");
         com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),path.toString());
+        com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),path.getParent().toString());
         var source=com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
         assertNotNull(source);
         try {

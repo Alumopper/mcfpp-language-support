@@ -30,7 +30,8 @@ internal object MCFPPSemanticTokenLegend {
         "escape",
         "literal",
         "resourceLocation",
-        "vector"
+        "vector",
+        "mniFunction"
     )
 
     val tokenModifiers = listOf(

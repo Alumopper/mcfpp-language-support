@@ -9,6 +9,7 @@ import org.eclipse.lsp4j.DiagnosticSeverity
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SymbolKind
+import top.mcfpp.language.ContextBuiltins
 
 class MCFPPTypeChecker(
     private val document: MCFPPDocumentAnalysis,
@@ -17,9 +18,12 @@ class MCFPPTypeChecker(
     private val resolveGlobalSymbol: (String, Position) -> MCFPPSymbol?,
     private val resolveCallSymbol: (MCFPPReferenceOccurrence) -> MCFPPSymbol?,
     private val resolveMemberSymbol: (String, String, Position) -> MCFPPSymbol?,
-    private val resolveImportedType: (String) -> String = { it }
+    private val resolveImportedType: (String) -> String = { it },
+    private val contextualLiteralType: (Int, Int) -> String? = { _, _ -> null }
 ) {
     private val inferredSymbolTypes = linkedMapOf<String, String>()
+    private val assignmentChecks = mutableSetOf<Pair<String?, String?>>()
+    private val inferringSymbols = mutableSetOf<String>()
 
     fun collectDiagnostics(): List<Diagnostic> {
         val lexer = mcfppLexer(CharStreams.fromString(document.analysisText))
@@ -38,6 +42,25 @@ class MCFPPTypeChecker(
         private val diagnostics: MutableList<Diagnostic>
     ) : mcfppParserBaseVisitor<Unit>() {
         private val functionReturnTypes = ArrayDeque<String>()
+        private val providedContexts = ArrayDeque<Pair<Position, List<Pair<String, String?>>>>()
+
+        override fun visitContextScopeStatement(ctx: mcfppParser.ContextScopeStatementContext) {
+            providedContexts.addLast(tokenPosition(ctx.block().start) to ctx.normalArgs().argumentExpressions().map { it.text to inferExpressionType(it) })
+            try { super.visitContextScopeStatement(ctx) } finally { providedContexts.removeLast() }
+        }
+
+        override fun visitVarWithSelector(ctx: mcfppParser.VarWithSelectorContext) {
+            var owner = inferJvmAccessType(ctx.jvmAccessExpression())
+            for (selector in ctx.selector()) {
+                val name = selector.memberKeyword()?.text ?: selector.`var`()?.varWithSuffix()?.Identifier()?.text
+                    ?: selector.`var`()?.functionCall()?.namespaceID()?.text
+                if (owner != null && ContextBuiltins.isType(owner) && name != null && top.mcfpp.language.EntityBuiltins.member(owner, name) == null)
+                    diagnostics += Diagnostic(contextRange(selector), "Context `$owner` has no member `$name`", DiagnosticSeverity.Error, "mcfpp")
+                owner = name?.let { top.mcfpp.language.EntityBuiltins.member(owner, it)?.type() }
+                    ?: inferMemberVarType(owner, selector.`var`())
+            }
+            super.visitVarWithSelector(ctx)
+        }
 
         override fun visitFunctionDeclaration(ctx: mcfppParser.FunctionDeclarationContext) {
             val declaration = ctx.functionDeclarationPart()
@@ -124,9 +147,35 @@ class MCFPPTypeChecker(
         }
 
         override fun visitTemplateConstructorDeclaration(ctx: mcfppParser.TemplateConstructorDeclarationContext) {
+            diagnostics += Diagnostic(tokenRange(ctx.start), "`constructor` has been removed. Use `new(...) { return { ... } }` to return a complete object.", DiagnosticSeverity.Error, "mcfpp")
             withFunctionReturnType("void") {
                 super.visitTemplateConstructorDeclaration(ctx)
             }
+        }
+
+        override fun visitTemplateFactoryDeclaration(ctx: mcfppParser.TemplateFactoryDeclarationContext) {
+            val owner = document.innermostTypeScope(tokenPosition(ctx.start))?.name ?: "any"
+            withFunctionReturnContract("new", owner, ctx.curlBlock(), tokenRange(ctx.start)) {
+                super.visitTemplateFactoryDeclaration(ctx)
+            }
+        }
+
+        override fun visitPrimary(ctx: mcfppParser.PrimaryContext) {
+            if (ctx.THIS() != null && generateSequence(ctx.parent) { it.parent }
+                    .takeWhile { it !is mcfppParser.TemplateFunctionDeclarationContext }
+                    .any { it is mcfppParser.TemplateFactoryDeclarationContext }) {
+                diagnostics += Diagnostic(contextRange(ctx), "A `new` factory has no `this` receiver. Return a complete object explicitly.", DiagnosticSeverity.Error, "mcfpp")
+            }
+            super.visitPrimary(ctx)
+        }
+
+        override fun visitElvisExpression(ctx: mcfppParser.ElvisExpressionContext) {
+            val expected = inferAdditiveType(ctx.additiveExpression())?.removeSuffix("?")
+            ctx.elvisOperand().forEach { operand ->
+                val actual = operand.additiveExpression()?.let(::inferAdditiveType)
+                if (!isAssignable(expected, actual)) diagnostics += typeMismatchDiagnostic(contextRange(operand), expected, actual, "Elvis fallback")
+            }
+            super.visitElvisExpression(ctx)
         }
 
         override fun visitFieldDeclaration(ctx: mcfppParser.FieldDeclarationContext) {
@@ -162,7 +211,7 @@ class MCFPPTypeChecker(
             val target = ctx.varWithSelector()
             val value = ctx.expression()
             if (target != null && value != null && ctx.assignmentOperator() != null) {
-                val expectedType = inferVarWithSelectorType(target)
+                val expectedType = displayAssignmentType(target) ?: inferVarWithSelectorType(target)
                 val actualType = inferExpressionType(value)
                 if (!isAssignable(expectedType, actualType)) {
                     diagnostics += typeMismatchDiagnostic(
@@ -180,7 +229,14 @@ class MCFPPTypeChecker(
             val declaration = generateSequence(ctx.parent) { it.parent }
                 .takeWhile { it !is mcfppParser.InlineLambdaContext && it !is mcfppParser.CurlBlockContext }
                 .filterIsInstance<mcfppParser.FieldDeclarationContext>().firstOrNull()
+            val call = ctx.parent as? mcfppParser.LambdaCallExpressionContext
+            val function = call?.functionCall()
+            val target = function?.let(::functionCallOccurrence)?.let(resolveCallSymbol)
+                ?: call?.varWithSuffix()?.Identifier()?.text?.let { resolveGlobalSymbol(it, tokenPosition(ctx.start)) }
+            val count = function?.arguments()?.normalArgs().argumentExpressions()?.size ?: 0
+            val callbackType = target?.parameters?.filterNot { it.isReadOnly }?.getOrNull(count)?.typeName
             val resultType = declaration?.type()?.typeBody()?.functionType()?.functionReturnType()?.text
+                ?: if (ContextBuiltins.entryBefore(document.analysisText, ctx.start.startIndex) != null) "void" else callbackType?.let(::functionResult)
             withFunctionReturnType(resultType ?: "?") {
                 super.visitInlineLambda(ctx)
             }
@@ -189,6 +245,8 @@ class MCFPPTypeChecker(
         override fun visitReturnStatement(ctx: mcfppParser.ReturnStatementContext) {
             val expectedType = functionReturnTypes.lastOrNull()?.takeUnless { it == "?" }
             val expression = ctx.expression()
+            if (expression != null && ContextBuiltins.isType(inferExpressionType(expression)))
+                diagnostics += Diagnostic(contextRange(expression), "Scoped context values cannot escape through a return", DiagnosticSeverity.Error, "mcfpp")
             if (expectedType != null) {
                 val diagnostic = when {
                     expectedType == "void" && expression != null -> Diagnostic(
@@ -332,6 +390,36 @@ class MCFPPTypeChecker(
         private fun validateFunctionCall(ctx: mcfppParser.FunctionCallContext, target: MCFPPSymbol) {
             val readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
             val typeSubstitutions = typeParameterSubstitutions(target, readOnlyArguments.map { it.text })
+            val containing = ctx.parent as? mcfppParser.LambdaCallExpressionContext
+            val trailing = containing?.takeIf { it.functionCall() === ctx }?.inlineLambda()
+            val normal = ctx.arguments()?.normalArgs()
+            val expressions = normal.argumentExpressions()
+            val names = normal.argumentNames()
+            val contextNames = target.contextParameters.mapNotNull { it.name }.toSet()
+            val ordinary = expressions.indices.filter { names.getOrNull(it) !in contextNames }
+            val position = tokenPosition(ctx.start)
+            for (dependency in target.contextParameters) {
+                val explicit = names.indexOf(dependency.name)
+                if (explicit >= 0) {
+                    val actual = inferExpressionType(expressions[explicit])
+                    if (!isAssignable(dependency.typeName, actual)) diagnostics += Diagnostic(contextRange(expressions[explicit]),
+                        "Context `${dependency.name}` requires `${dependency.typeName}`, found `$actual`", DiagnosticSeverity.Error, "mcfpp")
+                    continue
+                }
+                val layers = document.symbols.filter { it.isContextProvider && document.isScopeVisible(it.enclosingFunctionScopeId, position) }
+                    .groupBy { it.enclosingFunctionScopeId }.map { (scope, values) ->
+                        val start = document.scopeRegions.firstOrNull { it.id == scope }?.range?.start ?: Position(0, 0)
+                        start to values.map { it.name to it.typeName }
+                    } + providedContexts.toList()
+                val matches = layers.sortedWith(compareByDescending<Pair<Position, List<Pair<String, String?>>>> { it.first.line }
+                    .thenByDescending { it.first.character }).firstNotNullOfOrNull { (_, values) ->
+                    values.filter { (_, type) -> type != null && isAssignable(dependency.typeName, type) }.distinct().takeIf { it.isNotEmpty() }
+                }.orEmpty()
+                if (matches.size != 1) diagnostics += Diagnostic(contextRange(ctx),
+                    if (matches.isEmpty()) "Missing context `${dependency.name}: ${dependency.typeName}`"
+                    else "Ambiguous context `${dependency.name}: ${dependency.typeName}`; use a named context argument",
+                    DiagnosticSeverity.Error, "mcfpp")
+            }
             validateArgumentGroup(
                 callRange = contextRange(ctx),
                 functionName = target.name,
@@ -345,8 +433,10 @@ class MCFPPTypeChecker(
                 functionName = target.name,
                 groupLabel = "Argument",
                 parameters = target.parameters.filterNot { it.isReadOnly },
-                arguments = ctx.arguments()?.normalArgs()?.expressionList()?.expression().orEmpty(),
-                typeSubstitutions = typeSubstitutions
+                arguments = ordinary.map { expressions[it] },
+                typeSubstitutions = typeSubstitutions,
+                trailing = trailing,
+                names = ordinary.map { names.getOrNull(it) }
             )
         }
 
@@ -356,10 +446,13 @@ class MCFPPTypeChecker(
             groupLabel: String,
             parameters: List<MCFPPFunctionParameter>,
             arguments: List<mcfppParser.ExpressionContext>,
-            typeSubstitutions: Map<String, String>
+            typeSubstitutions: Map<String, String>,
+            trailing: mcfppParser.InlineLambdaContext? = null,
+            names: List<String?> = emptyList()
         ) {
             val requiredCount = parameters.count { !it.hasDefault }
-            if (arguments.size !in requiredCount..parameters.size) {
+            val suppliedCount = arguments.size + if (trailing == null) 0 else 1
+            if (suppliedCount !in requiredCount..parameters.size) {
                 val expectedCount = if (requiredCount == parameters.size) {
                     parameters.size.toString()
                 } else {
@@ -367,13 +460,18 @@ class MCFPPTypeChecker(
                 }
                 diagnostics += Diagnostic(
                     callRange,
-                    "$groupLabel count mismatch for `$functionName`: expected $expectedCount, found ${arguments.size}",
+                    "$groupLabel count mismatch for `$functionName`: expected $expectedCount, found $suppliedCount",
                     DiagnosticSeverity.Error,
                     "mcfpp"
                 )
             }
             arguments.forEachIndexed { index, expression ->
-                val parameter = parameters.getOrNull(index) ?: return@forEachIndexed
+                val name = names.getOrNull(index)
+                val parameter = if (name == null) parameters.getOrNull(index) else parameters.firstOrNull { it.name == name }
+                if (parameter == null) {
+                    if (name != null) diagnostics += Diagnostic(contextRange(expression), "Unknown argument `$name` for `$functionName`", DiagnosticSeverity.Error, "mcfpp")
+                    return@forEachIndexed
+                }
                 val actualType = inferExpressionType(expression)
                 val expectedType = substituteTypeParameters(parameter.typeName, typeSubstitutions)
                 if (!isAssignable(expectedType, actualType)) {
@@ -392,6 +490,7 @@ class MCFPPTypeChecker(
         if (ctx == null) {
             return null
         }
+        contextualLiteralType(ctx.start.startIndex, ctx.stop.stopIndex + 1)?.let { return it }
         ctx.primary()?.let { return inferPrimaryType(it) }
         return inferCommonBinaryOperatorType(ctx.commonBinaryOperatorExpression())
     }
@@ -443,7 +542,10 @@ class MCFPPTypeChecker(
         if (ctx.op.isNotEmpty()) {
             return "bool"
         }
-        return inferAdditiveType(ctx.additiveExpression(0))
+        val elvis = ctx.elvisExpression(0) ?: return null
+        val left = inferAdditiveType(elvis.additiveExpression())
+        val fallback = elvis.elvisOperand().firstOrNull()?.additiveExpression()?.let(::inferAdditiveType)
+        return if (elvis.ELVIS().isNotEmpty()) left?.removeSuffix("?") ?: fallback else left
     }
 
     private fun inferAdditiveType(ctx: mcfppParser.AdditiveExpressionContext?): String? {
@@ -493,10 +595,37 @@ class MCFPPTypeChecker(
             return null
         }
         var currentType = inferJvmAccessType(ctx.jvmAccessExpression())
+        // Bare type names are Type values; selecting a static or enum member uses
+        // the declaration's own member scope.
+        if (currentType == "Type" && ctx.selector().isNotEmpty()) {
+            val name = ctx.jvmAccessExpression()?.propertyOperator()?.primary()?.`var`()?.varWithSuffix()?.Identifier()?.text
+            if (name != null) {
+                val symbol = resolveLocalSymbol(name, tokenPosition(ctx.start)) ?: resolveGlobalSymbol(name, tokenPosition(ctx.start))
+                currentType = symbol?.typeName ?: currentType
+            }
+        }
         ctx.selector().forEach { selector ->
-            currentType = inferMemberVarType(currentType, selector.`var`())
+            if (selector.EXCL().isNotEmpty()) {
+                currentType = currentType?.removeSuffix("?")
+                return@forEach
+            }
+            val optional = selector.SAFE_DOT() != null
+            currentType = selector.memberKeyword()?.let { keyword -> resolveMemberSymbol(currentType ?: return@let null, keyword.text, tokenPosition(keyword.start))?.typeName }
+                ?: inferMemberVarType(currentType?.removeSuffix("?"), selector.`var`())
+            if (optional && currentType != null) currentType = currentType!!.removeSuffix("?") + "?"
         }
         return currentType
+    }
+
+    private fun displayAssignmentType(target: mcfppParser.VarWithSelectorContext): String? {
+        var owner = inferJvmAccessType(target.jvmAccessExpression())
+        val selectors = target.selector()
+        for ((index, selector) in selectors.withIndex()) {
+            val name = selector.memberKeyword()?.text ?: selector.`var`()?.varWithSuffix()?.Identifier()?.text ?: return null
+            if (index == selectors.lastIndex) return top.mcfpp.language.EntityBuiltins.member(owner, name)?.writeType()
+            owner = resolveMemberSymbol(owner ?: return null, name, tokenPosition(selector.start))?.typeName
+        }
+        return null
     }
 
     private fun inferJvmAccessType(ctx: mcfppParser.JvmAccessExpressionContext?): String? {
@@ -521,17 +650,41 @@ class MCFPPTypeChecker(
         ctx.value()?.let { return inferValueType(it) }
         ctx.`var`()?.let { return inferVarType(it) }
         if (ctx.THIS() != null) {
-            return document.innermostTypeScope(tokenPosition(ctx.start))?.name
+            val currentType = document.innermostTypeScope(tokenPosition(ctx.start))?.name ?: return null
+            return if (entityMemberFunctionAt(tokenPosition(ctx.start), currentType)) {
+                MCFPPEntityTemplates.referenceType(currentType)
+            } else {
+                currentType
+            }
         }
         if (ctx.SUPER() != null) {
             val currentType = document.innermostTypeScope(tokenPosition(ctx.start))?.name ?: return null
-            return visibleGlobals.firstOrNull { it.name == currentType && it.topLevel }?.superTypes?.firstOrNull()
+            val parent = visibleGlobals.firstOrNull { it.name == currentType && it.topLevel }?.superTypes?.firstOrNull()
+            return if (parent != null && entityMemberFunctionAt(tokenPosition(ctx.start), currentType)) {
+                MCFPPEntityTemplates.referenceType(parent)
+            } else {
+                parent
+            }
         }
         if (ctx.type() != null) {
             return "Type"
         }
         return null
     }
+
+    private fun entityMemberFunctionAt(position: Position, type: String): Boolean =
+        document.symbols.any { symbol ->
+            symbol.isEntityMember && symbol.kind == SymbolKind.Method &&
+                symbol.containerName?.substringBefore('<')?.substringAfterLast(':')?.trim() ==
+                type.substringBefore('<').substringAfterLast(':').trim() &&
+                containsPosition(symbol.fullRange, position)
+        }
+
+    private fun containsPosition(range: Range, position: Position): Boolean =
+        !(position.line < range.start.line || position.line == range.start.line &&
+            position.character < range.start.character) &&
+            !(position.line > range.end.line || position.line == range.end.line &&
+                position.character > range.end.character)
 
     private fun inferVarType(ctx: mcfppParser.VarContext?): String? {
         if (ctx == null) {
@@ -551,10 +704,18 @@ class MCFPPTypeChecker(
         val position = tokenPosition(ctx.start)
         val symbol = resolveLocalSymbol(identifier, position)
             ?: resolveGlobalSymbol(identifier, position)
-        var typeName = if (symbol?.kind in setOf(SymbolKind.Function, SymbolKind.Method)) {
-            MCFPPFunctionValue(symbol!!.parameters, symbol.typeName ?: "void").typeName()
+        var typeName = if (symbol?.kind in setOf(SymbolKind.Class, SymbolKind.Enum, SymbolKind.TypeParameter)) {
+            "Type"
+        } else if (symbol?.kind in setOf(SymbolKind.Function, SymbolKind.Method)) {
+            MCFPPFunctionValue(symbol!!.parameters, symbol.typeName ?: "void", symbol.contextParameters.map { it.typeName }).typeName()
         } else symbol?.functionValue?.typeName() ?: symbol?.typeName
             ?: symbol?.let { inferredSymbolTypes[symbolKey(it)] }
+            ?: symbol?.let { declaration ->
+                val key = symbolKey(declaration)
+                if (!inferringSymbols.add(key)) null else try {
+                    declaration.initializer?.let { expressionType(it, MCFPPTextChanges.positionToOffset(document.analysisText, declaration.range.start)) }
+                } finally { inferringSymbols.remove(key) }
+            }
         repeat(ctx.identifierSuffix().size) {
             typeName = applyIndexType(typeName)
         }
@@ -583,9 +744,9 @@ class MCFPPTypeChecker(
             isCall = true,
             namespaceQualifier = identifiers.dropLast(1).joinToString(".") { it.text }.takeIf { it.isNotEmpty() },
             readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map { it.text }.orEmpty(),
-            normalArguments = ctx.arguments()?.normalArgs()?.expressionList()?.expression()?.map { it.text }.orEmpty(),
+            normalArguments = ctx.arguments()?.normalArgs().argumentExpressions()?.map { it.text }.orEmpty(),
             readOnlyArgumentRanges = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map(::contextRange).orEmpty(),
-            normalArgumentRanges = ctx.arguments()?.normalArgs()?.expressionList()?.expression()?.map(::contextRange).orEmpty()
+            normalArgumentRanges = ctx.arguments()?.normalArgs().argumentExpressions()?.map(::contextRange).orEmpty()
         )
     }
 
@@ -617,7 +778,7 @@ class MCFPPTypeChecker(
             return "null"
         }
         ctx.coordinate()?.let {
-            return if (it.coordinateDimension().size >= 3) "vec3" else "vec2"
+            return if (it.coordinateDimension().size >= 3) "pos3" else "pos2"
         }
         ctx.nbtValue()?.let { return inferNbtType(it) }
         return null
@@ -637,19 +798,81 @@ class MCFPPTypeChecker(
             ctx.nbtIntArray() != null -> "IntArray"
             ctx.nbtLongArray() != null -> "LongArray"
             ctx.LineString() != null -> "string"
+            ctx.nbtCompound() != null -> ctx.nbtCompound().nbtKeyValuePair().joinToString(", ", "{ ", " }") { field ->
+                val name = field.key.text.trim('"', '\'')
+                val type = field.expression()?.let(::inferExpressionType)
+                    ?: resolveLocalSymbol(name, tokenPosition(field.start))?.typeName
+                    ?: "any"
+                "$name: $type"
+            }
             else -> "nbt"
         }
     }
 
-    private fun isAssignable(expectedType: String?, actualType: String?): Boolean {
+    internal fun expressionType(expression: String, offset: Int): String? {
+        val lexer = mcfppLexer(CharStreams.fromString(expression))
+        lexer.removeErrorListeners()
+        val tokens = CommonTokenStream(lexer)
+        tokens.fill()
+        val prefix = document.analysisText.take(offset)
+        val lineOffset = prefix.count { it == '\n' }
+        val columnOffset = prefix.substringAfterLast('\n').length
+        for (token in tokens.tokens.filterIsInstance<org.antlr.v4.runtime.CommonToken>()) {
+            token.text = token.text
+            if (token.line == 1) token.charPositionInLine += columnOffset
+            token.line += lineOffset
+            token.startIndex += offset
+            token.stopIndex += offset
+        }
+        val parser = mcfppParser(tokens)
+        parser.removeErrorListeners()
+        return inferExpressionType(parser.expression())
+    }
+
+    internal fun isAssignable(expectedType: String?, actualType: String?): Boolean {
+        val key = expectedType to actualType
+        if (!assignmentChecks.add(key)) return true
+        return try { isAssignableTypes(expectedType, actualType) } finally { assignmentChecks.remove(key) }
+    }
+
+    private fun isAssignableTypes(expectedType: String?, actualType: String?): Boolean {
         if (expectedType.isNullOrBlank() || actualType.isNullOrBlank()) {
             return true
         }
+        if ("->" in expectedType && "->" in actualType && expectedType.filterNot(Char::isWhitespace) == actualType.filterNot(Char::isWhitespace)) return true
+        val expectedTemplate = MCFPPEntityTemplates.templateOf(expectedType)
+        val actualTemplate = MCFPPEntityTemplates.templateOf(actualType)
+        if (expectedTemplate != null) {
+            if (actualTemplate != null) {
+                return expectedTemplate == actualTemplate || isSubtype(actualTemplate, expectedTemplate)
+            }
+            if (normalizeDeclaredType(actualType) == "entity") return true
+        }
+        if (actualTemplate != null && normalizeDeclaredType(expectedType) == "entity") return true
         val resolvedExpectedType = expandTypeAlias(expectedType)
         val resolvedActualType = expandTypeAlias(actualType)
+        val expectedUnion = top.mcfpp.language.StructuralTypes.components(resolvedExpectedType, '|')
+        val actualUnion = top.mcfpp.language.StructuralTypes.components(resolvedActualType, '|')
+        if (actualUnion.isNotEmpty()) return actualUnion.all { isAssignable(resolvedExpectedType, it) }
+        if (expectedUnion.isNotEmpty()) return expectedUnion.any { isAssignable(it, resolvedActualType) }
+        val expectedIntersection = top.mcfpp.language.StructuralTypes.components(resolvedExpectedType, '&')
+        if (expectedIntersection.isNotEmpty()) return expectedIntersection.all { isAssignable(it, resolvedActualType) }
+        val schema = MCFPPTemplateLiterals(visibleGlobals, resolveImportedType) { _, _ -> true }
+        val expectedFields = schema.fields(resolvedExpectedType)
+        val actualFields = schema.fields(resolvedActualType)
+        if (expectedFields != null && actualFields != null && resolvedExpectedType != resolvedActualType) {
+            return expectedFields.all { field ->
+                val other = actualFields.firstOrNull { it.name == field.name }
+                if (other == null) field.typeName?.endsWith('?') == true
+                else if (other.typeName?.endsWith('?') == true && field.typeName?.endsWith('?') != true) false
+                else isAssignable(field.typeName?.removeSuffix("?"), other.typeName?.removeSuffix("?"))
+            }
+        }
         val expected = normalizeDeclaredType(resolvedExpectedType)
         val actual = normalizeDeclaredType(resolvedActualType)
-        if (expected == actual || expected == "any" || actual == "null") {
+        if (expected == "nbt" && actualFields != null) return true
+        if (actual == "null") return expectedType.endsWith('?')
+        if (resolvedExpectedType.filterNot(Char::isWhitespace) == resolvedActualType.filterNot(Char::isWhitespace) || expected == "any") {
             return true
         }
         if (expected == "text" && actual == "string") {
@@ -661,12 +884,26 @@ class MCFPPTypeChecker(
         val expectedGeneric = parseGenericType(resolvedExpectedType)
         val actualGeneric = parseGenericType(resolvedActualType)
         if (expectedGeneric != null && actualGeneric != null && expectedGeneric.first == actualGeneric.first && expectedGeneric.second.size == actualGeneric.second.size) {
-            return expectedGeneric.second.zip(actualGeneric.second).all { (left, right) -> isAssignable(left, right) }
+            return expectedGeneric.second.zip(actualGeneric.second).all { (left, right) -> isAssignable(left, right) && isAssignable(right, left) }
         }
         if (expected == actual.substringAfterLast(':')) {
             return true
         }
         return isSubtype(actual, expected)
+    }
+
+    private fun functionResult(type: String): String? {
+        val text = type.trim().let { if (it.startsWith("context(")) it.substringAfter(')').trim() else it }
+        if (!text.startsWith('(')) return null
+        var depth = 0
+        for ((index, char) in text.withIndex()) {
+            if (char == '(') depth++
+            if (char == ')' && --depth == 0) {
+                val tail = text.substring(index + 1).trim()
+                return if (tail.startsWith("->")) tail.substring(2).trim() else null
+            }
+        }
+        return null
     }
 
     private fun expandTypeAlias(typeName: String, visited: Set<String> = emptySet()): String {
@@ -685,6 +922,10 @@ class MCFPPTypeChecker(
     }
 
     private fun isSubtype(actualType: String, expectedType: String): Boolean {
+        if (ContextBuiltins.isType(actualType) && ContextBuiltins.isType(expectedType)) return ContextBuiltins.isSubtype(actualType, expectedType)
+        if (expectedType == "entity" && actualType == "selector") return true
+        val entityKind = MCFPPEntityTemplates.kindOf(visibleGlobals, actualType)
+        if (entityKind != null && expectedType in top.mcfpp.language.EntityBuiltins.owners(entityKind)) return true
         val typesByName = visibleGlobals
             .asSequence()
             .filter { it.topLevel && it.superTypes.isNotEmpty() }
@@ -772,7 +1013,8 @@ class MCFPPTypeChecker(
 
     private fun normalizeDeclaredType(typeName: String?): String {
         val base = typeName.orEmpty().substringBefore('?').substringBefore('<').trim()
-        return resolveImportedType(base).substringAfterLast(':').trim()
+        val resolved = resolveImportedType(base).substringAfterLast(':').trim()
+        return if (resolved == "type") "Type" else resolved
     }
 
     private fun typeParameterSubstitutions(

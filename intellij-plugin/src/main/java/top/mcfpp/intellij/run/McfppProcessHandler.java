@@ -8,7 +8,12 @@ import org.jetbrains.annotations.NotNull;
 
 final class McfppProcessHandler extends KillableColoredProcessHandler {
     private final McfppConsoleOutput output=new McfppConsoleOutput();
-    McfppProcessHandler(GeneralCommandLine command) throws ExecutionException { super(command); }
+    private final java.util.function.BiFunction<Integer,McfppProcessHandler,Integer> completion;
+    McfppProcessHandler(GeneralCommandLine command) throws ExecutionException { this(command,(code,handler) -> code); }
+    McfppProcessHandler(GeneralCommandLine command,java.util.function.BiFunction<Integer,McfppProcessHandler,Integer> completion) throws ExecutionException {
+        super(command);
+        this.completion=completion;
+    }
 
     @Override public void coloredTextAvailable(@NotNull String text,@NotNull Key attributes) {
         output.accept(text,attributes,(message,type) -> super.coloredTextAvailable(message,type));
@@ -16,6 +21,6 @@ final class McfppProcessHandler extends KillableColoredProcessHandler {
 
     @Override protected void notifyProcessTerminated(int exitCode) {
         output.flush((message,type) -> super.coloredTextAvailable(message,type));
-        super.notifyProcessTerminated(exitCode);
+        super.notifyProcessTerminated(completion.apply(exitCode,this));
     }
 }

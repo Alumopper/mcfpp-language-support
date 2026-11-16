@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
-    enum Kind { GLOBAL, TYPE, MEMBER, NAMESPACE }
+    enum Kind { GLOBAL, VALUE, TYPE, MEMBER, NAMESPACE }
 
     static @NotNull McfppCompletionContext create(
             @NotNull CompletionParameters parameters,
@@ -17,16 +17,21 @@ record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
         Document document = parameters.getEditor().getDocument();
         CharSequence source = document.getCharsSequence();
         int start = Math.max(0, parameters.getOffset() - result.getPrefixMatcher().getPrefix().length());
+        String before = source.subSequence(0, start).toString();
+        if (top.mcfpp.language.CompletionScope.isTypeArgumentOrCast(before))
+            return new McfppCompletionContext(Kind.TYPE, null);
         int separator = previousNonWhitespace(source, start - 1);
         if (separator < 0) return new McfppCompletionContext(Kind.GLOBAL, null);
 
         char value = source.charAt(separator);
-        if (value != '.' && value != ':') return new McfppCompletionContext(Kind.GLOBAL, null);
+        if (value != '.' && value != ':') return new McfppCompletionContext(
+                top.mcfpp.language.CompletionScope.isValuePosition(before) ? Kind.VALUE : Kind.GLOBAL, null);
         if (value == ':' && McfppDeclarationSyntax.isAnnotationColon(source, separator)) {
             return new McfppCompletionContext(Kind.TYPE, null);
         }
-        String qualifier = identifierBefore(source, separator - 1, value == ':');
-        if (qualifier.isEmpty()) return new McfppCompletionContext(Kind.GLOBAL, null);
+        String qualifier = value == '.' ? top.mcfpp.language.MemberExpressions.receiverBefore(source, separator)
+                : identifierBefore(source, separator - 1, true);
+        if (qualifier == null || qualifier.isEmpty()) return new McfppCompletionContext(Kind.GLOBAL, null);
         if (value == ':') {
             for (McfppImport imported : model.imports()) {
                 if (imported.isWildcard() && qualifier.equals(imported.alias())) {
@@ -36,12 +41,8 @@ record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
             return new McfppCompletionContext(Kind.NAMESPACE, qualifier);
         }
 
-        String owner = qualifier;
-        var variables = model.visibleLocalSymbols(qualifier, parameters.getOffset());
-        if (!variables.isEmpty()) {
-            String declaredType = McfppTypes.declaredType(variables.getFirst());
-            if (declaredType != null) owner = declaredType;
-        }
+        String inferred = McfppTemplateLiterals.expressionType(parameters.getOriginalFile(), qualifier, parameters.getOffset());
+        String owner = inferred == null ? qualifier : inferred;
         for (McfppImport imported : model.imports()) {
             if (!imported.isWildcard() && owner.equals(imported.alias())) owner = imported.importedName();
         }
@@ -62,6 +63,7 @@ record McfppCompletionContext(@NotNull Kind kind, @Nullable String qualifier) {
                     allowDots && value == '.')) break;
             offset--;
         }
+        if (offset >= 0 && source.charAt(offset) == '@') offset--;
         return source.subSequence(offset + 1, end).toString();
     }
 }

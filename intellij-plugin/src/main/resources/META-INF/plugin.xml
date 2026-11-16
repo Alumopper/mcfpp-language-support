@@ -21,6 +21,8 @@
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
+        <additionalTextAttributes scheme="Default" file="colorSchemes/McfppDefault.xml"/>
+        <additionalTextAttributes scheme="Darcula" file="colorSchemes/McfppDarcula.xml"/>
         <notificationGroup id="MCFPP" displayType="BALLOON" isLogByDefault="true"/>
         <projectConfigurable id="mcfpp" parentId="tools" displayName="MCFPP"
                              instance="top.mcfpp.intellij.tooling.McfppSettingsConfigurable"/>
@@ -179,6 +181,6 @@
     </applicationListeners>
 
     <extensions defaultExtensionNs="com.intellij.platform.backend.documentation">
-        <targetProvider implementation="top.mcfpp.intellij.lang.McfppDocumentationTargetProvider"/>
+        <targetProvider implementation="top.mcfpp.intellij.lang.McfppDocumentationTargetProvider" order="last"/>
     </extensions>
 </idea-plugin>

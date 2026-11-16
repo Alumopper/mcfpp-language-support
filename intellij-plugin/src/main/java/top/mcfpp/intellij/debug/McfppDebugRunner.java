@@ -19,10 +19,10 @@ public final class McfppDebugRunner extends GenericProgramRunner<RunnerSettings>
     @Override protected RunContentDescriptor doExecute(@NotNull RunProfileState state, @NotNull ExecutionEnvironment environment) throws ExecutionException {
         FileDocumentManager.getInstance().saveAllDocuments();
         var configuration = (McfppRunConfiguration) environment.getRunProfile();
-        return XDebuggerManager.getInstance(environment.getProject()).newSessionBuilder(new XDebugProcessStarter() {
+        return XDebuggerManager.getInstance(environment.getProject()).startSession(environment, new XDebugProcessStarter() {
             @Override public @NotNull XDebugProcess start(@NotNull XDebugSession session) throws ExecutionException {
                 return new McfppDebugProcess(session, configuration);
             }
-        }).environment(environment).startSession().getRunContentDescriptor();
+        }).getRunContentDescriptor();
     }
 }

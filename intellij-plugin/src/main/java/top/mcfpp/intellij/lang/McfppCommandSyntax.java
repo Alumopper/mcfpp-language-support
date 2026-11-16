@@ -33,6 +33,22 @@ final class McfppCommandSyntax {
 
     private static List<McfppSemanticTokens.EmbeddedRange> highlightLines(CharSequence source, boolean requireSlash) {
         List<McfppSemanticTokens.EmbeddedRange> ranges = new ArrayList<>();
+        if (requireSlash) {
+            for (var line : McfppCommandBlocks.lines(source)) {
+                if (line.kind() == McfppCommandBlocks.Kind.COMMAND) {
+                    if (line.contentStart() < line.end()) {
+                        highlightLine(source, line.contentStart(), line.end(), ranges);
+                    }
+                } else if (line.kind() == McfppCommandBlocks.Kind.ORDINARY && !line.insideBlock()) {
+                    int content = firstNonWhitespace(source, line.start(), line.end());
+                    if (content < line.end() && source.charAt(content) == '/' &&
+                            (content + 1 >= line.end() || source.charAt(content + 1) != '/')) {
+                        highlightLine(source, content + 1, line.end(), ranges);
+                    }
+                }
+            }
+            return List.copyOf(ranges);
+        }
         int lineStart = 0;
         while (lineStart < source.length()) {
             int lineEnd = lineEnd(source, lineStart);

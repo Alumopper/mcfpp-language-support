@@ -1,0 +1,16 @@
+import mcfpp.lang:*
+
+context(space: PosContext, actor: EntityContext)
+func teleportBorrowed() {
+    tp(actor.executor, space.pos)
+}
+
+func main() {
+    @s.withEntityCtx { original ->
+        original.executor.withPosCtx { position ->
+            position.onPassengers { passenger ->
+                teleportBorrowed(space = position, actor = passenger)
+            }
+        }
+    }
+}

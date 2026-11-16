@@ -21,11 +21,14 @@ final class McfppAnnotationReference extends PsiReferenceBase<PsiElement> {
     public @Nullable PsiElement resolve() {
         String name = getValue();
         for (VirtualFile root : McfppLibraryRootsProvider.compilerSourceRoots(myElement.getProject())) {
-            VirtualFile file = root.findFileByRelativePath("top/mcfpp/mni/annotation/" + name + ".java");
-            PsiElement target = declaration(file, name);
-            if (target != null) return target;
+            // MNI annotation providers migrated to Kotlin; keep Java as a compatibility fallback.
+            for (String extension : java.util.List.of(".kt", ".java")) {
+                VirtualFile file = root.findFileByRelativePath("top/mcfpp/mni/annotation/" + name + extension);
+                PsiElement target = declaration(file, name);
+                if (target != null) return target;
+            }
             if (java.util.Set.of("Test", "BeforeEach", "AfterEach", "Disabled").contains(name)) {
-                target = declaration(root.findFileByRelativePath("top/mcfpp/testing/TestAnnotations.kt"), name);
+                PsiElement target = declaration(root.findFileByRelativePath("top/mcfpp/testing/TestAnnotations.kt"), name);
                 if (target != null) return target;
             }
         }
@@ -37,6 +40,6 @@ final class McfppAnnotationReference extends PsiReferenceBase<PsiElement> {
         var file = PsiManager.getInstance(myElement.getProject()).findFile(source);
         if (file == null) return null;
         var declaration = Pattern.compile("\\bclass\\s+(" + Pattern.quote(name) + ")\\b").matcher(file.getText());
-        return declaration.find() ? file.findElementAt(declaration.start(1)) : null;
+        return declaration.find() ? file.findElementAt(declaration.start(1)) : null; // annotation class Name
     }
 }

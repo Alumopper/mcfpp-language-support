@@ -107,6 +107,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
 
     private enum class CompletionContext {
         DEFAULT,
+        VALUE,
         TYPE
     }
 
@@ -184,6 +185,9 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             }
             return CompletableFuture.completedFuture(Either.forLeft(items))
         }
+        templateCompletions(analysis, params.position)?.let {
+            return CompletableFuture.completedFuture(Either.forLeft(it))
+        }
         val receiver = analysis.receiverBefore(params.position)
         val namespaceQualifier = namespaceQualifierBefore(analysis, params.position)
         val context = determineCompletionContext(analysis, params.position)
@@ -208,14 +212,17 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             }
         } else {
             buildList {
-                addAll(MCFPPDocumentIndex.keywords.map { keywordCompletion(it) })
-                addAll(MCFPPDocumentIndex.builtinTypes.map { typeCompletion(it) })
+                addAll(MCFPPDocumentIndex.keywords
+                    .filter { context != CompletionContext.VALUE || it in top.mcfpp.language.CompletionScope.VALUE_KEYWORDS }
+                    .map { keywordCompletion(it) })
                 addAll(MCFPPDocumentIndex.builtinValues.map { valueCompletion(it) })
                 addAll(MCFPPDocumentIndex.referenceFactories.map { name -> CompletionItem(name).apply {
                     kind = CompletionItemKind.Function
                     detail = "Create a reference from an explicit Minecraft address"
                 } })
-                addAll(globalCompletionItems(analysis))
+                addAll(globalCompletionItems(analysis) {
+                    it.kind !in TYPE_DEFINITION_SYMBOL_KINDS || it.name !in top.mcfpp.language.EntityBuiltins.TYPES + top.mcfpp.language.ContextBuiltins.TYPES
+                })
                 analysis.innermostTypeScope(params.position)?.name?.let { currentType ->
                     addAll(
                         accessibleMemberSymbolsForType(analysis, currentType, params.position)
@@ -265,7 +272,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         }
         val hover = Hover()
         hover.contents = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, markdown))
-        hover.range = symbol.selectionRange
+        hover.range = analysis.wordRange(params.position) ?: symbol.selectionRange
         return CompletableFuture.completedFuture(hover)
     }
 
@@ -777,6 +784,10 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun resolveSymbolAt(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis): MCFPPSymbol? {
+        templateFieldAt(analysis, params.position)?.let { return it }
+        analysis.referenceOccurrencesByName[analysis.wordAt(params.position)].orEmpty()
+            .firstOrNull { it.isNamedArgument && containsPosition(it.range, params.position) }
+            ?.let { return resolveNamedArgument(analysis, it) }
         val receiver = analysis.receiverBefore(params.position)
         val word = analysis.wordAt(params.position) ?: return null
         resolveQualifiedGlobalSymbol(analysis, word, params.position)?.let { return it }
@@ -856,9 +867,16 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         analysis: MCFPPDocumentAnalysis,
         receiverType: String
     ): List<MCFPPSymbol> {
+        MCFPPEntityTemplates.templateOf(receiverType)?.let { template ->
+            return entityReferenceMembers(analysis, template)
+        }
         val normalizedReceiverType = normalizeTypeName(receiverType) ?: return emptyList()
-        val cacheKey = "${analysis.uri}|$normalizedReceiverType"
+        val cacheKey = "${analysis.uri}|$receiverType"
         memberSymbolsCache[cacheKey]?.let { return it }
+        templateSchema(analysis).members(receiverType)?.let { members ->
+            memberSymbolsCache[cacheKey] = members
+            return members
+        }
         val visibleSymbols = visibleGlobalSymbolsForDocument(analysis)
         val membersByOwner = visibleSymbols
             .asSequence()
@@ -877,9 +895,25 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             if (!visitedTypes.add(currentType)) {
                 continue
             }
-            membersByOwner[currentType].orEmpty().forEach { symbol ->
-                val key = listOf(symbol.name, symbol.kind.name, parameterSignatureKey(symbol)).joinToString("|")
-                members.putIfAbsent(key, symbol)
+            membersByOwner[currentType].orEmpty()
+                .filterNot { it.isEntityMember }
+                .forEach { symbol ->
+                    val key = listOf(symbol.name, symbol.kind.name, parameterSignatureKey(symbol)).joinToString("|")
+                    members.putIfAbsent(key, symbol)
+                }
+            // Intrinsic summon declarations are reconstructed by the compiler when a
+            // library is imported, so they do not appear in its exported members.
+            if (membersByOwner[currentType].orEmpty().none { it.name == "summon" }) {
+                typesByName[currentType].orEmpty().firstOrNull { it.isEntityTemplate }?.let { template ->
+                    for (parameters in listOf(emptyList(), listOf(MCFPPFunctionParameter("d", "nbt")))) {
+                        val summon = template.copy(name = "summon", kind = SymbolKind.Method,
+                            containerName = currentType, receiverType = currentType, topLevel = false,
+                            detail = "EntityRef<$currentType>", typeName = "EntityRef<$currentType>",
+                            parameters = parameters, isEntityTemplate = false, isEntityMember = false, isSynthetic = true)
+                        val key = listOf(summon.name, summon.kind.name, parameterSignatureKey(summon)).joinToString("|")
+                        members.putIfAbsent(key, summon)
+                    }
+                }
             }
             typesByName[currentType].orEmpty().forEach { typeSymbol ->
                 typeSymbol.superTypes.forEach { superType ->
@@ -888,6 +922,34 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                         ?.let(pending::addLast)
                 }
             }
+            top.mcfpp.language.EntityBuiltins.parent(currentType)?.let(pending::addLast)
+        }
+        return members.values.toList().also { memberSymbolsCache[cacheKey] = it }
+    }
+
+    /**
+     * Members of `EntityRef<T>`: the entity members declared on the template ancestry
+     * plus the compiler-owned members of the built-in entity kind that ancestry reaches.
+     */
+    private fun entityReferenceMembers(analysis: MCFPPDocumentAnalysis, template: String): List<MCFPPSymbol> {
+        val cacheKey = "${analysis.uri}|EntityRef<$template>"
+        memberSymbolsCache[cacheKey]?.let { return it }
+        val symbols = visibleGlobalSymbolsForDocument(analysis)
+        val owners = MCFPPEntityTemplates.owners(symbols, template)
+        val members = linkedMapOf<String, MCFPPSymbol>()
+        owners.forEach { owner ->
+            symbols.asSequence()
+                .filter { it.isEntityMember && normalizeTypeName(it.containerName) == owner }
+                .forEach { symbol ->
+                    val key = listOf(symbol.name, symbol.kind.name, parameterSignatureKey(symbol)).joinToString("|")
+                    members.putIfAbsent(key, symbol)
+                }
+            if (owner == "entity" || top.mcfpp.language.EntityBuiltins.TYPES.contains(owner)) symbols.asSequence()
+                .filter { it.containerName != null && normalizeTypeName(it.containerName) == owner && !it.isEntityMember }
+                .forEach { symbol ->
+                    val key = listOf(symbol.name, symbol.kind.name, parameterSignatureKey(symbol)).joinToString("|")
+                    members.putIfAbsent(key, symbol)
+                }
         }
         return members.values.toList().also { memberSymbolsCache[cacheKey] = it }
     }
@@ -995,7 +1057,9 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         val key = symbolIdentityKey(value)
         if (key in visited) return emptyList()
         value.functionValue?.let { signature ->
-            return listOf(value.copy(parameters = signature.parameters, typeName = signature.returnType, detail = signature.returnType))
+            val declared = value.initializer?.let { reference -> visibleGlobalSymbolsForDocument(analysis).firstOrNull { it.name == reference } }
+            val contexts = declared?.contextParameters ?: signature.contextTypes.mapIndexed { index, type -> MCFPPFunctionParameter("context${index + 1}", type) }
+            return listOf(value.copy(parameters = signature.parameters, contextParameters = contexts, typeName = signature.returnType, detail = signature.returnType))
         }
         val reference = value.initializer?.takeIf { it.matches(Regex("(?:[A-Za-z_][A-Za-z0-9_.]*:)?[A-Za-z_][A-Za-z0-9_]*")) }
             ?: return emptyList()
@@ -1021,15 +1085,27 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun resolveReceiverTypeAt(analysis: MCFPPDocumentAnalysis, receiver: String, position: Position): String? {
-        val expression = receiver.trim().removeSurrounding("(", ")").trim()
+        val expression = receiver.trim().removeSuffix("!!").removeSuffix("?").removeSurrounding("(", ")").trim()
+        if (expression.startsWith('{') && expression.endsWith('}')) return "nbt"
+        if (expression.startsWith('@')) return "entity"
+        if (IDENTIFIER_REGEX.matches(expression)) {
+            val local = resolveLocalSymbol(analysis, expression, position)
+            local?.typeName?.let { return it }
+            local?.initializer?.takeIf { it.trimEnd().endsWith(')') && it.trim() != expression }?.let {
+                inferExpressionCallReturnType(analysis, it, local.range.start)?.let { type -> return type }
+            }
+        }
         if (expression == "this") {
-            return analysis.innermostTypeScope(position)?.name
+            val owner = analysis.innermostTypeScope(position)?.name ?: return null
+            return if (isEntityMemberContext(analysis, owner, position)) MCFPPEntityTemplates.referenceType(owner) else owner
         }
         if (expression == "super") {
             val owner = analysis.innermostTypeScope(position)?.name ?: return null
-            return visibleGlobalSymbolsForDocument(analysis).firstOrNull {
+            val parent = visibleGlobalSymbolsForDocument(analysis).firstOrNull {
                 it.name == owner && it.kind in setOf(SymbolKind.Class)
             }?.superTypes?.firstOrNull()?.let(::normalizeTypeName)
+            return if (parent != null && isEntityMemberContext(analysis, owner, position))
+                MCFPPEntityTemplates.referenceType(parent) else parent
         }
         if (expression.endsWith(')')) {
             inferExpressionCallReturnType(analysis, expression, position)
@@ -1037,7 +1113,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         }
         val memberSeparator = lastTopLevelMemberSeparator(expression)
         if (memberSeparator > 0) {
-            val ownerExpression = expression.substring(0, memberSeparator)
+            val ownerExpression = expression.substring(0, memberSeparator).removeSuffix("?")
             val memberName = expression.substring(memberSeparator + 1).trim()
             if (IDENTIFIER_REGEX.matches(memberName)) {
                 val ownerType = resolveReceiverTypeAt(analysis, ownerExpression, position)
@@ -1051,6 +1127,14 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         }
         return resolveReceiverType(analysis, expression)
     }
+
+    /** `this` inside `entity func name()` is the template's `EntityRef`, not the template value. */
+    private fun isEntityMemberContext(analysis: MCFPPDocumentAnalysis, type: String, position: Position): Boolean =
+        analysis.symbols.any { symbol ->
+            symbol.isEntityMember && symbol.kind == SymbolKind.Method &&
+                normalizeTypeName(symbol.containerName) == normalizeTypeName(type) &&
+                containsPosition(symbol.fullRange, position)
+        }
 
     private fun inferExpressionCallReturnType(
         analysis: MCFPPDocumentAnalysis,
@@ -1161,6 +1245,10 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                 parameter.typeName,
                 typeParameterSubstitutions(symbol, context.readOnlyArguments)
             )
+            if (argument.trimStart().startsWith('{') && templateSchema(analysis).fields(parameterType) != null) {
+                score += 20
+                return@forEachIndexed
+            }
             score += typeCompatibilityScore(argumentType, parameterType, analysis)
         }
         return score
@@ -1367,7 +1455,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun buildSignatureInformation(symbol: MCFPPSymbol, context: MCFPPCallContext): SignatureInformation {
-        val parameters = symbol.parameters
+        val parameters = symbol.parameters + symbol.contextParameters
         val groupParameters = parameters.filter {
             it.isReadOnly == (context.argumentGroup == MCFPPArgumentGroup.READ_ONLY)
         }
@@ -1376,7 +1464,8 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         } else {
             0
         }
-        val activeParameter = groupParameters
+        val named = context.arguments.getOrNull(context.activeParameter)?.takeIf { '=' in it }?.substringBefore('=')?.trim()
+        val activeParameter = parameters.indexOfFirst { named != null && it.name == named }.takeIf { it >= 0 } ?: groupParameters
             .takeIf { it.isNotEmpty() }
             ?.let { groupOffset + context.activeParameter.coerceAtMost(it.lastIndex) }
         return SignatureInformation(buildSignatureLabel(symbol, context.name)).apply {
@@ -1393,6 +1482,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun buildSignatureLabel(symbol: MCFPPSymbol, displayName: String = symbol.name): String = buildString {
+        if (symbol.contextParameters.isNotEmpty()) append(symbol.contextParameters.joinToString(", ", "context(", ") ") { it.label() })
         append(displayName)
         val readOnly = symbol.parameters.filter { it.isReadOnly }
         if (readOnly.isNotEmpty()) {
@@ -1633,7 +1723,12 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             ?: resolveGlobalSymbol(analysis, occurrence.name, occurrence.range.start)
     }
 
-    private fun semanticTokenType(symbol: MCFPPSymbol): String = when (symbol.kind) {
+    private fun semanticTokenType(symbol: MCFPPSymbol): String {
+        if (symbol.isMacro || symbol.isNative && workspaceSymbols().any { it.isMacro &&
+                it.name == symbol.name && it.namespaceName == symbol.namespaceName &&
+                it.parameters.map { parameter -> parameter.typeName } == symbol.parameters.map { parameter -> parameter.typeName } }) return "macro"
+        if (symbol.isNative) return "mniFunction"
+        return when (symbol.kind) {
         SymbolKind.Namespace, SymbolKind.Module, SymbolKind.Package -> "namespace"
         SymbolKind.Class, SymbolKind.Object -> "class"
         SymbolKind.Enum -> "enum"
@@ -1645,6 +1740,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         SymbolKind.Function -> "function"
         SymbolKind.Method, SymbolKind.Constructor -> "method"
         else -> "variable"
+        }
     }
 
     private fun encodeSemanticTokens(entries: List<SemanticTokenEntry>): List<Int> {
@@ -1824,6 +1920,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         reference: MCFPPReferenceOccurrence,
         target: MCFPPSymbol
     ): Boolean {
+        if (reference.isNamedArgument) return resolveNamedArgument(document, reference)?.let { sameSymbol(it, target) } == true
         val targetOwner = target.containerName ?: target.receiverType
         if (targetOwner != null) {
             val receiver = document.receiverBefore(reference.range.end)
@@ -2216,6 +2313,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun shouldCheckUndefinedReference(document: MCFPPDocumentAnalysis, reference: MCFPPReferenceOccurrence): Boolean {
+        if (reference.isNamedArgument) return false
         if (reference.name in MCFPPDocumentIndex.keywords || reference.name in MCFPPDocumentIndex.builtinValues || reference.name in MCFPPDocumentIndex.builtinTypes || reference.name in MCFPPDocumentIndex.referenceFactories) {
             return false
         }
@@ -2240,8 +2338,29 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
         return true
     }
 
+    private fun resolveNamedArgument(document: MCFPPDocumentAnalysis, reference: MCFPPReferenceOccurrence): MCFPPSymbol? {
+        val call = MCFPPCallContextFinder.findCandidates(document.text, reference.range.start).firstOrNull() ?: return null
+        val callable = resolveCallableSymbols(document, call, reference.range.start)
+            .maxByOrNull { signatureMatchScore(it, call, document, reference.range.start) } ?: return null
+        val owner = allAnalyses()[callable.uri] ?: return null
+        return owner.symbols.firstOrNull { it.isParameter && it.name == reference.name && containsPosition(callable.fullRange, it.range.start) }
+    }
+
     private fun collectTypeDiagnostics(document: MCFPPDocumentAnalysis): List<Diagnostic> {
-        return MCFPPTypeChecker(
+        val (literals, _) = templateContext(document)
+        val checker = typeChecker(document) { start, end ->
+            literals.startingAt(start)?.takeIf { it.close() + 1 == end }?.let { literal ->
+                if (literal.kind() == '{') literals.bestTypes(literal).firstOrNull() else literals.types(literal).firstOrNull()
+            }
+        }
+        return checker.collectDiagnostics() + literals.diagnostics().map {
+            Diagnostic(Range(offsetToPosition(document.text, it.start()), offsetToPosition(document.text, it.end())),
+                it.message(), DiagnosticSeverity.Error, "mcfpp").apply { code = Either.forLeft("mcfpp.template-literal") }
+        }
+    }
+
+    private fun typeChecker(document: MCFPPDocumentAnalysis, contextualLiteralType: (Int, Int) -> String? = { _, _ -> null }): MCFPPTypeChecker =
+        MCFPPTypeChecker(
             document = document,
             visibleGlobals = visibleGlobalSymbolsForDocument(document),
             resolveLocalSymbol = { name, position -> resolveLocalSymbol(document, name, position) },
@@ -2250,21 +2369,118 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
             resolveMemberSymbol = { ownerType, name, position ->
                 accessibleMemberSymbolsForType(document, ownerType, position).firstOrNull { it.name == name }
             },
-            resolveImportedType = { typeName -> resolveImportedTypeName(document, typeName) ?: typeName }
-        ).collectDiagnostics()
+            resolveImportedType = { typeName -> resolveImportedTypeName(document, typeName) ?: typeName },
+            contextualLiteralType = contextualLiteralType
+        )
+
+    private fun templateSchema(analysis: MCFPPDocumentAnalysis): MCFPPTemplateLiterals = MCFPPTemplateLiterals(
+        workspaceSymbols(),
+        { type ->
+            if (':' in type) resolveNamespaceQualifier(analysis, type.substringBeforeLast(':')) + ":" + type.substringAfterLast(':')
+            else {
+                val namespace = analysis.namespaceName ?: projectIndex.namespaceForUri(analysis.uri)
+                val local = workspaceSymbols().firstOrNull { it.topLevel && it.name == type && it.kind in TYPE_SYMBOL_KINDS &&
+                    (it.uri == analysis.uri || it.namespaceName == namespace && !it.isStdlib) }
+                local?.let { symbol -> symbol.namespaceName?.takeIf { it.isNotEmpty() }?.let { "$it:${symbol.name}" } ?: symbol.name }
+                    ?: analysis.imports.firstOrNull { !it.importedName.equals("*") && (it.alias ?: it.importedName) == type }
+                        ?.let { "${it.namespace}:${it.importedName}" }
+                    ?: type
+            }
+        },
+        { field, offset -> isMemberAccessible(analysis, field, offsetToPosition(analysis.text, offset)) }
+    )
+
+    private fun templateContext(analysis: MCFPPDocumentAnalysis): Pair<top.mcfpp.language.TemplateLiterals, MCFPPTemplateLiterals> {
+        val schema = templateSchema(analysis)
+        val checker by lazy { typeChecker(analysis) }
+        val resolver = object : top.mcfpp.language.TemplateLiterals.Resolver {
+            override fun fields(type: String, offset: Int) = schema.schema(type, offset)
+            override fun constructionError(type: String, offset: Int) = schema.constructionError(type, offset)
+            override fun returnTypes(expressionStart: Int): List<String> {
+                val position = offsetToPosition(analysis.text, expressionStart)
+                return analysis.symbols.filter { it.kind in CALLABLE_SYMBOL_KINDS && containsPosition(it.fullRange, position) }
+                    .minByOrNull { MCFPPTextChanges.positionToOffset(analysis.text, it.fullRange.end) - MCFPPTextChanges.positionToOffset(analysis.text, it.fullRange.start) }
+                    ?.typeName?.let(::listOf).orEmpty()
+            }
+            override fun argumentTypes(expressionStart: Int): List<String> {
+                val position = offsetToPosition(analysis.text, expressionStart)
+                for (call in MCFPPCallContextFinder.findCandidates(analysis.analysisText, position)) {
+                    val targets = resolveCallableSymbols(analysis, call, position)
+                    if (targets.isEmpty()) continue
+                    val named = Regex("^\\s*([\\p{L}_][\\p{L}\\p{N}_]*)\\s*=\\s*$")
+                        .matchEntire(call.arguments.lastOrNull().orEmpty())?.groupValues?.get(1)
+                    return targets.mapNotNull { target ->
+                        val parameters = (target.parameters + target.contextParameters).filter {
+                            it.isReadOnly == (call.argumentGroup == MCFPPArgumentGroup.READ_ONLY)
+                        }
+                        val parameter = if (named != null) parameters.firstOrNull { it.name == named }
+                            else parameters.getOrNull(call.activeParameter)
+                        parameter?.typeName?.let { substituteTypeParameters(it, typeParameterSubstitutions(target, call.readOnlyArguments)) }
+                    }
+                }
+                return emptyList()
+            }
+            override fun assignmentType(expression: String, offset: Int): String? {
+                val position = offsetToPosition(analysis.text, offset)
+                val separator = lastTopLevelMemberSeparator(expression)
+                if (separator > 0) {
+                    val owner = resolveReceiverTypeAt(analysis, expression.substring(0, separator), position)
+                    top.mcfpp.language.EntityBuiltins.member(owner, expression.substring(separator + 1).trim())?.writeType()?.let { return it }
+                }
+                return resolveReceiverTypeAt(analysis, expression, position)
+            }
+            override fun valueType(expression: String, offset: Int): String? = checker.expressionType(expression, offset)
+                ?: inferArgumentType(analysis, expression, offsetToPosition(analysis.text, offset))
+            override fun isAssignable(expected: String, actual: String): Boolean =
+                if (actual == "null") false else checker.isAssignable(expected, actual)
+        }
+        return top.mcfpp.language.TemplateLiterals(analysis.analysisText, resolver) to schema
+    }
+
+    private fun templateCompletions(analysis: MCFPPDocumentAnalysis, position: Position): List<CompletionItem>? {
+        val (literals, schema) = templateContext(analysis)
+        val offset = MCFPPTextChanges.positionToOffset(analysis.text, position)
+        val literal = literals.at(offset) ?: return null
+        val site = literals.keySite(literal, offset) ?: return null
+        val types = literals.bestTypes(literal).takeIf { it.isNotEmpty() } ?: return null
+        return literals.completions(literal, site).map { field ->
+            val symbol = types.firstNotNullOfOrNull { schema.fields(it)?.firstOrNull { it.name == field.name() } }
+            CompletionItem(field.name()).apply {
+                kind = CompletionItemKind.Field
+                detail = "${field.name()}: ${field.type()}" + if (field.hasDefault()) " (default)" else ""
+                symbol?.documentation?.let { documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, it)) }
+                insertTextFormat = if (site.hasColon()) InsertTextFormat.PlainText else InsertTextFormat.Snippet
+                textEdit = Either.forLeft(TextEdit(Range(offsetToPosition(analysis.text, site.start()), offsetToPosition(analysis.text, site.end())),
+                    field.name() + if (site.hasColon()) "" else ": \${1}"))
+                sortText = "0${field.name()}"
+            }
+        }
+    }
+
+    private fun templateFieldAt(analysis: MCFPPDocumentAnalysis, position: Position): MCFPPSymbol? {
+        val (literals, schema) = templateContext(analysis)
+        val offset = MCFPPTextChanges.positionToOffset(analysis.text, position)
+        val literal = literals.at(offset) ?: return null
+        val entry = literals.entries(literal).firstOrNull { it.colon() >= 0 && offset >= it.keyStart() && offset <= it.keyEnd() } ?: return null
+        return literals.bestTypes(literal).firstNotNullOfOrNull { type -> schema.fields(type)?.firstOrNull { it.name == entry.name() } }
     }
 
     private fun determineCompletionContext(analysis: MCFPPDocumentAnalysis, position: Position): CompletionContext {
         val line = analysis.line(position.line)
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
         val trimmed = prefix.trimEnd()
+        val beforeIdentifier = prefix.replace(Regex("[A-Za-z_][A-Za-z0-9_]*$"), "")
+        if (top.mcfpp.language.CompletionScope.isTypeArgumentOrCast(beforeIdentifier)) {
+            return CompletionContext.TYPE
+        }
         if (Regex("(?:\\bas\\b|\\)\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
         if (Regex("(?:\\b(?:var|const|external)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*:|[<(,]\\s*[A-Za-z_][A-Za-z0-9_]*\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
-        return CompletionContext.DEFAULT
+        return if (top.mcfpp.language.CompletionScope.isValuePosition(beforeIdentifier)) CompletionContext.VALUE
+            else CompletionContext.DEFAULT
     }
 
     private fun namespaceQualifierBefore(analysis: MCFPPDocumentAnalysis, position: Position): String? {
@@ -2286,6 +2502,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
     }
 
     private fun resolveImportedTypeName(analysis: MCFPPDocumentAnalysis, typeName: String): String? {
+        if (typeName.any { it in "({<" }) return typeName
         val normalized = normalizeTypeName(typeName) ?: return null
         val imported = analysis.imports.firstOrNull { candidate ->
             candidate.importedName != "*" && candidate.alias == normalized
@@ -2373,7 +2590,7 @@ class MCFPPTextDocumentService(private val server: SimpleLanguageServer) : TextD
                         imported.alias?.let { alias -> symbolCompletion(symbol, alias) }
                     }
                     if (
-                        symbol.isStdlib ||
+                        (symbol.isStdlib && namespace in setOf("mcfpp.lang", "mcfpp.sys", "mcfpp")) ||
                         symbol.uri == analysis.uri ||
                         namespace == currentNamespace ||
                         (namespace != null && namespace in wildcardNamespaces) ||

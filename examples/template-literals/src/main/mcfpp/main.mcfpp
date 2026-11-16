@@ -1,0 +1,35 @@
+data Identity {
+    /// Stable numeric identifier. Required when creating an identity.
+    var id: int
+    /// A label; omitted values use this default.
+    var label: string = "unnamed"
+}
+
+data QwQ {
+    var label: int = 0
+}
+
+data Test: Identity, QwQ {
+    // What type do you think `label` is (BIG QUESTIONMARK)
+}
+
+data Profile: Identity {
+    /// A score with a default value.
+    var score: int = 0
+}
+
+data Team {
+    /// The team leader. Nested literals use the Profile fields.
+    var leader: Profile
+    /// Additional members. Each list element is a Profile.
+    var members: list<Profile> = []
+}
+
+func accept(team: Team) {}
+
+func main() {
+    var team: Team = { leader: { id: 1 }, members: [{ id: 2, label: "Alex" }] }
+    accept({ leader: { id: 3, score: 10 } })
+    var t = Test()
+    team
+}

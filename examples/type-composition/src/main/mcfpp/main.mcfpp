@@ -1,0 +1,32 @@
+namespace example.composition
+
+data Point {
+    var x: int
+    var y: int
+
+    new(x: int, y: int) {
+        return { x, y }
+    }
+}
+
+data Named {
+    var label: string?
+}
+
+data Marker: Point, Named {
+    new(x: int, y: int) {
+        var point = Point.new(x, y)
+        return { x: point.x, y: point.y }
+    }
+}
+
+func total(value: (Point & Named)): int {
+    return value.x + value.y
+}
+
+func main() {
+    var marker = Marker(2, 3)
+    var result = total(marker)
+    var label: string = marker.label ?: "unnamed"
+    var shape: { x: int, y: int } = { x: 4, y: 5, extra: true }
+}

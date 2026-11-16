@@ -38,6 +38,55 @@ options {
 // existing read-only consumers while they migrate to the new rules.
 tokens { LEGACY_ACCESSOR_SHIM }
 
+@members {
+private boolean startsExplicitObjectLiteral() {
+    if (_input.LA(1) != LCURL) return false;
+    int offset = 2;
+    while (_input.LA(offset) == NL) offset++;
+    int key = _input.LA(offset++);
+    if (key != Identifier && key != DATA && key != ENTITY && key != TYPE && key != NBT && key != LineString)
+        return false;
+    while (_input.LA(offset) == NL) offset++;
+    return _input.LA(offset) == COLON;
+}
+
+private boolean startsSignedNumericRange() {
+    // Keep the sign on the left endpoint, including the minimum integer literal.
+    if (_input.LA(1) != SUB || _input.LA(3) != RANGE) return false;
+    int number = _input.LA(2);
+    return number == NBTByte || number == NBTShort || number == NBTInt ||
+        number == NBTLong || number == NBTFloat || number == NBTDouble;
+}
+
+private boolean endsReadonlyCallArguments() {
+    if (_input.LA(1) != RANGLE) return false;
+    int offset = 2;
+    while (_input.LA(offset) == NL) offset++;
+    if (_input.LA(offset) != LPAREN) return false;
+    // A top-level readonly argument ends before the ordinary argument list.
+    // A grouped comparison or a nested call owns a nearer expression context.
+    ParserRuleContext context = _ctx;
+    while (context != null && !(context instanceof ExpressionContext)) context = context.getParent();
+    if (context == null || !(context.getParent() instanceof ExpressionListContext) ||
+        !(context.getParent().getParent() instanceof ReadOnlyArgsContext)) return false;
+    // In f<a > (b)>(), the first group is the comparison's right operand.
+    // Closing there instead would leave an empty () as a comparison operand.
+    int depth = 0;
+    do {
+        int token = _input.LA(offset++);
+        if (token == Token.EOF) return true;
+        if (token == LPAREN) depth++;
+        else if (token == RPAREN) depth--;
+    } while (depth > 0);
+    while (_input.LA(offset) == NL) offset++;
+    if (_input.LA(offset++) != RANGLE) return true;
+    while (_input.LA(offset) == NL) offset++;
+    if (_input.LA(offset++) != LPAREN) return true;
+    while (_input.LA(offset) == NL) offset++;
+    return _input.LA(offset) != RPAREN;
+}
+}
+
 //一个mcfpp文件
 compilationUnit
     :   (separator* namespaceDeclaration (separator | EOF))?
@@ -66,11 +115,11 @@ importDeclaration
     ;
 
 importType
-    :   namespacePath COLON (Identifier | MULT)
+    :   namespacePath COLON (Identifier nestedClassName* | MULT)
     ;
 
 typealiasDeclaration
-    :   TYPEALIAS type AS Identifier
+    :   doc_comment? NL* TYPEALIAS type AS Identifier
     ;
 
 //类或函数声明
@@ -142,7 +191,7 @@ compoundDeclaration
 
 //数据模板
 templateDeclaration
-    :   (FINAL | ABSTRACT)? NL* DATA NL*
+    :   (FINAL | ABSTRACT)? NL* (DATA | ENTITY) NL*
         (compoundDeclaration
         | (declarationName NL* AS NL* type)
         )
@@ -164,23 +213,33 @@ templateMemberDeclaration
 
 templateMember
     :   templateFunctionDeclaration
+    |   templateDeclaration
     |   templateFieldDeclaration
     |   templateConstructorDeclaration
+    |   templateFactoryDeclaration
     |   operationOverrideDeclaration
     |   nativeOperationOverrideDeclaration
     |   annotation
     ;
 
 functionDeclarationPart
-    :   FUNCTION NL* Identifier NL* functionParams (NL* COLON NL* functionReturnType)?
+    :   contextParameters? NL* FUNCTION NL* Identifier NL* functionParams (NL* COLON NL* functionReturnType)?
+    ;
+
+contextParameters
+    :   CONTEXT NL* LPAREN NL* contextParameter (NL* COMMA NL* contextParameter)* NL* RPAREN
+    ;
+
+contextParameter
+    :   Identifier NL* COLON NL* type
     ;
 
 templateFunctionDeclaration
-    :   OVERRIDE? NL* ABSTRACT? NL* functionDeclarationPart (NL* curlBlock)?
+    :   ENTITY? NL* OVERRIDE? NL* ABSTRACT? NL* functionDeclarationPart (NL* curlBlock)?
     ;
 
 templateFieldDeclaration
-    :   (VAR | CONST) NL* Identifier NL* (COLON NL* templateType)? (NL* ASSIGNMENT expression)? NL* accessor?
+    :   ENTITY? NL* (VAR | CONST) NL* Identifier NL* (COLON NL* templateType)? (NL* ASSIGNMENT expression)? NL* accessor?
     ;
 
 templateType
@@ -208,7 +267,7 @@ compileTimeFuncDeclaration
     ;
 
 inlineFunctionDeclaration
-    :   INLINE NL* functionDeclarationPart NL* curlBlock
+    :   contextParameters? NL* INLINE NL* functionDeclarationPart NL* curlBlock
     ;
 
 //函数声明
@@ -217,7 +276,7 @@ functionDeclaration
     ;
 
 extensionFunctionDeclaration
-    :   FUNCTION NL* (type DOT)? Identifier functionParams (NL* COLON NL* functionReturnType)? NL* curlBlock
+    :   contextParameters? NL* FUNCTION NL* (type DOT)? Identifier functionParams (NL* COLON NL* functionReturnType)? NL* curlBlock
     ;
 
 //枚举
@@ -230,7 +289,7 @@ enumBody
     ;
 
 enumMember
-    :   Identifier NL* (ASSIGNMENT NL* nbtValue)?
+    :   doc_comment? NL* Identifier NL* (ASSIGNMENT NL* nbtValue)?
     ;
 
 
@@ -251,7 +310,7 @@ nativeFuncDeclaration
     ;
 
 javaRefer
-    :   Identifier (DOT Identifier)*
+    :   (Identifier | CONTEXT) (DOT (Identifier | CONTEXT))*
     ;
 
 accessModifier
@@ -262,12 +321,18 @@ accessModifier
 
 //构造函数声明
 templateConstructorDeclaration
-    :   CONSTRUCTOR NL* normalParams? NL* curlBlock
+    :   CONSTRUCTOR NL* normalParams? NL* (COLON NL* functionCall (NL* curlBlock)? | curlBlock)
+    ;
+
+// Factories are ordinary functions associated with the enclosing template.
+// Their return type is the complete instantiated Self, and there is no implicit this.
+templateFactoryDeclaration
+    :   NEW NL* normalParams NL* curlBlock
     ;
 
 //变量声明
 fieldDeclaration
-    :   (VAR | fieldModifier) NL* Identifier NL* (COLON NL* type)? NL* (ASSIGNMENT NL* expression)?
+    :   doc_comment? NL* (VAR | fieldModifier) NL* Identifier NL* (COLON NL* type)? NL* (ASSIGNMENT NL* expression)?
     ;
 
 fieldModifier : CONST | EXTERNAL | IMPORT NL* VAR;
@@ -315,8 +380,8 @@ assignmentOperator
 // condition-specific expression below.
 expression
     :   lambdaCallExpression
-    |   primary
     |   commonBinaryOperatorExpression
+    |   primary
     ;
 
 // A trailing lambda belongs to the call it follows. Conditions use
@@ -329,8 +394,8 @@ lambdaCallExpression
     ;
 
 conditionExpression
-    :   primary
-    |   commonBinaryOperatorExpression
+    :   commonBinaryOperatorExpression
+    |   primary
     ;
 
 //其他运算符
@@ -355,7 +420,20 @@ equalityExpression
 
 //比较关系
 relationalExpression
-    :   additiveExpression (op+=(LANGLE | RANGLE | LE | GE) NL* additiveExpression )*
+    :   elvisExpression ({!endsReadonlyCallArguments()}? op+=(LANGLE | RANGLE | LE | GE) NL* elvisExpression )*
+    ;
+
+elvisExpression
+    :   additiveExpression (ELVIS NL* elvisOperand)*
+    ;
+
+elvisOperand
+    :   additiveExpression
+    |   returnExpression
+    ;
+
+returnExpression
+    :   RETURN expression?
     ;
 
 //加减
@@ -375,7 +453,7 @@ castExpression
 
 //一元表达式
 unaryExpression
-    :   (EXCL | SUB) NL* unaryExpression
+    :   {!startsSignedNumericRange()}? (EXCL | SUB) NL* unaryExpression
     |   rightVarExpression
     ;
 
@@ -404,8 +482,9 @@ propertyOperatorExpression
 //初级表达式
 primary
     :   range
-    |   value
+    |   {startsExplicitObjectLiteral()}? value
     |   inlineLambda
+    |   value
     |   var
     |   THIS
     |   SUPER
@@ -423,7 +502,7 @@ bucketExpression
     ;
 
 varWithSuffix
-    :   Identifier NL* identifierSuffix*
+    :   Identifier (NL* identifierSuffix)*
     ;
 
 functionCall
@@ -435,14 +514,20 @@ identifierSuffix
     ;
 
 selector
-    :   DOT NL* var
-    |   DOT NL* memberKeyword NL* arguments?
+    :   (DOT | SAFE_DOT) NL* var (NL* inlineLambda)?
+    |   (DOT | SAFE_DOT) NL* memberKeyword NL* arguments? (NL* inlineLambda)?
+    |   EXCL EXCL (NL* identifierSuffix)*
     ;
 
 // Type/accessor keywords can also name ordinary member calls.
 memberKeyword
     :   MAP
+    |   NEW
+    |   ANY
+    |   GET
     |   SET
+    |   JTEXT
+    |   SELECTOR
     ;
 
 arguments
@@ -467,6 +552,7 @@ callArgument
     // Retain the old node only for located migration errors, including old cached ASTs.
     :   legacy=REF NL* expression {notifyErrorListeners($legacy, "Legacy 'ref expression' is no longer supported; create ScoreRef or NBTRef<T> from an explicit Minecraft address and pass it as an ordinary value.", null);}
     |   inlineLambda
+    |   Identifier NL* ASSIGNMENT NL* expression
     |   expression
     ;
 
@@ -500,6 +586,7 @@ lambdaBody
     |   (statement separator)+ (lambdaTailExpression | statement)
     |   (statement separator)+
     |   statement
+    |   // An empty synchronous callback is valid, including an explicit parameter list.
     ;
 
 lambdaTailExpression
@@ -513,28 +600,21 @@ statement
     |   whileStatement
     |   doWhileStatement
     |   tryStoreStatement
-    |   executeStatement
+    |   contextScopeStatement
     |   controlStatement
     |   orgCommand
     |   SEMICOLON
     |   returnStatement
     |   foreachStatement
+    |   commandBlock
+    ;
+
+contextScopeStatement
+    :   CONTEXT NL* normalArgs NL* block
     ;
 
 foreachStatement
     :   FOR NL* LPAREN NL* Identifier NL* COLON NL* expression NL* RPAREN NL* block
-    ;
-
-executeStatement
-    :   EXECUTE NL* LPAREN NL* executeContext (NL* COMMA NL* executeContext)* NL* RPAREN NL* block
-    ;
-
-executeContext
-    :   executeExpression NL* ASSIGNMENT NL* expression
-    ;
-
-executeExpression
-    :   AS | (var (NL* DOT NL* var)*)
     ;
 
 orgCommand
@@ -615,18 +695,31 @@ typeBody
     |   unionType
     |   unionTemplateType
     |   anonymousTemplateType
+    |   literalObjectType
     |   functionType
     ;
 
 // (int, int) -> int / () -> void. Parameter and result types stay
 // ordinary type / functionReturnType rules so callers can inspect them.
 functionType
-    :   LPAREN NL* (type (NL* COMMA NL* type)*)? NL* RPAREN
+    :   contextTypeParameters? NL* LPAREN NL* (type (NL* COMMA NL* type)*)? NL* RPAREN
         NL* ARROW NL* functionReturnType
+    ;
+
+contextTypeParameters
+    :   CONTEXT NL* LPAREN NL* type (NL* COMMA NL* type)* NL* RPAREN
     ;
 
 anonymousTemplateType
     :   DATA (NL* COLON NL* extendName (NL* COMMA NL* extendName)*)? NL* templateBody
+    ;
+
+literalObjectType
+    :   LCURL NL* (literalObjectTypeField (NL* COMMA NL* literalObjectTypeField)*)? NL* RCURL
+    ;
+
+literalObjectTypeField
+    :   Identifier NL* COLON NL* type
     ;
 
 unionType
@@ -681,7 +774,11 @@ coordinateDimension
     ;
 
 className
-    :   (namespacePath COLON NL*)? classWithoutNamespace
+    :   (namespacePath COLON NL*)? classWithoutNamespace nestedClassName*
+    ;
+
+nestedClassName
+    :   DOT Identifier
     ;
 
 classWithoutNamespace
@@ -733,7 +830,10 @@ nbtIntArray: NBT_INT_ARRAY_BEGIN NL* (nbtInt (NL* COMMA NL* nbtInt)*)? NL* RSQUA
 nbtLongArray: NBT_LONG_ARRAY_BEGIN NL* (nbtLong (NL* COMMA NL* nbtLong)*)? NL* RSQUARE;
 
 nbtList: LSQUARE NL* (expression (NL* COMMA NL* expression)*)? NL* RSQUARE;
-nbtKeyValuePair: key=Identifier NL* COLON NL* expression;
+nbtKeyValuePair
+    :   key=(Identifier | DATA | ENTITY | TYPE | NBT | LineString) NL* COLON NL* expression
+    |   key=Identifier
+    ;
 nbtCompound: LCURL (NL* nbtKeyValuePair (NL* COMMA NL* nbtKeyValuePair)* )* NL* RCURL;
 
 multiLineStringLiteral
@@ -755,4 +855,10 @@ multiLineStringExpression
 
 doc_comment
     :   DOC_COMMENT
+    ;
+
+// A lexical command block supplies implicit command slashes and removes the
+// slash that introduces an ordinary MCFPP statement.
+commandBlock
+    :   COMMAND_BLOCK_OPEN NL* (statement (separator statement)* separator?)? NL* RCURL
     ;

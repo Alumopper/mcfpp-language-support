@@ -80,7 +80,9 @@ public final class McfppProjectService {
     }
     public void refresh() {
         if(project.isDisposed()) return;
-        VirtualFile directory=LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root());
+        Path root=root();
+        if(root==null) return;
+        VirtualFile directory=LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root);
         if(directory!=null) directory.refresh(true,true);
     }
     private void importModel(JsonObject next) {

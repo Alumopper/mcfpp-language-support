@@ -15,6 +15,16 @@ public record McfppCommandContext(
 ) {
     public static @Nullable McfppCommandContext at(CharSequence source, int caretOffset) {
         int boundedCaret = Math.max(0, Math.min(caretOffset, source.length()));
+        var blockLine = top.mcfpp.intellij.lang.McfppCommandBlocks.lineAt(source, boundedCaret);
+        if (blockLine.kind() == top.mcfpp.intellij.lang.McfppCommandBlocks.Kind.ORDINARY && blockLine.insideBlock()) {
+            return null;
+        }
+        if (blockLine.kind() == top.mcfpp.intellij.lang.McfppCommandBlocks.Kind.COMMAND) {
+            if (insideInterpolation(source, blockLine.contentStart(), boundedCaret)) return null;
+            int base = blockLine.contentStart();
+            int cursor = Math.max(0, boundedCaret - base);
+            return new McfppCommandContext(blockLine.content(), cursor, base, boundedCaret);
+        }
         int lineStart = lineStart(source, boundedCaret);
         int slash = firstNonWhitespace(source, lineStart, boundedCaret);
         if (slash >= boundedCaret || source.charAt(slash) != '/') return null;
@@ -33,16 +43,27 @@ public record McfppCommandContext(
 
     public static List<StaticCommand> staticCommands(CharSequence source) {
         List<StaticCommand> commands = new ArrayList<>();
-        int lineStart = 0;
-        while (lineStart < source.length()) {
-            int lineEnd = lineEnd(source, lineStart);
-            int slash = firstNonWhitespace(source, lineStart, lineEnd);
-            if (slash < lineEnd && source.charAt(slash) == '/' &&
-                    (slash + 1 >= lineEnd || source.charAt(slash + 1) != '/') &&
-                    !containsInterpolation(source, slash + 1, lineEnd)) {
+        for (var line : top.mcfpp.intellij.lang.McfppCommandBlocks.lines(source)) {
+            if (line.kind() == top.mcfpp.intellij.lang.McfppCommandBlocks.Kind.COMMAND) {
+                int commandStart = line.contentStart();
+                int commandEnd = line.end();
+                while (commandEnd > commandStart && Character.isWhitespace(source.charAt(commandEnd - 1))) commandEnd--;
+                if (commandStart < commandEnd && !containsInterpolation(source, commandStart, commandEnd)) {
+                    commands.add(new StaticCommand(
+                            source.subSequence(commandStart, commandEnd).toString(),
+                            new TextRange(commandStart, commandEnd)
+                    ));
+                }
+                continue;
+            }
+            if (line.insideBlock()) continue;
+            int slash = firstNonWhitespace(source, line.start(), line.end());
+            if (slash < line.end() && source.charAt(slash) == '/' &&
+                    (slash + 1 >= line.end() || source.charAt(slash + 1) != '/') &&
+                    !containsInterpolation(source, slash + 1, line.end())) {
                 int commandStart = slash + 1;
-                while (commandStart < lineEnd && Character.isWhitespace(source.charAt(commandStart))) commandStart++;
-                int commandEnd = lineEnd;
+                while (commandStart < line.end() && Character.isWhitespace(source.charAt(commandStart))) commandStart++;
+                int commandEnd = line.end();
                 while (commandEnd > commandStart && Character.isWhitespace(source.charAt(commandEnd - 1))) commandEnd--;
                 if (commandStart < commandEnd) {
                     commands.add(new StaticCommand(
@@ -51,7 +72,6 @@ public record McfppCommandContext(
                     ));
                 }
             }
-            lineStart = skipLineBreak(source, lineEnd);
         }
         return List.copyOf(commands);
     }

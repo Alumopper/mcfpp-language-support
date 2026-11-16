@@ -50,6 +50,9 @@
         "editor.semanticHighlighting.enabled": true
       }
     },
+    "semanticTokenTypes": [
+      { "id": "mniFunction", "superType": "function", "description": "MCFPP native MNI function" }
+    ],
     "semanticTokenScopes": [
       {
         "language": "mcfpp",
@@ -60,6 +63,8 @@
           "enum": ["entity.name.type.enum.mcfpp"],
           "function": ["entity.name.function.mcfpp"],
           "method": ["entity.name.function.member.mcfpp"],
+          "macro": ["entity.name.function.preprocessor.mcfpp"],
+          "mniFunction": ["support.function.mni.mcfpp"],
           "property": ["variable.other.property.mcfpp"],
           "variable": ["variable.other.readwrite.mcfpp"],
           "parameter": ["variable.parameter.mcfpp"]

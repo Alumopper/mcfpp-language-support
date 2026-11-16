@@ -9,6 +9,8 @@ public final class McfppTokenTypes {
     public static final IElementType VERSION_DIRECTIVE = new McfppTokenType("VERSION_DIRECTIVE");
     public static final IElementType DOC_COMMENT = new McfppTokenType("DOC_COMMENT");
     public static final IElementType COMMAND = new McfppTokenType("COMMAND");
+    /** The `/{` that opens a command block; the matching `}` is {@link #RIGHT_BRACE}. */
+    public static final IElementType COMMAND_BLOCK_OPEN = new McfppTokenType("COMMAND_BLOCK_OPEN");
     public static final IElementType STRING = new McfppTokenType("STRING");
     public static final IElementType NUMBER = new McfppTokenType("NUMBER");
     public static final IElementType KEYWORD = new McfppTokenType("KEYWORD");

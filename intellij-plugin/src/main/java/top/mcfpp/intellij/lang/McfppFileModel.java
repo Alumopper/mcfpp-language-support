@@ -155,6 +155,15 @@ public final class McfppFileModel {
                 if (previous >= 0 && "object".equals(tokens.get(previous).text())) continue;
                 kind = McfppSymbolKind.TYPE;
                 nameSearchStart = index + 1;
+            } else if ("entity".equals(text)) {
+                // `entity` introduces a template only when followed by a name; the
+                // `entity var` / `entity func` member modifiers keep scanning normally.
+                int previous = previousCode(tokens, index - 1);
+                if (previous >= 0 && ":".equals(tokens.get(previous).text())) continue;
+                int next = nextCode(tokens, index + 1);
+                if (next < 0 || tokens.get(next).type() != McfppTokenTypes.IDENTIFIER) continue;
+                kind = McfppSymbolKind.TYPE;
+                nameSearchStart = index + 1;
             } else if ("enum".equals(text)) {
                 kind = McfppSymbolKind.ENUM;
                 nameSearchStart = index + 1;
@@ -272,6 +281,18 @@ public final class McfppFileModel {
             int headerBoundary = body >= 0
                     ? tokens.get(body).start()
                     : assignment >= 0 ? tokens.get(assignment).start() : end;
+            int contextOpen = -1, contextClose = -1;
+            int preceding = previousCode(tokens, tokenAtOffset(tokens, declarationStart) - 1);
+            if (preceding >= 0 && tokens.get(preceding).type() == McfppTokenTypes.RIGHT_PARENTHESIS) {
+                for (var pair : matches.parentheses().entrySet()) if (pair.getValue() == preceding) {
+                    int keyword = previousCode(tokens, pair.getKey() - 1);
+                    if (keyword >= 0 && tokens.get(keyword).text().equals("context")) {
+                        contextOpen = pair.getKey(); contextClose = preceding;
+                        declarationStart = tokens.get(keyword).start();
+                    }
+                    break;
+                }
+            }
             Draft function = new Draft(
                     McfppSymbolKind.FUNCTION,
                     tokens.get(name).text(),
@@ -290,6 +311,8 @@ public final class McfppFileModel {
             function.closeParenthesis = close == null ? -1 : close;
             function.openReadOnlyParameters = readOnlyOpen;
             function.closeReadOnlyParameters = readOnlyClose;
+            function.openContextParameters = contextOpen;
+            function.closeContextParameters = contextClose;
             drafts.add(function);
         }
     }
@@ -302,7 +325,9 @@ public final class McfppFileModel {
             List<Draft> drafts
     ) {
         for (int index = 0; index < tokens.size(); index++) {
-            if (!"constructor".equals(tokens.get(index).text())) continue;
+            if (!List.of("constructor", "new").contains(tokens.get(index).text())) continue;
+            int previous = previousCode(tokens, index - 1);
+            if (previous >= 0 && tokens.get(previous).type() == McfppTokenTypes.DOT) continue;
             int open = findNext(tokens, index + 1, McfppTokenTypes.LEFT_PARENTHESIS, 32, true);
             if (open < 0) continue;
             Integer close = matches.parentheses().get(open);
@@ -314,7 +339,7 @@ public final class McfppFileModel {
             int headerEnd = body < 0 ? end : tokens.get(body).start();
             Draft constructor = new Draft(
                     McfppSymbolKind.CONSTRUCTOR,
-                    "constructor",
+                    tokens.get(index).text(),
                     null,
                     tokens.get(index).start(),
                     tokens.get(index).start(),
@@ -412,6 +437,8 @@ public final class McfppFileModel {
                     container.openReadOnlyParameters, container.closeReadOnlyParameters, drafts);
             parseParameterRange(source, tokens, container,
                     container.openParenthesis, container.closeParenthesis, drafts);
+            parseParameterRange(source, tokens, container,
+                    container.openContextParameters, container.closeContextParameters, drafts);
         }
     }
 
@@ -451,9 +478,16 @@ public final class McfppFileModel {
     }
 
     private static void parseLambdaParameters(String source, List<Token> tokens, MatchData matches, List<Draft> drafts) {
-        for (var pair : matches.braces().entrySet()) {
+        Map<Integer, String> contextTypes = new LinkedHashMap<>();
+        for (var pair : matches.braces().entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             int open = pair.getKey(), close = pair.getValue();
             if (close <= open || drafts.stream().anyMatch(d -> d.bodyStart == tokens.get(open).start())) continue;
+            String entry = top.mcfpp.language.ContextBuiltins.entryBefore(source, tokens.get(open).start());
+            String ambient = null;
+            for (var context : contextTypes.entrySet())
+                if (context.getKey() < open && matches.braces().get(context.getKey()) > close) ambient = context.getValue();
+            String contextType = entry == null ? null : top.mcfpp.language.ContextBuiltins.callbackType(entry, ambient);
+            if (contextType != null) contextTypes.put(open, contextType);
             int arrow = -1;
             for (int i = open + 1; i < close; i++) {
                 Token token = tokens.get(i);
@@ -469,6 +503,7 @@ public final class McfppFileModel {
                     int name = nextCode(tokens, start);
                     if (name >= 0 && name < i && tokens.get(name).type() == McfppTokenTypes.IDENTIFIER) {
                         String signature = source.substring(tokens.get(name).start(), tokens.get(i).start()).trim();
+                        if (contextType != null && !signature.contains(":")) signature += ": " + contextType;
                         drafts.add(new Draft(McfppSymbolKind.PARAMETER, tokens.get(name).text(), "<lambda>",
                                 tokens.get(name).start(), tokens.get(name).start(), tokens.get(name).end(), -1,
                                 tokens.get(name).end(), tokens.get(open).start(), end, signature, "Lambda parameter"));
@@ -476,6 +511,7 @@ public final class McfppFileModel {
                     start = i + 1;
                 }
             } else {
+                if (contextType != null) continue;
                 // An implicit parameter exists only in a callback-shaped expression, not a control-flow block.
                 int before = previousCode(tokens, open - 1);
                 if (before < 0 || !Set.of(")", "=", "(", ",", "tryRead").contains(tokens.get(before).text())) continue;
@@ -779,7 +815,14 @@ public final class McfppFileModel {
         int result = tokens.get(keywordIndex).start();
         for (int index = keywordIndex - 1; index >= 0; index--) {
             Token token = tokens.get(index);
-            if (token.newlineBefore() || token.type() != McfppTokenTypes.MODIFIER_KEYWORD) break;
+            // `entity var` and `entity func` are members of the entity reference.
+            // The `entity` token starts its own line, so allow that one newline
+            // boundary while other modifiers must stay on the same line.
+            boolean entityMember = "entity".equals(token.text()) &&
+                    (token.type() == McfppTokenTypes.TYPE_KEYWORD || token.type() == McfppTokenTypes.MODIFIER_KEYWORD ||
+                            token.type() == McfppTokenTypes.DECLARATION_KEYWORD);
+            if (tokens.get(index + 1).newlineBefore() && !(entityMember && index == keywordIndex - 1)) break;
+            if (token.type() != McfppTokenTypes.MODIFIER_KEYWORD && !entityMember) break;
             result = token.start();
         }
         return result;
@@ -973,6 +1016,8 @@ public final class McfppFileModel {
         private int closeParenthesis = -1;
         private int openReadOnlyParameters = -1;
         private int closeReadOnlyParameters = -1;
+        private int openContextParameters = -1;
+        private int closeContextParameters = -1;
 
         private Draft(
                 McfppSymbolKind kind,

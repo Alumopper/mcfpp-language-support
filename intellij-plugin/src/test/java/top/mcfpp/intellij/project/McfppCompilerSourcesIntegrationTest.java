@@ -54,7 +54,7 @@ public final class McfppCompilerSourcesIntegrationTest extends McfppJavaFixtureT
             .findClass("top.mcfpp.mni.MCIntData", GlobalSearchScope.allScope(getProject()));
         assertNotNull(implementation);
         var navigation = implementation.getNavigationElement();
-        assertEquals("MCIntData.java", navigation.getContainingFile().getName());
-        assertTrue(navigation.getContainingFile().getText().contains("class MCIntData"));
+        assertEquals("MCIntData.kt", navigation.getContainingFile().getName());
+        assertTrue(navigation.getContainingFile().getText().contains("MCIntData"));
     }
 }

@@ -38,6 +38,21 @@ public final class McfppFoldingBuilder extends FoldingBuilderEx {
                 descriptors.add(descriptor);
             }
         }
+        String source = file.getText();
+        var blockLines = McfppCommandBlocks.lines(source);
+        for (int index = 0; index < blockLines.size(); index++) {
+            var open = blockLines.get(index);
+            if (open.kind() != McfppCommandBlocks.Kind.OPEN) continue;
+            var close = blockLines.stream().skip(index + 1L)
+                    .filter(line -> line.kind() == McfppCommandBlocks.Kind.CLOSE)
+                    .findFirst().orElse(null);
+            if (close == null || close.start() <= open.contentStart()) continue;
+            PsiElement anchor = file.findElementAt(open.contentStart());
+            if (anchor != null) {
+                descriptors.add(new FoldingDescriptor(anchor.getNode(),
+                        new TextRange(open.contentStart(), close.end()), null, "{…}"));
+            }
+        }
         for (McfppSymbol symbol : McfppFileModels.get(file).symbols()) {
             if (symbol.bodyStart() < 0 || symbol.endOffset() - symbol.bodyStart() < 3) continue;
             if (document.getLineNumber(symbol.bodyStart()) == document.getLineNumber(symbol.endOffset() - 1)) continue;

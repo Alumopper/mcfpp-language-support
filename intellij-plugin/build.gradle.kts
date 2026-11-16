@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "top.mcfpp"
-version = "0.6.0"
+version = "0.6.2"
 
 val localIdeaPath = providers.gradleProperty("ideaLocalPath")
 
@@ -72,6 +72,19 @@ val generateMniParser by tasks.registering(AntlrTask::class) {
 sourceSets.main { java.srcDir(typeGrammarOutput) }
 tasks.compileJava { dependsOn(generateMniParser) }
 
+val generateEntityEditorApi by tasks.registering(JavaExec::class) {
+    dependsOn(tasks.compileJava)
+    classpath = files(tasks.compileJava.flatMap { it.destinationDirectory })
+    mainClass.set("top.mcfpp.language.EntityBuiltins")
+    val output = layout.buildDirectory.file("generated-entity-api/editor/entity-builtins.mcfpp")
+    args(output.get().asFile.absolutePath)
+    outputs.file(output)
+}
+tasks.processResources {
+    dependsOn(generateEntityEditorApi)
+    from(layout.buildDirectory.dir("generated-entity-api"))
+}
+
 sourceSets.main {
     java.srcDir("../shared/src/main/java")
     java.source(objects.sourceDirectorySet("packResourceApi", "Shared vanilla resource identities and references").apply {
@@ -97,7 +110,7 @@ val languageServerJar = layout.projectDirectory.file("../vscode-extension/server
 val compilerStandardLibrary = layout.projectDirectory.dir("../../MCFPP/src/main/mcfpp")
 val compilerConfiguration = layout.projectDirectory.file("../../MCFPP/mcfpp.json")
 val compilerCli = providers.gradleProperty("mcfppCompilerJar").map(::file)
-    .orElse(layout.projectDirectory.file("../../MCFPP/build/libs/MCFPP-1.0.2-SNAPSHOT.jar").asFile)
+    .orElse(layout.projectDirectory.file("../../MCFPP/build/libs/MCFPP-0.1.0.jar").asFile)
 val compilerSources = providers.gradleProperty("mcfppCompilerSourcesJar").map(::file)
     .orElse(compilerCli.map { File(it.parentFile, it.nameWithoutExtension + "-sources.jar") })
 val linterRoot = layout.projectDirectory.dir("../../MCFPP-Linter")

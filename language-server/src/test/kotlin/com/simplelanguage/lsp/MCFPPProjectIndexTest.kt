@@ -167,7 +167,11 @@ class MCFPPProjectIndexTest {
                 it.kind in setOf(org.eclipse.lsp4j.SymbolKind.Method, org.eclipse.lsp4j.SymbolKind.Field)
         }
         assertTrue(typedExternalMembers.isNotEmpty())
-        assertTrue(typedExternalMembers.all { it.typeName == it.detail })
+        assertTrue(
+            typedExternalMembers.all { it.typeName == it.detail },
+            typedExternalMembers.filter { it.typeName != it.detail }.take(8)
+                .joinToString { "${it.containerName}.${it.name}: ${it.typeName} / ${it.detail}" }
+        )
     }
 
     @Test

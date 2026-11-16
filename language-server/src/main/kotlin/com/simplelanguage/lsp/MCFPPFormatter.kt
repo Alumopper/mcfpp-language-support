@@ -42,7 +42,8 @@ object MCFPPFormatter {
                 )
             }
 
-            val openingBraces = lineTokens.count { it.type == mcfppLexer.LCURL }
+            // A command block (`/{ ... }`) indents its lines without an ordinary LCURL token.
+            val openingBraces = lineTokens.count { it.type == mcfppLexer.LCURL || it.type == mcfppLexer.COMMAND_BLOCK_OPEN }
             val closingBraces = lineTokens.count { it.type == mcfppLexer.RCURL }
             depth = (depth + openingBraces - closingBraces).coerceAtLeast(0)
         }

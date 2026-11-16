@@ -38,6 +38,17 @@ class McfppLexerTest {
     }
 
     @Test
+    void recognizesCommandBlocksAndOrdinarySlashStatements() {
+        String source = "func main() {\n/{\nsay hello\n/count += 1\n}\n}";
+        List<Token> tokens = tokens(source);
+        assertEquals(McfppTokenTypes.COMMAND_BLOCK_OPEN, typeOf(tokens, "/{"));
+        assertEquals(McfppTokenTypes.COMMAND, typeOf(tokens, "say hello"));
+        assertEquals(McfppTokenTypes.OPERATOR, typeOf(tokens, "+="));
+        long commands = tokens.stream().filter(token -> token.type() == McfppTokenTypes.COMMAND).count();
+        assertEquals(1, commands);
+    }
+
+    @Test
     void recognizesLanguageSpecificTokenCategories() {
         String source = """
                 /// docs
@@ -59,6 +70,15 @@ class McfppLexerTest {
         assertEquals(McfppTokenTypes.COMMAND, typeOf(tokens, "/execute as @a run say hello"));
         assertEquals(McfppTokenTypes.LEFT_BRACE, typeOf(tokens, "{"));
         assertEquals(McfppTokenTypes.RIGHT_BRACE, typeOf(tokens, "}"));
+    }
+
+    @Test
+    void highlightsEntityDeclarationsAndQuotedValuesAsLanguageTokens() {
+        List<Token> tokens = tokens("entity StoneDisplay { var item: string = \"stone\" }");
+        assertEquals(McfppTokenTypes.DECLARATION_KEYWORD, typeOf(tokens, "entity"));
+        assertEquals(McfppTokenTypes.STRING, typeOf(tokens, "\"stone\""));
+        assertEquals(McfppSyntaxHighlighter.DECLARATION_KEYWORD,
+                new McfppSyntaxHighlighter().getTokenHighlights(typeOf(tokens, "entity"))[0]);
     }
 
     @Test

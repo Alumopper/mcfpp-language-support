@@ -12,6 +12,7 @@ import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.codeInsight.navigation.actions.GotoDeclarationHandler;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase;
@@ -91,6 +92,7 @@ public final class McfppMniReferenceIntegrationTest extends McfppJavaFixtureTest
 
     public void testMniResolvesJavaSourceWhenTheProjectClassIndexIsUnavailable() throws Exception {
         Path temporaryDirectory = Files.createTempDirectory("mcfpp-unindexed-mni-");
+        VfsRootAccess.allowRootAccess(getTestRootDisposable(), temporaryDirectory.toString());
         Path source = temporaryDirectory.resolve("src/main/java/external/mni/UnindexedBridge.java");
         Files.createDirectories(source.getParent());
         Files.writeString(source, """

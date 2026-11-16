@@ -18,6 +18,8 @@ final class McfppTypes {
         int annotation = signature.indexOf(':');
         if (annotation < 0) {
             if ("<lambda>".equals(symbol.owner())) return null;
+            String builtin = top.mcfpp.language.EntityBuiltins.factoryType(initializer);
+            if (builtin != null) return builtin;
             String factory = initializer.substring(0, initializer.contains("(") ? initializer.indexOf('(') : initializer.length()).strip();
             int generic = factory.indexOf('<');
             String name = generic >= 0 ? factory.substring(0, generic) : factory;
@@ -30,7 +32,7 @@ final class McfppTypes {
         }
         int cursor = annotation + 1;
         while (cursor < signature.length() && Character.isWhitespace(signature.charAt(cursor))) cursor++;
-        if (cursor < signature.length() && signature.charAt(cursor) == '(') return signature.substring(cursor).strip();
+        if (cursor < signature.length() && (signature.charAt(cursor) == '(' || signature.charAt(cursor) == '{' || signature.startsWith("context(", cursor))) return signature.substring(cursor).strip();
         int start = cursor;
         while (cursor < signature.length()) {
             char value = signature.charAt(cursor);
@@ -41,8 +43,80 @@ final class McfppTypes {
         }
         if (cursor == start) return null;
         String type = signature.substring(start, cursor);
+        // EntityRef<T> keeps its type argument; it selects the template member set.
+        if (cursor < signature.length() && signature.charAt(cursor) == '<') {
+            int depth = 0;
+            for (int index = cursor; index < signature.length(); index++) {
+                char value = signature.charAt(index);
+                if (value == '<') depth++;
+                else if (value == '>' && --depth == 0) {
+                    type = signature.substring(start, index + 1);
+                    break;
+                }
+            }
+        }
         int colon = type.lastIndexOf(':');
         return colon < 0 ? type : type.substring(colon + 1);
+    }
+
+    static @Nullable String receiverType(String expression, McfppFileModel model, int offset) {
+        expression = expression.strip();
+        if (expression.startsWith("{") && expression.endsWith("}")) return "nbt";
+        String mergeReceiver = top.mcfpp.language.MemberExpressions.calledMemberReceiver(expression, "merge");
+        if (mergeReceiver != null && "nbt".equals(receiverType(mergeReceiver, model, offset))) return "nbt";
+        if (expression.strip().startsWith("@")) return "entity";
+        String[] parts = expression.strip().split("\\s*\\.\\s*");
+        String type = parts[0];
+        var locals = model.visibleLocalSymbols(type, offset);
+        if (!locals.isEmpty()) {
+            type = declaredType(locals.getFirst());
+            if (type == null) {
+                String signature = locals.getFirst().signature();
+                int assignment = signature.indexOf('=');
+                if (assignment >= 0) {
+                    String value = signature.substring(assignment + 1).strip();
+                    String factoryOwner = top.mcfpp.language.MemberExpressions.calledMemberReceiver(value, "new");
+                    if (factoryOwner != null) type = factoryOwner;
+                    else if (!value.equals(expression) && "nbt".equals(receiverType(value, model, locals.getFirst().nameOffset()))) type = "nbt";
+                    else if (value.startsWith("@")) type = "entity";
+                    else if (value.matches("[\\w.]+") && !value.equals(expression))
+                        type = receiverType(value, model, locals.getFirst().nameOffset());
+                    else {
+                        var summon = java.util.regex.Pattern.compile(
+                                "([\\w.]+)\\s*\\.\\s*summon\\s*\\(").matcher(value);
+                        if (summon.find()) {
+                            String owner = receiverType(summon.group(1), model, locals.getFirst().nameOffset());
+                            if (owner != null) type = "EntityRef<" + owner.substring(owner.lastIndexOf(':') + 1) + ">";
+                        } else {
+                            var constructor = java.util.regex.Pattern.compile(
+                                    "(?:[\\w.]*:)?([A-Za-z_$][\\w$]*)\\s*(?:<[^<>]*>)?\\s*\\(").matcher(value);
+                            if (constructor.find() && model.symbols().stream().anyMatch(it -> it.kind().isType() && it.name().equals(constructor.group(1)))) {
+                                type = constructor.group(1);
+                            }
+                        }
+                    }
+                }
+            }
+            if (type == null) return null;
+        }
+        for (int i = 1; i < parts.length; i++) {
+            if ("summon".equals(parts[i]) && isEntityTemplate(model, type)) {
+                type = "EntityRef<" + type.substring(type.lastIndexOf(':') + 1) + ">";
+                continue;
+            }
+            var member = top.mcfpp.language.EntityBuiltins.member(type, parts[i]);
+            if (member == null) return null;
+            type = member.type();
+        }
+        return type;
+    }
+
+    /** Whether the model declares {@code type} with the compiler's `entity` template keyword. */
+    static boolean isEntityTemplate(McfppFileModel model, String type) {
+        String simple = type.substring(type.lastIndexOf(':') + 1).strip();
+        return model.symbols().stream().anyMatch(symbol ->
+                symbol.kind() == McfppSymbolKind.TYPE && symbol.name().equals(simple) &&
+                        symbol.signature().stripLeading().matches("(?s)^(?:(?:final|abstract)\\s+)?entity\\b.*"));
     }
 
     static List<String> parameterTypes(McfppSymbol symbol) {
@@ -58,6 +132,7 @@ final class McfppTypes {
         if (assignment >= 0) parameter = parameter.substring(0, assignment).stripTrailing();
         int annotation = parameter.indexOf(':');
         String type = annotation < 0 ? parameter : parameter.substring(annotation + 1).strip();
+        if (type.contains("->")) return type;
         int space = type.lastIndexOf(' ');
         if (space >= 0) type = type.substring(space + 1);
         int colon = type.lastIndexOf(':');

@@ -1,0 +1,4 @@
+schema = 1
+name = "template-literals"
+namespace = "template_literals"
+version = "26.3"

@@ -284,7 +284,10 @@ class MCFPPProjectIndex {
                 }
                 addAll(analysis.topLevelSymbols.filter { it.kind == SymbolKind.Function }.map { it.copy(isExternal = true) })
             }
+            addAll(MCFPPContextBuiltins.symbols())
             if (!project.ignoreStdLib) {
+                addAll(MCFPPEntityBuiltins.symbols(project.configFile?.toUri()?.toString() ?: project.root.toUri().toString()))
+                addAll(MCFPPNbtBuiltins.symbols(project.configFile?.toUri()?.toString() ?: project.root.toUri().toString()))
                 val loader = this@MCFPPProjectIndex.javaClass.classLoader
                 val resource = loader.getResource("datapack/targets/${project.targetVersion}/bin.mclib")
                     ?: loader.getResource("datapack/bin.mclib")
@@ -498,7 +501,9 @@ class MCFPPProjectIndex {
             namespaceName = namespace,
             isExternal = true,
             isStdlib = standard,
-            parameters = parameters
+            parameters = parameters,
+            isDataTemplate = compound is DataTemplate && !compound.isEntityTemplate && compound !is top.mcfpp.model.compound.ObjectCompoundData,
+            isAbstract = compound is DataTemplate && compound.isAbstract
         )
         compound.scope.forEachFunction { function ->
             val returnType = runCatching { function.returnType.typeName }.getOrNull()
@@ -533,7 +538,8 @@ class MCFPPProjectIndex {
                 isExternal = true,
                 isStdlib = standard,
                 accessModifier = externalAccessModifier(runCatching { variable.accessModifier.name }.getOrNull()),
-                isStatic = runCatching { variable.isStatic }.getOrDefault(false)
+                isStatic = runCatching { variable.isStatic }.getOrDefault(false),
+                initializer = (compound as? DataTemplate)?.preInit?.get(variable.identifier)?.text
             )
         }
         return symbols

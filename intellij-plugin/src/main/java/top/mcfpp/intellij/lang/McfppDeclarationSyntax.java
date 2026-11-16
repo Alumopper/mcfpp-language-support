@@ -6,7 +6,7 @@ import java.util.HashSet;
 
 /** Distinguishes declaration annotations from qualified names sharing the colon token. */
 final class McfppDeclarationSyntax {
-    private static final Set<String> DECLARATIONS = Set.of("var", "const", "external", "data", "enum");
+    private static final Set<String> DECLARATIONS = Set.of("var", "const", "external", "data", "entity", "enum");
 
     static boolean isAnnotationColon(CharSequence source, int offset) {
         List<McfppSourceTokens.Token> tokens = McfppSourceTokens.lex(source.subSequence(0, offset).toString())
@@ -31,7 +31,7 @@ final class McfppDeclarationSyntax {
                 .filter(token -> !token.trivia()).toList();
         int last = tokens.size() - 1;
         if (last < 1 || tokens.get(last).type() != McfppTokenTypes.IDENTIFIER ||
-                List.of("data", "enum").contains(tokens.get(last - 1).text())) return false;
+                List.of("data", "entity", "enum").contains(tokens.get(last - 1).text())) return false;
         return isAnnotationAfter(tokens, last);
     }
 
@@ -45,7 +45,7 @@ final class McfppDeclarationSyntax {
         if (!List.of("(", ",", "<", "var").contains(before)) return false;
         for (int index = last - 1; index >= 0; index--) {
             String text = tokens.get(index).text();
-            if (text.equals("func") || text.equals("constructor") || text.equals("data")) return true;
+            if (text.equals("func") || text.equals("new") || text.equals("constructor") || text.equals("data") || text.equals("entity") || text.equals("context")) return true;
             if (List.of("{", "}", ";").contains(text)) return false;
         }
         return false;

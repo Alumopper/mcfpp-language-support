@@ -26,6 +26,6 @@ public enum McfppSymbolKind {
     }
 
     public boolean isProjectSymbol() {
-        return isType() || this == FUNCTION;
+        return isType() || this == FUNCTION || this == CONSTRUCTOR;
     }
 }

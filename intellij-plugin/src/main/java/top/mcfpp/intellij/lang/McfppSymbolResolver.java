@@ -30,6 +30,26 @@ final class McfppSymbolResolver {
         McfppFileModel currentModel = McfppFileModels.get(currentFile);
         String usedName = usage.getText();
         int offset = usage.getTextOffset();
+        List<PsiElement> literalFields = McfppTemplateLiterals.fieldTargets(currentFile, offset);
+        if (literalFields != null) return literalFields;
+        List<PsiElement> memberFields = McfppTemplateLiterals.memberTargets(currentFile, offset, usedName);
+        if (!memberFields.isEmpty()) return memberFields;
+        PsiElement next = PsiTreeUtil.nextLeaf(usage, true);
+        while (next != null && next.getText().isBlank()) next = PsiTreeUtil.nextLeaf(next, true);
+        if (next != null && "=".equals(next.getText())) {
+            var call = McfppCallContext.atCaret(currentFile, offset);
+            if (call != null) {
+                List<PsiElement> parameters = new ArrayList<>();
+                for (PsiElement target : resolve(call.callee())) {
+                    var model = McfppFileModels.get(target.getContainingFile());
+                    var function = model.declarationAt(target.getTextOffset());
+                    if (function == null) continue;
+                    for (var parameter : model.visibleLocalSymbols(usedName, Math.max(function.bodyStart() + 1, function.headerEnd() - 1)))
+                        if (parameter.kind() == McfppSymbolKind.PARAMETER) parameters.add(elementFor(target.getContainingFile(), parameter));
+                }
+                return parameters;
+            }
+        }
 
         UsageContext context = UsageContext.create(currentFile.getViewProvider().getContents(), usage);
         List<McfppSymbol> locals = currentModel.visibleLocalSymbols(usedName, offset);
@@ -39,6 +59,15 @@ final class McfppSymbolResolver {
         }
 
         Project project = usage.getProject();
+        if (context.ownerQualifier() == null && context.namespaceQualifier() == null) {
+            PsiElement builtin = McfppEntityApi.function(project, usedName);
+            if (builtin != null) return List.of(builtin);
+        }
+        if (context.ownerQualifier() != null) {
+            String owner = resolveOwnerQualifier(context.ownerQualifier(), currentModel, offset);
+            PsiElement builtin = McfppEntityApi.member(project, owner, usedName);
+            if (builtin != null) return List.of(builtin);
+        }
         if (DumbService.isDumb(project)) {
             List<PsiElement> sameFile = sameFileSymbols(currentFile, currentModel, usedName, usage);
             return sameFile.isEmpty()
@@ -78,7 +107,10 @@ final class McfppSymbolResolver {
 
         candidates.sort(Comparator.comparingInt(Candidate::score).reversed()
                 .thenComparing(candidate -> candidate.symbol().qualifiedName()));
-        if (candidates.isEmpty()) return List.of();
+        if (candidates.isEmpty()) {
+            PsiElement builtin = McfppEntityApi.type(project, usedName);
+            return builtin == null ? List.of() : List.of(builtin);
+        }
         int bestScore = candidates.getFirst().score();
         return candidates.stream()
                 .filter(candidate -> candidate.score() == bestScore)
@@ -141,7 +173,7 @@ final class McfppSymbolResolver {
             McfppFileModel model = McfppFileModels.get(file);
             McfppSymbol symbol = model.declarationAt(target.getTextOffset());
             if (symbol == null) continue;
-            if (symbol.kind() == McfppSymbolKind.FUNCTION) {
+            if (symbol.kind() == McfppSymbolKind.FUNCTION || symbol.kind() == McfppSymbolKind.CONSTRUCTOR) {
                 if (seen.add(symbol.qualifiedName() + '\n' + symbol.signature())) {
                     result.add(McfppCallableInfo.from(symbol));
                 }
@@ -156,7 +188,7 @@ final class McfppSymbolResolver {
                     }
                 } else {
                     for (McfppSymbol constructor : constructors) {
-                        String signature = symbol.name() + constructor.signature().substring("constructor".length());
+                        String signature = symbol.name() + constructor.signature().substring(constructor.name().length());
                         if (seen.add(symbol.qualifiedName() + '\n' + signature)) {
                             result.add(McfppCallableInfo.fromSignature(signature));
                         }
@@ -228,6 +260,13 @@ final class McfppSymbolResolver {
         String expectedOwner = context.ownerQualifier() == null
                 ? null
                 : resolveOwnerQualifier(context.ownerQualifier(), currentModel, usageOffset);
+        String entityRef = top.mcfpp.language.EntityBuiltins.entityRefTemplate(expectedOwner);
+        if (entityRef != null) {
+            expectedOwner = entityRef;
+            // A reference exposes the template's `entity` members, not its stored fields.
+            if (!symbol.signature().matches("(?s).*\\bentity\\s+(?:(?:override|abstract)\\s+)?(?:var|const|func)\\b.*"))
+                return -1;
+        }
         boolean ownerImported = expectedOwner != null && symbol.owner() != null &&
                 (currentModel.importExposes(symbol.namespace(), symbol.owner(), expectedOwner) ||
                         currentModel.importExposes(symbol.namespace(), symbol.owner(), context.ownerQualifier()));
@@ -296,6 +335,8 @@ final class McfppSymbolResolver {
             String owner = enclosingType(model, usageOffset);
             return owner == null ? qualifier : owner;
         }
+        String inferred = McfppTypes.receiverType(qualifier, model, usageOffset);
+        if (inferred != null && !inferred.equals(qualifier)) return inferred;
         List<McfppSymbol> variables = model.visibleLocalSymbols(qualifier, usageOffset);
         if (!variables.isEmpty()) {
             String declaredType = McfppTypes.declaredType(variables.getFirst());
@@ -348,7 +389,7 @@ final class McfppSymbolResolver {
             boolean annotation = left >= 0 && source.charAt(left) == ':' &&
                     McfppDeclarationSyntax.isAnnotationColon(source, left);
             if (left >= 0 && source.charAt(left) == ':' && !annotation) namespace = identifierBefore(source, left - 1, true);
-            else if (left >= 0 && source.charAt(left) == '.') owner = identifierBefore(source, left - 1, false);
+            else if (left >= 0 && source.charAt(left) == '.') owner = top.mcfpp.language.MemberExpressions.receiverBefore(source, left);
             boolean call = right < source.length() && source.charAt(right) == '(';
             String previousWord = identifierBefore(source, left, false);
             boolean type = annotation || "as".equals(previousWord) || "extends".equals(previousWord) ||

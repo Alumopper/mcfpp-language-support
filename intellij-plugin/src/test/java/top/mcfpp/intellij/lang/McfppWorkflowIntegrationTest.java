@@ -27,6 +27,7 @@ public final class McfppWorkflowIntegrationTest extends BasePlatformTestCase {
         var build=(McfppRunConfiguration)settings.getConfiguration();
         assertEquals("-level=INFO",build.arguments);
         build.arguments="--output \"custom output\""; build.locked=true; build.environment.put("EXAMPLE","one=two");
+        build.deployAfterBuild=true; build.deploymentDirectory="D:/Minecraft/存档/datapacks";
         McfppRunConfigurations.initialize(getProject(),true);
         McfppRunConfigurations.initialize(getProject(),true);
         assertEquals(8,manager.getAllSettings().stream().filter(s -> s.getConfiguration() instanceof McfppRunConfiguration).count());
@@ -34,9 +35,11 @@ public final class McfppWorkflowIntegrationTest extends BasePlatformTestCase {
         assertEquals("--output \"custom output\"",build.arguments);
         var state=new Element("configuration"); build.writeExternal(state);
         var restored=(McfppRunConfiguration)build.clone(); restored.arguments=""; restored.environment.clear();
+        restored.deployAfterBuild=false; restored.deploymentDirectory="";
         assertEquals("one=two",build.environment.get("EXAMPLE"));
         restored.readExternal(state);
         assertEquals(build.arguments,restored.arguments); assertTrue(restored.locked);
+        assertTrue(restored.deployAfterBuild); assertEquals(build.deploymentDirectory,restored.deploymentDirectory);
         assertEquals("one=two",restored.environment.get("EXAMPLE"));
     }
     public void testFormattingIsOneUndoableEditorOperation() {

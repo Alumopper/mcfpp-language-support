@@ -34,7 +34,8 @@ const SPYGLASS_TOKEN_TYPES = [
     'escape',
     'literal',
     'resourceLocation',
-    'vector'
+    'vector',
+    'mniFunction'
 ] as const;
 
 const SPYGLASS_TOKEN_MODIFIERS = [

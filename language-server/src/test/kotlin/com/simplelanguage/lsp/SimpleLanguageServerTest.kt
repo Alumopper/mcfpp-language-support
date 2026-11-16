@@ -58,7 +58,7 @@ class SimpleLanguageServerTest {
     @Test
     fun `imported type aliases are assignable in declarations arguments and returns`(@TempDir root: Path) {
         root.resolve("mcfpp.json").writeText("""{"compileArgs":["-ignoreStdLib"]}""")
-        root.resolve("library.mcfpp").writeText("namespace library;\ndata Counter {}\ndata Other {}\n")
+        root.resolve("library.mcfpp").writeText("namespace library;\ndata Counter { var count: int = 0 }\ndata Other { var name: string = \"\" }\n")
         val uri = root.resolve("consumer.mcfpp").toUri().toString()
         val analyzed = CountDownLatch(1)
         val diagnostics = AtomicReference<List<Diagnostic>>(emptyList())
@@ -747,7 +747,7 @@ class SimpleLanguageServerTest {
             data Empty {}
             data Wrapped as int;
             data Explicit {
-                constructor(value: string) {}
+                var value: string; new(value: string) { return { value } }
             }
             func main() {
                 var empty: Empty = Empty();
@@ -790,7 +790,7 @@ class SimpleLanguageServerTest {
         val service = server.getTextDocumentService()
         val text = """
             data Box<T> {
-                constructor(value: T) {}
+                var value: T; new(value: T) { return { value } }
             }
             func main() {
                 var valid: Box = Box<int>(1);
@@ -828,7 +828,7 @@ class SimpleLanguageServerTest {
     }
 
     @Test
-    fun `inherited members support completion navigation and call diagnostics`() {
+    fun `inheritance combines fields without inheriting methods`() {
         val analyzed = CountDownLatch(1)
         val publishedDiagnostics = AtomicReference<List<Diagnostic>>(emptyList())
         val uri = "file:///inherited-members.mcfpp"
@@ -860,7 +860,7 @@ class SimpleLanguageServerTest {
             service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, text)))
             assertTrue(analyzed.await(5, TimeUnit.SECONDS), "Document analysis did not finish")
             assertTrue(
-                publishedDiagnostics.get().any { it.message.contains("Argument count mismatch for `value`") },
+                publishedDiagnostics.get().any { it.message.contains("Undefined symbol `value`") },
                 "Diagnostics: ${publishedDiagnostics.get().map { it.message }}"
             )
 
@@ -875,7 +875,7 @@ class SimpleLanguageServerTest {
                 completionResult.right.items.map { it.label }
             }
             assertTrue("field" in completionLabels, "Completions: $completionLabels")
-            assertTrue("value" in completionLabels, "Completions: $completionLabels")
+            assertFalse("value" in completionLabels, "Completions: $completionLabels")
 
             val definition = service.definition(
                 DefinitionParams(TextDocumentIdentifier(uri), Position(7, fieldLine.indexOf("field;") + 1))
@@ -923,7 +923,7 @@ class SimpleLanguageServerTest {
                 }
             }
             data Secret {
-                private constructor() {}
+                private new() { return {} }
             }
             func main(base: Base, child: Child) {
                 var publicValue: int = base.visible;
@@ -1160,9 +1160,9 @@ class SimpleLanguageServerTest {
             import models:makeFactory;
             func main() {
                 var factory: Factory;
-                factory.
-                makeFactory().
-                makeFactory().create().
+                factory.;
+                makeFactory().;
+                makeFactory().create().;
             }
         """.trimIndent()
 
@@ -1170,7 +1170,7 @@ class SimpleLanguageServerTest {
         val indexedConsumer = MCFPPDocumentIndex.analyze(consumerUri, consumer)
         assertTrue(indexedLibrary.typeMembers["Factory"].orEmpty().any { it.name == "create" })
         assertTrue(indexedConsumer.variables["factory"].orEmpty().startsWith("Factory"))
-        assertEquals("factory", indexedConsumer.receiverBefore(Position(6, consumer.lines()[6].length)))
+        assertEquals("factory", indexedConsumer.receiverBefore(Position(6, consumer.lines()[6].length - 1)))
 
         try {
             service.didOpen(DidOpenTextDocumentParams(TextDocumentItem(libraryUri, "mcfpp", 1, library)))
@@ -1181,7 +1181,7 @@ class SimpleLanguageServerTest {
             fun labelsAt(lineNumber: Int): List<String> {
                 val line = consumer.lines()[lineNumber]
                 val result = service.completion(
-                    CompletionParams(TextDocumentIdentifier(consumerUri), Position(lineNumber, line.length))
+                    CompletionParams(TextDocumentIdentifier(consumerUri), Position(lineNumber, line.length - 1))
                 ).get()
                 return if (result.isLeft) result.left.map { it.label } else result.right.items.map { it.label }
             }

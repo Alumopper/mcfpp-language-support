@@ -24,7 +24,7 @@ public final class McfppSymbolIndex extends ScalarIndexExtension<String> {
     private static final String NAMESPACE_OWNER_KEY_PREFIX = "\u0001namespace-owner:";
     private static final String MNI_METHOD_KEY_PREFIX = "\u0001mni-method:";
     private static final String MNI_CLASS_KEY_PREFIX = "\u0001mni-class:";
-    private static final int VERSION = 6;
+    private static final int VERSION = 7;
 
     @Override
     public @NotNull ID<String, Void> getName() {

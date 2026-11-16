@@ -67,11 +67,13 @@ enum class MCFPPAccessModifier {
 
 data class MCFPPFunctionValue(
     val parameters: List<MCFPPFunctionParameter>,
-    val returnType: String?
+    val returnType: String?,
+    val contextTypes: List<String> = emptyList()
 ) {
     fun typeName(): String? = returnType?.let { result ->
         if (parameters.any { it.typeName == "?" }) null
-        else parameters.joinToString(",", "(", ")->$result") { it.typeName }
+        else (if (contextTypes.isEmpty()) "" else contextTypes.joinToString(",", "context(", ") ")) +
+            parameters.joinToString(",", "(", ")->$result") { it.typeName }
     }
 }
 
@@ -100,7 +102,15 @@ data class MCFPPSymbol(
     val accessModifier: MCFPPAccessModifier = MCFPPAccessModifier.PUBLIC,
     val isSynthetic: Boolean = false,
     val initializer: String? = null,
-    val functionValue: MCFPPFunctionValue? = null
+    val functionValue: MCFPPFunctionValue? = null,
+    val contextParameters: List<MCFPPFunctionParameter> = emptyList(),
+    val isContextProvider: Boolean = false,
+    val isEntityTemplate: Boolean = false,
+    val isEntityMember: Boolean = false,
+    val isDataTemplate: Boolean = false,
+    val isAbstract: Boolean = false,
+    val isNative: Boolean = false,
+    val isMacro: Boolean = false
 ) {
     val selectionRange: Range = range
 
@@ -205,47 +215,11 @@ data class MCFPPDocumentAnalysis(
     }
 
     fun receiverBefore(position: Position): String? {
-        val line = line(position.line)
-        if (line.isEmpty()) {
-            return null
-        }
-
-        val sliceEnd = position.character.coerceIn(0, line.length)
-        val prefix = line.substring(0, sliceEnd)
-        var separator = prefix.length - 1
-        while (separator >= 0 && (prefix[separator].isWhitespace() || isWordChar(prefix[separator]))) {
-            separator--
-        }
-        if (separator < 0 || prefix[separator] != '.') {
-            return null
-        }
-
-        var index = separator - 1
-        var parentheses = 0
-        var brackets = 0
-        var angles = 0
-        while (index >= 0) {
-            when (prefix[index]) {
-                ')' -> parentheses++
-                '(' -> if (parentheses > 0) parentheses-- else break
-                ']' -> brackets++
-                '[' -> if (brackets > 0) brackets-- else break
-                '>' -> angles++
-                '<' -> if (angles > 0) angles-- else break
-                '=', ';', '{', '}', ',', '+', '-', '*', '/', '%', '!', '&', '|', '?' ->
-                    if (parentheses == 0 && brackets == 0 && angles == 0) break
-                else -> Unit
-            }
-            if (prefix[index].isWhitespace() && parentheses == 0 && brackets == 0 && angles == 0) {
-                val left = prefix.getOrNull(index - 1)
-                val right = prefix.getOrNull(index + 1)
-                if (left !in setOf('.', ':') && right !in setOf('.', ':', '(')) {
-                    break
-                }
-            }
-            index--
-        }
-        return prefix.substring(index + 1, separator).trim().takeIf { it.isNotEmpty() }
+        var separator = MCFPPTextChanges.positionToOffset(text, position) - 1
+        while (separator >= 0 && text[separator].isWhitespace()) separator--
+        while (separator >= 0 && isWordChar(text[separator])) separator--
+        while (separator >= 0 && text[separator].isWhitespace()) separator--
+        return top.mcfpp.language.MemberExpressions.receiverBefore(text, separator)
     }
 
     private fun isWordChar(char: Char): Boolean = char.isLetterOrDigit() || char == '_'
@@ -308,8 +282,8 @@ data class MCFPPDocumentAnalysis(
 
 object MCFPPDocumentIndex {
     val keywords: List<String> = listOf(
-        "namespace", "import", "typealias", "data", "object", "enum", "func",
-        "constructor", "if", "else", "while", "for", "do", "try", "store", "execute",
+        "namespace", "import", "typealias", "data", "entity", "object", "enum", "func",
+        "new", "constructor", "if", "else", "while", "for", "do", "try", "store", "context",
         "return", "break", "continue", "inline", "const", "override", "abstract",
         "native", "external", "public", "protected", "private", "impl", "extends", "operator",
         "global", "var", "get", "set", "from", "as"
@@ -318,8 +292,8 @@ object MCFPPDocumentIndex {
     val builtinTypes: List<String> = listOf(
         "int", "long", "byte", "short", "float", "double", "bool", "string", "text", "selector",
         "entity", "nbt", "any", "void", "list", "map", "dict", "Type", "ByteArray", "IntArray",
-        "LongArray", "vec2", "vec3", "vec4", "ScoreRef", "NBTRef"
-    )
+        "LongArray", "vec2", "vec3", "vec4", "ScoreRef", "NBTRef", "UUID", "EntityRef"
+    ) + top.mcfpp.language.EntityBuiltins.TYPES + top.mcfpp.language.ContextBuiltins.TYPES
 
     val builtinValues: List<String> = listOf("true", "false", "null", "this", "super")
     val referenceFactories: List<String> = listOf("scoreRef", "nbtStorageRef", "nbtEntityRef", "nbtBlockRef")
@@ -327,6 +301,7 @@ object MCFPPDocumentIndex {
     fun isReferenceType(name: String): Boolean = name.substringBefore('<').substringAfterLast(':').trim() in setOf("ScoreRef", "NBTRef")
 
     fun referenceFactoryType(expression: String): String? {
+        top.mcfpp.language.EntityBuiltins.factoryType(expression)?.let { return it }
         val head = expression.trim().substringBefore('(').trim()
         val name = head.substringBefore('<').substringAfterLast(':').trim()
         return when {
@@ -340,12 +315,12 @@ object MCFPPDocumentIndex {
     private val namespacePattern = Regex("^\\s*namespace\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)")
     private val importPattern = Regex("^\\s*import\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*):([A-Za-z_][A-Za-z0-9_]*|\\*)(?:\\s+as\\s+([A-Za-z_][A-Za-z0-9_]*))?(?:\\s+from\\s+([A-Za-z_][A-Za-z0-9_]*))?")
     private val typeAliasPattern = Regex("^\\s*typealias\\s+(.+?)\\s+as\\s+([A-Za-z_][A-Za-z0-9_]*)")
-    private val dataPattern = Regex("^\\s*(?:(?:final|abstract)\\s+)?(?:object\\s+)?data\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
+    private val dataPattern = Regex("^\\s*(?:(?:final|abstract)\\s+)?(?:object\\s+)?(?:data|entity)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
     private val enumPattern = Regex("^\\s*enum\\s+([A-Za-z_][A-Za-z0-9_]*)\\b")
-    private val functionPattern = Regex("^\\s*(?:inline\\s+|const\\s+)?func\\s+(?:([A-Za-z_][A-Za-z0-9_<>!?|:&\\[\\]]*)\\s*\\.\\s*)?([A-Za-z_][A-Za-z0-9_]*)\\s*(?:<[^>]*>\\s*)?\\(")
-    private val constructorPattern = Regex("^\\s*constructor\\s*\\(")
+    private val functionPattern = Regex("^\\s*(?:entity\\s+)?(?:inline\\s+|const\\s+)?func\\s+(?:([A-Za-z_][A-Za-z0-9_<>!?|:&\\[\\]]*)\\s*\\.\\s*)?([A-Za-z_][A-Za-z0-9_]*)\\s*(?:<[^>]*>\\s*)?\\(")
+    private val constructorPattern = Regex("^\\s*(?:constructor|new)\\s*\\(")
     private val variablePattern = Regex("^\\s*(?:var|const|external|import\\s+var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^=;]+?))?(?:\\s*=.*)?;?$")
-    private val memberFieldPattern = Regex("^\\s*(?:(?:public|protected|private)\\s+)?(?:var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^={;]+?))?(?:\\s*(?:=|\\{|;|$))")
+    private val memberFieldPattern = Regex("^\\s*(?:(?:public|protected|private)\\s+)?(?:entity\\s+)?(?:var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^={;]+?))?(?:\\s*(?:=|\\{|;|$))")
     private val enumMemberPattern = Regex("^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=|,|$)")
 
     fun analyze(uri: String, text: String, targetVersion: String = VersionPreprocessor.DEFAULT_VERSION): MCFPPDocumentAnalysis {
@@ -427,7 +402,9 @@ object MCFPPDocumentIndex {
                     line.contains("enum") -> SymbolKind.Enum
                     else -> SymbolKind.Class
                 }
+                val entityTemplate = Regex("^\\s*(?:(?:final|abstract)\\s+)?entity\\b").containsMatchIn(line)
                 val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, null, null, name, true, namespaceName)
+                    .copy(isEntityTemplate = entityTemplate)
                 symbols += symbol
                 topLevelSymbols += symbol
                 if (line.contains("{")) {
@@ -441,7 +418,7 @@ object MCFPPDocumentIndex {
                 val returnType = extractReturnType(line)
                 val kind = if (currentType != null || receiver != null) SymbolKind.Method else SymbolKind.Function
                 val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, returnType, currentType, returnType, currentType == null, namespaceName)
-                    .copy(receiverType = receiver)
+                    .copy(receiverType = receiver, isEntityMember = Regex("^\\s*entity\\b").containsMatchIn(line))
                 symbols += symbol
                 if (symbol.topLevel) {
                     topLevelSymbols += symbol
@@ -475,6 +452,7 @@ object MCFPPDocumentIndex {
                     variables[name] = typeName
                     val kind = if (currentType != null && currentFunction == null) SymbolKind.Field else SymbolKind.Variable
                     val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, typeName, effectiveContainer, typeName, currentType == null, namespaceName)
+                        .copy(isEntityMember = Regex("^\\s*(?:(?:public|protected|private)\\s+)?entity\\b").containsMatchIn(line))
                     symbols += symbol
                     if (symbol.topLevel) {
                         topLevelSymbols += symbol
@@ -503,7 +481,7 @@ object MCFPPDocumentIndex {
         val parserDeclarationKeys = parserSemantic.symbols.mapTo(mutableSetOf(), ::semanticDeclarationKey)
         val fallbackSymbols = symbols.filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
         val mergedSymbols = (parserSemantic.symbols + fallbackSymbols)
-            .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character, it.containerName, it.receiverType).joinToString("|") }
+            .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character, it.containerName, it.receiverType, it.parameters).joinToString("|") }
         val mergedVariables = linkedMapOf<String, String?>().apply {
             putAll(variables)
             parserSemantic.variables.forEach { (name, typeName) ->
@@ -516,7 +494,7 @@ object MCFPPDocumentIndex {
                 parserSemantic.typeMembers[owner].orEmpty() +
                     typeMembers[owner].orEmpty().filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
                 )
-                .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character, it.containerName, it.receiverType).joinToString("|") }
+                .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character, it.containerName, it.receiverType, it.parameters).joinToString("|") }
         }
         val mergedTopLevelSymbols = (
             parserSemantic.topLevelSymbols +

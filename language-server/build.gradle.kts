@@ -22,7 +22,7 @@ val lsp4jVersion = "0.22.0"
 val antlrVersion = "4.13.1"
 val antlrPackage = "com.simplelanguage.lsp"
 val generatedAntlrDir = layout.buildDirectory.dir("generated-src/antlr/antlr4")
-val compilerJar = providers.gradleProperty("mcfppCompilerJar").orElse("../../MCFPP/build/libs/MCFPP-1.0.2-SNAPSHOT.jar")
+val compilerJar = providers.gradleProperty("mcfppCompilerJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0.jar")
 val verifyCompilerGrammar by tasks.registering {
     val upstream = file(providers.gradleProperty("mcfppCompilerGrammar").orElse("../../MCFPP/src/main/antlr").get())
     val copies = file("src/main/antlr4")
@@ -158,6 +158,19 @@ sourceSets {
 
 application {
     mainClass.set("com.simplelanguage.lsp.MainKt")
+}
+
+val generateEntityEditorApi by tasks.registering(JavaExec::class) {
+    dependsOn(tasks.compileJava)
+    classpath = files(tasks.compileJava.flatMap { it.destinationDirectory })
+    mainClass.set("top.mcfpp.language.EntityBuiltins")
+    val output = layout.buildDirectory.file("generated-entity-api/editor/entity-builtins.mcfpp")
+    args(output.get().asFile.absolutePath)
+    outputs.file(output)
+}
+tasks.processResources {
+    dependsOn(generateEntityEditorApi)
+    from(layout.buildDirectory.dir("generated-entity-api"))
 }
 
 tasks {

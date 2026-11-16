@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNull;
 public final class McfppBraceMatcher implements PairedBraceMatcher {
     private static final BracePair[] PAIRS = {
             new BracePair(McfppTokenTypes.LEFT_BRACE, McfppTokenTypes.RIGHT_BRACE, true),
+            new BracePair(McfppTokenTypes.COMMAND_BLOCK_OPEN, McfppTokenTypes.RIGHT_BRACE, true),
             new BracePair(McfppTokenTypes.LEFT_BRACKET, McfppTokenTypes.RIGHT_BRACKET, false),
             new BracePair(McfppTokenTypes.LEFT_PARENTHESIS, McfppTokenTypes.RIGHT_PARENTHESIS, false)
     };

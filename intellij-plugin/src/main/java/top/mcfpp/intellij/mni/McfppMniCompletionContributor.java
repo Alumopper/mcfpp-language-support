@@ -134,7 +134,7 @@ public final class McfppMniCompletionContributor extends CompletionContributor {
                 LookupElementBuilder lookup = memberLookup(method, method.getName())
                         .withTailText(method.getParameterList().getText(), true)
                         .withTypeText(annotation
-                                .map(value -> "@MNIFunction " + value.parametersText())
+                                .map(value -> (value.macro() ? "@MNIMacro " : "@MNIFunction ") + value.parametersText())
                                 .orElseGet(() -> method.getReturnType() == null
                                         ? "void"
                                         : method.getReturnType().getPresentableText()), true);
