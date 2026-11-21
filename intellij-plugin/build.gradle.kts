@@ -1,11 +1,11 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
-import org.gradle.api.plugins.antlr.AntlrTask
+import java.io.OutputStream
+import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.jar.JarFile
 
 plugins {
     java
-    antlr
     id("org.jetbrains.intellij.platform")
 }
 
@@ -13,10 +13,26 @@ group = "top.mcfpp"
 version = "0.6.3"
 
 val localIdeaPath = providers.gradleProperty("ideaLocalPath")
+val compilerVersion = "0.1.0"
+val compilerArtifacts = configurations.dependencyScope("compilerArtifacts")
+val serverArtifacts = configurations.dependencyScope("serverArtifacts")
+
+fun bundledArtifact(name: String, purpose: String, dependencies: NamedDomainObjectProvider<out Configuration>) =
+    configurations.resolvable(name) {
+        extendsFrom(dependencies.get())
+        isTransitive = false
+        attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(purpose))
+    }
+
+val compilerCli = bundledArtifact("compilerCli", "mcfpp-cli", compilerArtifacts)
+val compilerSources = bundledArtifact("compilerSources", "mcfpp-sources", compilerArtifacts)
+val stdlibSources = bundledArtifact("stdlibSources", "mcfpp-stdlib-sources", compilerArtifacts)
+val languageServerJar = bundledArtifact("languageServerJar", "mcfpp-intellij-server", serverArtifacts)
 
 dependencies {
-    antlr("org.antlr:antlr4:4.13.1")
-    implementation("org.antlr:antlr4-runtime:4.13.1")
+    implementation("top.mcfpp:mcfpp-syntax:$compilerVersion")
+    add(compilerArtifacts.name, "top.mcfpp:mcfpp:$compilerVersion")
+    add(serverArtifacts.name, "top.mcfpp:mcfpp-language-server:1.0-SNAPSHOT")
     implementation("org.tomlj:tomlj:1.1.1")
     implementation("org.commonmark:commonmark:0.24.0")
     intellijPlatform {
@@ -49,30 +65,6 @@ java {
 
 tasks.withType<JavaCompile>().configureEach { options.release.set(21) }
 
-// Compile MNI annotation type syntax directly from the compiler's single-source ANTLR grammar (targeted at JBR 21).
-val compilerGrammarDir = layout.projectDirectory.dir("../../MCFPP/src/main/antlr")
-val typeGrammarOutput = layout.buildDirectory.dir("generated-src/mni-types")
-tasks.generateGrammarSource { enabled = false }
-val generateMniUnicode by tasks.registering(AntlrTask::class) {
-    source = fileTree(compilerGrammarDir) { include("unicodeClass.g4") }
-    outputDirectory = typeGrammarOutput.get().asFile
-    arguments = listOf("-package", "top.mcfpp.intellij.typesyntax")
-}
-val generateMniLexer by tasks.registering(AntlrTask::class) {
-    dependsOn(generateMniUnicode)
-    source = fileTree(compilerGrammarDir) { include("mcfppLexer.g4") }
-    outputDirectory = typeGrammarOutput.get().asFile
-    arguments = listOf("-package", "top.mcfpp.intellij.typesyntax", "-lib", typeGrammarOutput.get().asFile.path)
-}
-val generateMniParser by tasks.registering(AntlrTask::class) {
-    dependsOn(generateMniLexer)
-    source = fileTree(compilerGrammarDir) { include("mcfppParser.g4") }
-    outputDirectory = typeGrammarOutput.get().asFile
-    arguments = listOf("-package", "top.mcfpp.intellij.typesyntax", "-lib", typeGrammarOutput.get().asFile.path)
-}
-sourceSets.main { java.srcDir(typeGrammarOutput) }
-tasks.compileJava { dependsOn(generateMniParser) }
-
 val generateEntityEditorApi by tasks.registering(JavaExec::class) {
     dependsOn(tasks.compileJava)
     classpath = files(tasks.compileJava.flatMap { it.destinationDirectory })
@@ -86,12 +78,16 @@ tasks.processResources {
     from(layout.buildDirectory.dir("generated-entity-api"))
 }
 
+val unpackPackResourceSources by tasks.registering(Sync::class) {
+    dependsOn(compilerSources)
+    inputs.files(compilerSources)
+    from({ zipTree(compilerSources.get().singleFile) }) { include("top/mcfpp/api/resources/**") }
+    into(layout.buildDirectory.dir("pack-resource-api"))
+}
+
 sourceSets.main {
     java.srcDir("../shared/src/main/java")
-    java.source(objects.sourceDirectorySet("packResourceApi", "Shared vanilla resource identities and references").apply {
-        srcDir("../../MCFPP/src/main/java")
-        include("top/mcfpp/api/resources/**")
-    })
+    java.srcDir(unpackPackResourceSources)
 }
 
 intellijPlatform {
@@ -107,14 +103,6 @@ intellijPlatform {
     }
 }
 
-val languageServerJar = providers.gradleProperty("mcfppLanguageServerJar").map { layout.projectDirectory.file(it) }
-    .orElse(layout.projectDirectory.file("../language-server/build/libs/mcfpp-language-server-intellij.jar"))
-val compilerStandardLibrary = layout.projectDirectory.dir("../../MCFPP/src/main/mcfpp")
-val compilerConfiguration = layout.projectDirectory.file("../../MCFPP/mcfpp.json")
-val compilerCli = providers.gradleProperty("mcfppCompilerJar").map(::file)
-    .orElse(layout.projectDirectory.file("../../MCFPP/build/libs/MCFPP-0.1.0.jar").asFile)
-val compilerSources = providers.gradleProperty("mcfppCompilerSourcesJar").map(::file)
-    .orElse(compilerCli.map { File(it.parentFile, it.nameWithoutExtension + "-sources.jar") })
 val linterRoot = layout.projectDirectory.dir("../../MCFPP-Linter")
 val formatterBundle by tasks.registering(Zip::class) {
     val prettierPackage = linterRoot.file("node_modules/prettier/package.json").asFile
@@ -133,24 +121,29 @@ val formatterBundle by tasks.registering(Zip::class) {
 val toolchainManifest by tasks.registering {
     val target = layout.buildDirectory.file("bundled-tools/toolchain.json")
     val targetFile = target.get().asFile
-    val cliFile = compilerCli.get()
-    val sourcesFile = compilerSources.get()
-    val serverFile = languageServerJar.get().asFile
+    val cliFiles = files(compilerCli)
+    val sourceFiles = files(compilerSources)
+    val serverFiles = files(languageServerJar)
     val formatterFile = formatterBundle.get().archiveFile.get().asFile
     val versionJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }.get().executablePath.asFile
     val linterPackage = linterRoot.file("package.json").asFile
     val prettierPackage = linterRoot.file("node_modules/prettier/package.json").asFile
     val pluginVersion = project.version.toString()
-    dependsOn(formatterBundle)
-    inputs.file(compilerCli)
-    inputs.file(compilerSources)
-    inputs.file(languageServerJar)
+    dependsOn(formatterBundle, cliFiles, sourceFiles, serverFiles)
+    inputs.files(cliFiles, sourceFiles, serverFiles)
     inputs.file(formatterBundle.flatMap { it.archiveFile })
     inputs.files(linterPackage, prettierPackage)
     inputs.property("pluginVersion", pluginVersion)
     outputs.file(target)
     doLast {
-        fun sha(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        fun sha(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input -> DigestInputStream(input, digest).transferTo(OutputStream.nullOutputStream()) }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        val cliFile = cliFiles.singleFile
+        val sourcesFile = sourceFiles.singleFile
+        val serverFile = serverFiles.singleFile
         JarFile(cliFile).use { compiler ->
             check(compiler.getJarEntry("moe/afox/mcfpm/repository/maven/ProjectPackageApi.class") != null) {
                 "The bundled CLI lacks the MCFPM project package API. Rebuild the compiler with its runtime dependencies using shadowJar."
@@ -165,7 +158,7 @@ val toolchainManifest by tasks.registering {
         fun packageVersion(file: File) = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(file.readText())!!.groupValues[1]
         JarFile(serverFile).use { server ->
             check(server.manifest.mainAttributes.getValue("Mcfpp-Compiler-Sha256") == compilerHash) {
-                "The language server and CLI must use the same compiler. Rebuild language-server: jar syncExtensionServer."
+                "The language server and CLI must use the same compiler."
             }
         }
         targetFile.apply {
@@ -193,30 +186,20 @@ tasks.register<Copy>("updateDatapackSandboxService") {
 
 tasks {
     processResources {
-        dependsOn(formatterBundle, toolchainManifest)
+        dependsOn(formatterBundle, toolchainManifest, stdlibSources)
         from(compilerCli) { into("toolchain"); rename { "mcfpp-cli.jar" } }
-        from(compilerSources.map { zipTree(it) }) { into("compiler-sources") }
+        inputs.files(compilerSources)
+        from({ zipTree(compilerSources.get().singleFile) }) { into("compiler-sources") }
         from(formatterBundle.flatMap { it.archiveFile }) { into("toolchain") }
         from(layout.buildDirectory.file("bundled-tools/toolchain.json")) { into("toolchain") }
-        inputs.file(languageServerJar)
+        inputs.files(languageServerJar)
         inputs.file(bundledDatapackSandboxJar)
         from(languageServerJar) {
             into("server")
             rename { "mcfpp-language-server.jar" }
         }
-        from("../../MCFPP/src/main/resources/testing/assertions.mcfpp") {
-            into("stdlib/src/main/mcfpp/test")
-        }
-        if (compilerStandardLibrary.asFile.isDirectory && compilerConfiguration.asFile.isFile) {
-            inputs.dir(compilerStandardLibrary)
-            inputs.file(compilerConfiguration)
-            from(compilerStandardLibrary) {
-                into("stdlib/src/main/mcfpp")
-            }
-            from(compilerConfiguration) {
-                into("stdlib")
-            }
-        }
+        inputs.files(stdlibSources)
+        from({ zipTree(stdlibSources.get().singleFile) }) { include("stdlib/**") }
     }
 
     test {

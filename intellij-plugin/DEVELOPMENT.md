@@ -79,19 +79,17 @@ Build 成功后点击 **Data Pack** 查看数据包，点击 **Resource Pack** �
 
 ## 从源码构建
 
-需要将 `MCFPP`、`MCFPP-Linter` 和本仓库放在同一父目录。先在 MCFPP 中使用 JDK 25 构建 CLI，再打包同版本 LSP 和插件：
+将 `MCFPP`、`MCFPP-Linter` 和本仓库放在同一父目录。Gradle Composite Build 会按需构建编译器和 LSP，并将对应产物打包到插件中。Windows 工作区的全量验收命令如下。
 
 ```powershell
-cd ../MCFPP
-./gradlew.bat shadowJar
-cd ../MCFPP-Linter
-npm ci
-cd ../mcfpp-language-support/language-server
-./gradlew.bat test jar syncExtensionServer
-cd ../intellij-plugin
-./gradlew.bat test buildPlugin verifyPlugin -x buildSearchableOptions
+cd F:\Project_MCFPP\MCFPP
+.\gradlew.bat shadowJar editorRuntimeJar stdlibIndexJar sourcesJar verifyDistribution test --offline --no-daemon "-Dmaven.repo.local=F:\DevCache\.m2\repository"
+cd F:\Project_MCFPP\mcfpp-language-support\language-server
+.\gradlew.bat test shadowJar intellijServerJar syncExtensionServer --offline --no-daemon "-Dmaven.repo.local=F:\DevCache\.m2\repository"
+cd F:\Project_MCFPP\mcfpp-language-support\intellij-plugin
+.\gradlew.bat test buildPlugin --offline --no-daemon "-Dmaven.repo.local=F:\DevCache\.m2\repository"
 ```
 
-非默认 CLI 制品可通过两次 Gradle 构建都传入 `-PmcfppCompilerJar=<absolute-jar>` 指定。语法文件必须与编译器一致，LSP 构建会检查差异。
+若格式化依赖尚未安装，先在 `MCFPP-Linter` 中执行 `npm ci`。ANTLR 由 `mcfpp-syntax` 从编译器文法生成一次，三个工程共同使用该模块。
 
 本机 SDK 可用 `-PideaLocalPath=<IDEA目录>` 指定。使用 JDK 25 启动 Gradle（`JAVA_HOME` 指向 JDK 25）；这是默认构建工具链。插件宿主代码仍输出 Java 21 字节码以匹配 IDEA 基线，独立 CLI、LSP、调试适配器与 DSB 均使用所选 JDK 25。GUI 沙盒使用 `runIde --args="<工程绝对路径>"`。

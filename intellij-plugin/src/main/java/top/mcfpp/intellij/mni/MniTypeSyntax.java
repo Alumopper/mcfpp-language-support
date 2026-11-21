@@ -2,8 +2,8 @@ package top.mcfpp.intellij.mni;
 
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTree;
-import top.mcfpp.intellij.typesyntax.mcfppLexer;
-import top.mcfpp.intellij.typesyntax.mcfppParser;
+import top.mcfpp.antlr.mcfppLexer;
+import top.mcfpp.antlr.mcfppParser;
 
 import java.util.*;
 

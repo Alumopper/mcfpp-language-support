@@ -1,4 +1,6 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.io.OutputStream
+import java.security.DigestInputStream
 import java.security.MessageDigest
 
 plugins {
@@ -11,38 +13,42 @@ group = "top.mcfpp"
 version = "1.0-SNAPSHOT"
 
 repositories {
+    mavenLocal { content { includeGroup("moe.afox.mcfpm") } }
     mavenCentral()
     maven("https://nexus.mcfpp.top/repository/maven-public/")
     maven("https://jitpack.io")
     maven("https://maven.aliyun.com/nexus/content/groups/public/")
     maven("https://libraries.minecraft.net")
+    maven("https://nexus.mcfpp.top/repository/maven-releases/")
 }
 
 val lsp4jVersion = "0.22.0"
-val antlrVersion = "4.13.1"
-val compilerJar = providers.gradleProperty("mcfppCompilerJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0.jar")
-val compilerPlainJar = providers.gradleProperty("mcfppCompilerPlainJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0-plain.jar")
-val compilerEditorJar = providers.gradleProperty("mcfppCompilerEditorJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0-editor.jar")
-val compilerStdlibIndexJar = providers.gradleProperty("mcfppCompilerStdlibIndexJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0-stdlib-index.jar")
+val compilerVersion = "0.1.0"
+val compiler = "top.mcfpp:mcfpp:$compilerVersion"
+val compilerArtifacts = configurations.dependencyScope("compilerArtifacts")
+
+fun compilerArtifact(name: String, purpose: String) = configurations.resolvable(name) {
+    extendsFrom(compilerArtifacts.get())
+    isTransitive = false
+    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(purpose))
+}
+
+val compilerDistribution = compilerArtifact("compilerDistribution", "mcfpp-cli")
+val editorMetadata = compilerArtifact("editorMetadata", "mcfpp-editor-metadata")
+val stdlibIndex = compilerArtifact("stdlibIndex", "mcfpp-stdlib-index")
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation("org.antlr:antlr4-runtime:$antlrVersion")
+    implementation("top.mcfpp:mcfpp-syntax:$compilerVersion")
+    implementation("top.mcfpp:mcfpp-library-model:$compilerVersion")
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:$lsp4jVersion")
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:$lsp4jVersion")
-    implementation(files(compilerEditorJar))
-    // Transitive runtime dependencies required by top.mcfpp:nbt:1.0 (minimized by ShadowJar)
-    implementation("com.mojang:brigadier:1.3.10")
-    implementation("org.apache.commons:commons-lang3:3.18.0")
-    implementation("com.google.guava:guava:33.4.5-jre")
-    implementation("it.unimi.dsi:fastutil:8.5.12")
     implementation("org.tomlj:tomlj:1.1.1")
     implementation("org.slf4j:slf4j-simple:2.0.9")
+    add(compilerArtifacts.name, compiler)
 
     // Only compiler cross-check tests inspect compiler registries directly; production jars stay lightweight.
-    testImplementation(files(compilerPlainJar))
-    testRuntimeOnly(files(compilerStdlibIndexJar))
-    testRuntimeOnly(kotlin("reflect"))
+    testImplementation(compiler)
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.1")
 }
@@ -82,28 +88,31 @@ val generateEntityEditorApi by tasks.registering(JavaExec::class) {
 }
 
 tasks.processResources {
-    dependsOn(generateEntityEditorApi)
+    dependsOn(generateEntityEditorApi, editorMetadata)
+    inputs.files(editorMetadata)
     from(layout.buildDirectory.dir("generated-entity-api"))
+    from({ zipTree(editorMetadata.get().singleFile) }) { exclude("META-INF/MANIFEST.MF") }
 }
 
 fun ShadowJar.configureServerShadowJar(fileName: String, includeStdlibIndex: Boolean) {
-    val distribution = file(compilerJar.get())
-    val stdlibArchive = file(compilerStdlibIndexJar.get())
-    inputs.file(distribution)
-    if (includeStdlibIndex) inputs.file(stdlibArchive)
+    val distribution = project.files(compilerDistribution)
+    dependsOn(distribution)
+    inputs.files(distribution)
     archiveFileName.set(fileName)
     archiveClassifier.set("")
     from(sourceSets.main.get().output)
     configurations.set(setOf(project.configurations.runtimeClasspath.get()))
     if (includeStdlibIndex) {
-        from({ zipTree(stdlibArchive) })
+        dependsOn(stdlibIndex)
+        inputs.files(stdlibIndex)
+        from({ zipTree(stdlibIndex.get().singleFile) }) { exclude("META-INF/MANIFEST.MF") }
     }
     doFirst {
-        check(file(compilerEditorJar.get()).isFile) {
-            "Missing compiler editor artifact: ${compilerEditorJar.get()}. Run `gradlew editorRuntimeJar stdlibIndexJar shadowJar` in MCFPP."
+        val digest = MessageDigest.getInstance("SHA-256")
+        distribution.singleFile.inputStream().use { input ->
+            DigestInputStream(input, digest).transferTo(OutputStream.nullOutputStream())
         }
-        manifest.attributes["Mcfpp-Compiler-Sha256"] =
-            MessageDigest.getInstance("SHA-256").digest(distribution.readBytes()).joinToString("") { "%02x".format(it) }
+        manifest.attributes["Mcfpp-Compiler-Sha256"] = digest.digest().joinToString("") { "%02x".format(it) }
     }
     manifest {
         attributes["Main-Class"] = application.mainClass.get()
@@ -139,6 +148,11 @@ val intellijServerJar by tasks.registering(ShadowJar::class) {
     group = "build"
     description = "Thin language server JAR for IntelliJ IDEA (reuses bin.mclib from bundled mcfpp-cli.jar)."
     configureServerShadowJar("mcfpp-language-server-intellij.jar", includeStdlibIndex = false)
+}
+
+configurations.consumable("intellijServerElements") {
+    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named("mcfpp-intellij-server"))
+    outgoing.artifact(intellijServerJar)
 }
 
 val syncExtensionServer by tasks.registering(Copy::class) {
