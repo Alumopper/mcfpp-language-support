@@ -13,6 +13,31 @@ import java.util.regex.Pattern;
 /** Binds the shared literal context to cached PSI declarations, including attached libraries. */
 final class McfppTemplateLiterals implements TemplateLiterals.Resolver {
     record Field(PsiFile file, McfppSymbol symbol, String type) {}
+    record EnumAccess(PsiFile file, List<McfppSymbol> members, boolean value) {}
+
+    static EnumAccess enumAccess(PsiFile file, String receiver, int offset) {
+        var context = new McfppTemplateLiterals(file);
+        if (receiver == null) {
+            var types = context.literals.expectedValueTypes(offset).stream().distinct().toList();
+            return types.size() == 1 ? context.enumType(types.getFirst(), false) : null;
+        }
+        if (context.model.visibleLocalSymbols(receiver, offset).isEmpty()) {
+            var declaration = context.enumType(receiver, false);
+            if (declaration != null) return declaration;
+        }
+        return context.enumType(context.valueType(receiver, offset), true);
+    }
+
+    private EnumAccess enumType(String type, boolean value) {
+        if (type == null || !type.matches("[\\p{L}_$][\\p{L}\\p{N}_.:$]*")) return null;
+        var target = typeDefinition(type, file, model);
+        if (target == null) return null;
+        var declarations = McfppFileModels.get(target.getContainingFile());
+        var owner = declarations.declarationAt(target.getTextOffset());
+        if (owner == null || owner.kind() != McfppSymbolKind.ENUM) return null;
+        return new EnumAccess(target.getContainingFile(), declarations.symbols().stream().filter(it ->
+                it.kind() == McfppSymbolKind.ENUM_MEMBER && owner.name().equals(it.owner())).toList(), value);
+    }
     private final PsiFile file;
     private final McfppFileModel model;
     private final TemplateLiterals literals;
@@ -280,6 +305,30 @@ final class McfppTemplateLiterals implements TemplateLiterals.Resolver {
         expression = expression.strip();
         if (expression.endsWith("!!")) expression = expression.substring(0, expression.length() - 2).strip();
         expression = expression.replace("?.", ".");
+        var locals = model.visibleLocalSymbols(expression, offset);
+        if (!locals.isEmpty()) {
+            var local = locals.getFirst();
+            if (local.kind() == McfppSymbolKind.VARIABLE && McfppTypes.declaredType(local) == null) {
+                int equals = local.signature().indexOf('=');
+                if (equals >= 0 && local.nameOffset() < offset) {
+                    String initializer = local.signature().substring(equals + 1).strip();
+                    if (initializer.matches("[\\p{L}_$][\\p{L}\\p{N}_.:$]*")) {
+                        String inferred = valueType(initializer, local.nameOffset() - 1);
+                        if (enumType(inferred, true) != null) return inferred;
+                    }
+                }
+            }
+            if ("<lambda>".equals(local.owner()) && McfppTypes.declaredType(local) == null) {
+                String receiver = top.mcfpp.language.MemberExpressions.tryReadReceiver(file.getText(), local.scopeStart());
+                if (receiver != null) {
+                    String ref = valueType(receiver, local.scopeStart() - 1);
+                    if (ref != null && ref.startsWith("NBTRef<") && ref.endsWith(">")) return ref.substring(7, ref.length() - 1);
+                }
+            }
+        }
+        var nbtFactory = java.util.regex.Pattern.compile("^(?:[\\w.]+:)?nbt(?:Storage|Block|Entity)Ref\\s*<(.+)>\\s*\\(").matcher(expression);
+        if (nbtFactory.find() && top.mcfpp.language.MemberExpressions.endsAtCall(expression, nbtFactory.end() - 1))
+            return "NBTRef<" + nbtFactory.group(1).strip() + ">";
         if (expression.equals("true") || expression.equals("false")) return "bool";
         if (expression.equals("null")) return "null";
         if (expression.startsWith("\"") || expression.startsWith("'")) return "string";
@@ -287,7 +336,15 @@ final class McfppTemplateLiterals implements TemplateLiterals.Resolver {
         if (expression.matches("[-+]?\\d+\\.\\d+[fF]?")) return "float";
         int separator = expression.lastIndexOf('.');
         if (separator > 0) {
-            String owner = valueType(expression.substring(0, separator), offset);
+            String receiver = expression.substring(0, separator);
+            String member = expression.substring(separator + 1).strip();
+            String owner = valueType(receiver, offset);
+            var enumeration = enumType(owner, true);
+            if (enumeration != null) {
+                if (model.visibleLocalSymbols(receiver, offset).isEmpty() && enumType(receiver, false) != null)
+                    return enumeration.members.stream().anyMatch(it -> it.name().equals(member)) ? owner : null;
+                return top.mcfpp.language.EnumProperties.TYPES.get(member);
+            }
             List<Field> fields = owner == null ? null : fieldSymbols(owner, new HashSet<>());
             if (fields != null) for (var field : fields) if (field.symbol.name().equals(expression.substring(separator + 1))) return field.type;
         }

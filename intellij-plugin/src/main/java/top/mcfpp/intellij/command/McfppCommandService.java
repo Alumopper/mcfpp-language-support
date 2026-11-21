@@ -70,10 +70,14 @@ public final class McfppCommandService implements Disposable {
         return ensureReady();
     }
 
-    /** Reuses the Java installation already checked against the bundled DSB runtime. */
-    public synchronized String sandboxJavaExecutable() {
-        if (!ensureReady()) throw new IllegalStateException("Datapack Sandbox requires Java 25. Configure the DSB Java executable in Settings | Tools | MCFPP. " + stderrTail);
-        return process.info().command().orElseThrow(() -> new IllegalStateException("Cannot locate the DSB Java executable"));
+    /** Reuses an already-running DSB Java executable, or resolves Java 25+ directly without cold-booting DSB. */
+    public String sandboxJavaExecutable() {
+        Process current = process;
+        if (current != null && current.isAlive()) {
+            var command = current.info().command();
+            if (command.isPresent()) return command.get();
+        }
+        return top.mcfpp.intellij.tooling.McfppToolchain.dsbJavaExecutable(project);
     }
     public synchronized void restart() { stopProcess(); retryAfter = 0; versionRefreshAfter = 0; }
 

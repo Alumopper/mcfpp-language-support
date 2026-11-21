@@ -1,8 +1,19 @@
-Datapack Sandbox 1.1.1 + MCFPP live debugging protocol 1 (2026-11-03)
+Datapack Sandbox 1.1.1 + MCFPP live debugging protocol 1 + render and example runtime fixes (2026-11-18)
 Source: https://github.com/Alumopper/DatapackSandbox
 Base commit: cc9ae9634813b0087be0d9d41384f679ec240ca5
 Source patch: mcfpp-live-debug.patch
 Patch SHA-256: 075907a544ac9a136cbb5c0021a70cae28c981cefa5239d67641bc7c26e7632d
-JAR SHA-256: f8e9589df356f4e6a0a335ddc63e6ab9ac428f20ca949ba23979adf0763ec153
+JAR SHA-256: 6041464481ca6017316e4d08c65a08cb2fc304aa8c5585a7a37ffc64b2352d44
 Build: JDK 25, ./gradlew :cli:fatJar
 Includes restored Minecraft 26.3 profile/native float commands and live debug.* JSONL.
+Render patch: mcfpp-render-nbt.patch
+Render patch SHA-256: 77cd50240f2aec2d2d23979612b3538d0d2a47d9fd62b54654836182b5b53abe
+UI patch: mcfpp-render-ui.patch
+UI patch SHA-256: 048a8033160f982bea69f77e902e0f9e2df05bb9cab81a1ec9eb3a79edc34fd4
+Performance patch: mcfpp-render-performance.patch
+Performance patch SHA-256: c3cec92bc06d64077750fd8517f01bc051735b44045208b43240f7e86fc57e25
+Quoted NBT patch: mcfpp-quoted-nbt.patch
+Quoted NBT patch SHA-256: aa16f88b7768b15b6ea08f2738b769d362b004e49ae1c2a42ba8ce4ec0e2771e
+Examples runtime patch: mcfpp-examples-runtime.patch
+Examples runtime patch SHA-256: de4854a09e90482c2d08dc6cfd792856e0b54d9e92a8646bbd9745d04e92a909
+Includes execute summon/store composition, UUID int arrays, bounded trace diffs and on-demand CLI tracing.

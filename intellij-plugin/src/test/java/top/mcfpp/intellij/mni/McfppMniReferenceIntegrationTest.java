@@ -91,7 +91,7 @@ public final class McfppMniReferenceIntegrationTest extends McfppJavaFixtureTest
     }
 
     public void testMniResolvesJavaSourceWhenTheProjectClassIndexIsUnavailable() throws Exception {
-        Path temporaryDirectory = Files.createTempDirectory("mcfpp-unindexed-mni-");
+        Path temporaryDirectory = Files.createTempDirectory("mcfpp-unindexed-mni-").toRealPath();
         VfsRootAccess.allowRootAccess(getTestRootDisposable(), temporaryDirectory.toString());
         Path source = temporaryDirectory.resolve("src/main/java/external/mni/UnindexedBridge.java");
         Files.createDirectories(source.getParent());

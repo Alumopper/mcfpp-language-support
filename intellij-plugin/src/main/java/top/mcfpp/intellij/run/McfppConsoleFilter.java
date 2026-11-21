@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 public final class McfppConsoleFilter implements Filter {
     private final Project project;
     private String compilerFile;
-    private static final Pattern LOCATION=Pattern.compile("(.+?):(\\d+):(?:(\\d+):)?");
+    private static final Pattern LOCATION=Pattern.compile("^\\s*(.+?):(\\d+):(?:(\\d+):)?");
     private static final Pattern COMPILER=Pattern.compile("(?:Error while compiling |Syntax Error in |Warning while compiling )(.+?)>>");
     private static final Pattern SOURCE=Pattern.compile("^\\s*(\\d+) \\|");
     public McfppConsoleFilter(Project project) { this.project=project; }

@@ -44,7 +44,18 @@ public final class McfppRunConfigurations {
     public static void debugTest(Project project,Path directory,String id) {
         startTest(project,directory,id,true);
     }
+    public static void renderTest(Project project,Path directory,String id) {
+        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+        var settings=testConfiguration(project,directory,id);
+        ((McfppRunConfiguration)settings.getConfiguration()).render=true;
+        settings.setName("Test (Render) "+id);
+        ExecutionUtil.runConfiguration(settings,DefaultRunExecutor.getRunExecutorInstance());
+    }
     private static void startTest(Project project,Path directory,String id,boolean debug) {
+        var settings=testConfiguration(project,directory,id);
+        ExecutionUtil.runConfiguration(settings,debug ? com.intellij.execution.executors.DefaultDebugExecutor.getDebugExecutorInstance() : DefaultRunExecutor.getRunExecutorInstance());
+    }
+    private static RunnerAndConfigurationSettings testConfiguration(Project project,Path directory,String id) {
         var manager=RunManager.getInstance(project);
         var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
         var settings=manager.createConfiguration("MCFPP "+id,type);
@@ -52,7 +63,18 @@ public final class McfppRunConfigurations {
         configuration.task=McfppTask.TEST; configuration.projectPath=directory.toString();
         configuration.arguments="--tests "+com.intellij.util.execution.ParametersListUtil.join(java.util.List.of(id));
         manager.setTemporaryConfiguration(settings);
-        ExecutionUtil.runConfiguration(settings,debug ? com.intellij.execution.executors.DefaultDebugExecutor.getDebugExecutorInstance() : DefaultRunExecutor.getRunExecutorInstance());
+        return settings;
+    }
+    public static void renderFunction(Project project,Path directory,String id) {
+        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+        var manager=RunManager.getInstance(project);
+        var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
+        var settings=manager.createConfiguration("Run (Render) "+id,type);
+        var configuration=(McfppRunConfiguration)settings.getConfiguration();
+        configuration.task=McfppTask.BUILD; configuration.projectPath=directory.toString();
+        configuration.render=true; configuration.renderFunction=id;
+        manager.setTemporaryConfiguration(settings);
+        ExecutionUtil.runConfiguration(settings,DefaultRunExecutor.getRunExecutorInstance());
     }
     public static void debugFunction(Project project,Path directory,String id) {
         var manager=RunManager.getInstance(project);

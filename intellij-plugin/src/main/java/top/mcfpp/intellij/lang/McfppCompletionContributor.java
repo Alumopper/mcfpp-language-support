@@ -83,10 +83,31 @@ public final class McfppCompletionContributor extends CompletionContributor impl
             completeMinecraftCommand(position, result, commandContext, originalSource);
             return;
         }
+        // When the MCFPP LSP server is actively running, defer general MCFPP completions to LSP
+        // to prevent duplicate candidates (IntelliJ-exclusive DSB commands above still run).
+        if (McfppLspState.isRunning(file.getProject())) {
+            return;
+        }
         McfppFileModel model = McfppFileModels.get(originalFile instanceof McfppFile ? originalFile : file);
         if (McfppTemplateLiterals.complete(originalFile, offset, result)) return;
         McfppCompletionContext completionContext = McfppCompletionContext.create(parameters, result, model);
         Set<String> seen = new HashSet<>();
+        if (completionContext.kind() == McfppCompletionContext.Kind.MEMBER ||
+                completionContext.kind() == McfppCompletionContext.Kind.VALUE ||
+                completionContext.kind() == McfppCompletionContext.Kind.GLOBAL) {
+            int start = Math.max(0, offset - result.getPrefixMatcher().getPrefix().length());
+            int dot = start - 1;
+            while (dot >= 0 && Character.isWhitespace(originalSource.charAt(dot))) dot--;
+            String receiver = top.mcfpp.language.MemberExpressions.receiverBefore(originalSource, dot);
+            var enumeration = McfppTemplateLiterals.enumAccess(originalFile, receiver, start);
+            if (enumeration != null) {
+                if (enumeration.value()) top.mcfpp.language.EnumProperties.TYPES.forEach((name, type) ->
+                        result.addElement(LookupElementBuilder.create(name).withTypeText(type, true)
+                                .withTailText(" (read-only)", true).withIcon(icon(McfppSymbolKind.FIELD))));
+                else for (var member : enumeration.members()) addSymbol(result, seen, member, member.name(), false, 600);
+                if (receiver != null) return;
+            }
+        }
         if (completionContext.kind() == McfppCompletionContext.Kind.GLOBAL) {
             int prefixStart = Math.min(offset, originalSource.length());
             while (prefixStart > 0 && Character.isUnicodeIdentifierPart(originalSource.charAt(prefixStart - 1))) prefixStart--;

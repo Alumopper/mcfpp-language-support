@@ -64,7 +64,11 @@ final class MniTypeContext {
                 case "genericType" -> Field.GENERIC;
                 default -> null;
             };
-            case PACKAGE + "MNIMacro" -> attribute.equals("returnType") ? Field.RETURN : null;
+            case PACKAGE + "MNIMacro" -> switch (attribute) {
+                case "normalParams" -> Field.TYPE;
+                case "returnType" -> Field.RETURN;
+                default -> null;
+            };
             case PACKAGE + "MacroParam" -> attribute.equals("type") ? Field.TYPE : null;
             case PACKAGE + "MNIOperator" -> switch (attribute) {
                 case "paramType" -> Field.OPERATOR_PARAMETER;

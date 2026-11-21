@@ -6,6 +6,17 @@ import java.util.Arrays;
 import java.util.stream.Collectors;
 
 public final class McfppNbtEditorTest extends BasePlatformTestCase {
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
+                com.intellij.openapi.extensions.PluginId.getId("top.mcfpp.language"));
+        if (plugin != null) {
+            com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(
+                    getTestRootDisposable(), plugin.getPluginPath().toString());
+        }
+    }
+
     public void testMergeResolvesOnNbtVariablesAndCompoundLiterals() {
         for (String receiver : java.util.List.of("d", "{ item: { id: \"minecraft:stone\", count: 1 } }",
                 "{\n item: { id: \"minecraft:stone\", count: 1 }, label: \"} (\"\n}",

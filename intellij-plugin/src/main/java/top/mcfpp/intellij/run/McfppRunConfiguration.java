@@ -18,6 +18,8 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
     public McfppTask task=McfppTask.BUILD;
     public String projectPath="",arguments="";
     public String debugFunction="";
+    public boolean render=false;
+    public String renderFunction="";
     public boolean debugStopOnEntry=false;
     public boolean offline=false,locked=false;
     public boolean deployAfterBuild=false;
@@ -34,6 +36,14 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         Path root=directory();
         if(!Files.isRegularFile(root.resolve("mcfpp.toml"))) throw new RuntimeConfigurationError("Select an MCFPP project containing mcfpp.toml.");
         if(task==McfppTask.UPDATE && locked) throw new RuntimeConfigurationError("Update cannot be used with --locked.");
+        if(render) {
+            if(task!=McfppTask.BUILD && task!=McfppTask.TEST) throw new RuntimeConfigurationError("Rendering requires Build or Test.");
+            try { McfppRenderSession.target(this); }
+            catch(IllegalArgumentException error) { throw new RuntimeConfigurationError(error.getMessage()); }
+            var args=ParametersListUtil.parse(arguments);
+            if(args.contains("--list") || args.contains("--render-info=false") || args.contains("--no-render-info")) throw new RuntimeConfigurationError("Rendering requires an executable build with render metadata.");
+            if(deployAfterBuild) throw new RuntimeConfigurationError("Use a separate Build configuration to deploy the datapack.");
+        }
         if(deploymentEnabled()) try { deployment(); }
         catch(Exception e) { throw new RuntimeConfigurationError("Cannot deploy datapack: "+e.getMessage()); }
     }
@@ -50,6 +60,8 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         List<String> args=new ArrayList<>(List.of(task.command,"--project",directory().toString()));
         if(offline) args.add("--offline"); if(locked) args.add("--locked");
         args.addAll(ParametersListUtil.parse(arguments));
+        if(render && !args.contains("--render-info")) args.add("--render-info");
+        if(render && task==McfppTask.BUILD) addBuildReuse(args);
         if(task==McfppTask.TEST) {
             Path sources=directory().resolve("src/test/mcfpp");
             boolean sourceTests=false;
@@ -57,6 +69,7 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
                 sourceTests=files.anyMatch(path -> Files.isRegularFile(path) && path.toString().endsWith(".mcfpp"));
             }
             if(sourceTests && !args.contains("--list")) {
+                addBuildReuse(args);
                 if(args.stream().noneMatch(a -> a.equals("--dsb-jar") || a.startsWith("--dsb-jar="))) {
                     args.add("--dsb-jar"); args.add(top.mcfpp.intellij.command.McfppDatapackSandboxResource.extract().toString());
                 }
@@ -68,22 +81,42 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         }
         return McfppToolchain.cli(getProject(),directory(),args).withEnvironment(environment);
     }
+    private static void addBuildReuse(List<String> args) {
+        if(args.stream().noneMatch(arg -> arg.equals("--reuse-build") || arg.equals("--no-reuse-build") || arg.startsWith("--reuse-build="))) args.add("--reuse-build");
+    }
     @Override public RunProfileState getState(@NotNull Executor executor,@NotNull ExecutionEnvironment environment) {
         return new CommandLineState(environment) {
             @Override public @NotNull ExecutionResult execute(@NotNull Executor executor,@NotNull com.intellij.execution.runners.ProgramRunner<?> runner) throws ExecutionException {
-                if(task!=McfppTask.TEST) return super.execute(executor,runner);
+                if(task!=McfppTask.TEST && !render) return super.execute(executor,runner);
                 var handler=startProcess();
-                var properties=new com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties(McfppRunConfiguration.this,"MCFPP",executor) {
-                    @Override public com.intellij.execution.testframework.sm.runner.SMTestLocator getTestLocator() { return new McfppTestLocator(); }
-                };
-                var console=com.intellij.execution.testframework.sm.SMTestRunnerConnectionUtil.createAndAttachConsole("MCFPP",handler,properties);
+                com.intellij.execution.ui.ConsoleView console;
+                if(task==McfppTask.TEST) {
+                    var properties=new com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties(McfppRunConfiguration.this,"MCFPP",executor) {
+                        @Override public com.intellij.execution.testframework.sm.runner.SMTestLocator getTestLocator() { return new McfppTestLocator(); }
+                    };
+                    console=com.intellij.execution.testframework.sm.SMTestRunnerConnectionUtil.createAndAttachConsole("MCFPP",handler,properties);
+                } else {
+                    console=com.intellij.execution.filters.TextConsoleBuilderFactory.getInstance().createBuilder(getProject()).getConsole();
+                    console.attachToProcess(handler);
+                }
                 console.addMessageFilter(new McfppConsoleFilter(getProject()));
+                if(handler instanceof McfppRenderProcessHandler preparation) {
+                    var runtime=com.intellij.execution.filters.TextConsoleBuilderFactory.getInstance().createBuilder(getProject()).getConsole();
+                    runtime.addMessageFilter(new McfppConsoleFilter(getProject()));
+                    runtime.attachToProcess(preparation.runtime());
+                    var view=new McfppRenderConsole(console,runtime,task==McfppTask.TEST);
+                    if(task!=McfppTask.TEST) preparation.onViewportStarted(() -> com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
+                        if(!getProject().isDisposed()) view.showRuntime();
+                    }));
+                    return new DefaultExecutionResult(view,handler,view.actions());
+                }
                 return new DefaultExecutionResult(console,handler);
             }
             @Override protected @NotNull ProcessHandler startProcess() throws ExecutionException {
                 var service=getProject().getService(McfppProjectService.class);
                 service.acquire();
                 try {
+                    if(render) return new McfppRenderProcessHandler(McfppRunConfiguration.this.clone(),service);
                     long startedAt=System.currentTimeMillis();
                     var deployment=deploymentEnabled() ? deployment() : null;
                     var handler=new McfppProcessHandler(commandLine(),(exitCode,process) -> {
@@ -138,6 +171,7 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         try { task=McfppTask.valueOf(element.getAttributeValue("task","BUILD")); } catch(IllegalArgumentException ignored) {}
         projectPath=element.getAttributeValue("projectPath",""); arguments=element.getAttributeValue("arguments","");
         debugFunction=element.getAttributeValue("debugFunction",""); debugStopOnEntry=Boolean.parseBoolean(element.getAttributeValue("debugStopOnEntry","false"));
+        render=Boolean.parseBoolean(element.getAttributeValue("render","false")); renderFunction=element.getAttributeValue("renderFunction","");
         offline=Boolean.parseBoolean(element.getAttributeValue("offline","false")); locked=Boolean.parseBoolean(element.getAttributeValue("locked","false"));
         deployAfterBuild=Boolean.parseBoolean(element.getAttributeValue("deployAfterBuild","false"));
         deploymentDirectory=element.getAttributeValue("deploymentDirectory","");
@@ -147,6 +181,7 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
         super.writeExternal(element);
         element.setAttribute("task",task.name()).setAttribute("projectPath",projectPath).setAttribute("arguments",arguments);
         element.setAttribute("debugFunction",debugFunction).setAttribute("debugStopOnEntry",Boolean.toString(debugStopOnEntry));
+        element.setAttribute("render",Boolean.toString(render)).setAttribute("renderFunction",renderFunction);
         element.setAttribute("offline",Boolean.toString(offline)).setAttribute("locked",Boolean.toString(locked));
         element.setAttribute("deployAfterBuild",Boolean.toString(deployAfterBuild)).setAttribute("deploymentDirectory",deploymentDirectory);
         for(var entry:environment.entrySet()) element.addContent(new Element("env").setAttribute("name",entry.getKey()).setAttribute("value",entry.getValue()));

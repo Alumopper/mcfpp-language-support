@@ -49,6 +49,7 @@ public final class PackResourceIndex {
         var index = new PackResourceIndex(config, configFile);
         index.scan(config.dataPath(), false); index.scan(config.assetsPath(), true);
         var functions = new LinkedHashMap<String, List<Target>>();
+        var emitted = new LinkedHashMap<PackResources.Key, List<Target>>();
         VirtualFile source = index.directory(config.sourcePath());
         if (source != null) VfsUtilCore.visitChildrenRecursively(source, new VirtualFileVisitor<Void>() {
             @Override public boolean visitFile(VirtualFile virtual) {
@@ -62,7 +63,11 @@ public final class PackResourceIndex {
                     String id = model.namespace() + ":" + symbol.name();
                     functions.computeIfAbsent(id, ignored -> new ArrayList<>()).add(new Target(new PackResources.Key("function", id), file, symbol.nameOffset(), true));
                     String afterName = file.getText().substring(symbol.nameOffset() + symbol.name().length(), symbol.headerEnd());
-                    if (afterName.replaceAll("\\s", "").startsWith("()")) index.generatedFunctions.add(new PackResources.Key("function", model.namespace() + ":" + snake(symbol.name())));
+                    if (afterName.replaceAll("\\s", "").startsWith("()")) {
+                        var generated = new PackResources.Key("function", model.namespace() + ":" + snake(symbol.name()));
+                        index.generatedFunctions.add(generated);
+                        emitted.computeIfAbsent(generated, ignored -> new ArrayList<>()).add(new Target(generated, file, symbol.nameOffset(), true));
+                    }
                 }
                 return true;
             }
@@ -76,6 +81,7 @@ public final class PackResourceIndex {
         index.generatedFunctions.add(new PackResources.Key("function", config.namespace() + ":load"));
         index.generatedFunctions.add(new PackResources.Key("function", config.namespace() + ":tick"));
         index.generatedFunctions.add(new PackResources.Key("function", config.namespace() + ":init"));
+        emitted.forEach(index.definitions::putIfAbsent);
         return index;
     }
     private static String snake(String name) {
@@ -134,6 +140,7 @@ public final class PackResourceIndex {
     }
     public boolean missing(PackResources.Reference ref) {
         String ns = ref.key().id().split(":", 2)[0];
-        return !ref.optional() && !ns.equals("minecraft") && namespaces.contains(ns) && !definitions.containsKey(ref.key());
+        return !ref.optional() && !ns.equals("minecraft") && namespaces.contains(ns)
+                && !definitions.containsKey(ref.key()) && !generatedFunctions.contains(ref.key());
     }
 }

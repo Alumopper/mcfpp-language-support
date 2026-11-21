@@ -1,0 +1,220 @@
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/CommandTokenizer.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/CommandTokenizer.kt
+index 4863bb9..acb8539 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/CommandTokenizer.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/CommandTokenizer.kt
+@@ -4,6 +4,7 @@ data class CommandToken(
+     val text: String,
+     val start: Int,
+     val end: Int,
++    val sourceText: String = text,
+ )
+ 
+ object CommandTokenizer {
+@@ -21,6 +22,7 @@ object CommandTokenizer {
+             val builder = StringBuilder()
+             val quote = if (command[index] == '"' || command[index] == '\'') command[index++] else null
+             var escaped = false
++            var quotedEnd = -1
+ 
+             if (quote == null) {
+                 var nestedQuote: Char? = null
+@@ -82,7 +84,10 @@ object CommandTokenizer {
+                             escaped = false
+                         }
+                         char == '\\' -> escaped = true
+-                        char == quote -> break
++                        char == quote -> {
++                            quotedEnd = index
++                            break
++                        }
+                         else -> builder.append(char)
+                     }
+                 }
+@@ -94,9 +99,16 @@ object CommandTokenizer {
+                         command = command,
+                     )
+                 }
++                // An NBT path may start with a quoted field and continue with .field or [index].
++                // Keep that complete syntax together; standalone quoted arguments stay decoded.
++                if (quotedEnd >= 0 && index < command.length && !command[index].isWhitespace()) {
++                    val suffix = tokenize(command.substring(index), location).first()
++                    index += suffix.end
++                    builder.clear().append(command.substring(start, index))
++                }
+             }
+ 
+-            tokens += CommandToken(builder.toString(), start, index)
++            tokens += CommandToken(builder.toString(), start, index, command.substring(start, index))
+         }
+         return tokens
+     }
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt
+index 987db32..79e1fc0 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt
+@@ -532,6 +532,21 @@ private data class NbtPath(
+             }
+             while (index < path.length) {
+                 when (val char = path[index]) {
++                    '"', '\'' -> {
++                        val quote = char
++                        index++
++                        var closed = false
++                        while (index < path.length) {
++                            val next = path[index++]
++                            if (next == quote) {
++                                closed = true
++                                break
++                            }
++                            if (next == '\\' && index < path.length) name.append(path[index++])
++                            else name.append(next)
++                        }
++                        if (!closed) throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Unclosed quoted path field in '$path'")
++                    }
+                     '.' -> {
+                         flushName()
+                         index++
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+index 01bfac2..10de88c 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+@@ -1104,7 +1104,7 @@ class DatapackSandbox(
+         val arguments =
+             if (tokens.getOrNull(2)?.text == "with") {
+                 val (target, pathIndex) = parseDataTarget(tokens, 3, context, location)
+-                val path = tokens.getOrNull(pathIndex)?.text
++                val path = tokens.getOrNull(pathIndex)?.sourceText
+                 val argumentValue =
+                     dataTargetNbtValues(target, location).singleOrNull()
+                         ?: throw SandboxException(
+@@ -3010,7 +3010,7 @@ class DatapackSandbox(
+                 requireSizeFrom(tokens, index, 6, "execute store ${tokens[index].text} storage <id> <path> <type> <scale>", location)
+                 val storage = world.storage(ResourceLocation.parse(tokens[index + 2].text))
+                 val scaled = scaledStoreValue(valueToStore, tokens[index + 4].text, tokens[index + 5].text, location)
+-                JsonPaths.set(storage, tokens[index + 3].text, scaled)
++                JsonPaths.set(storage, tokens[index + 3].sourceText, scaled)
+             }
+             "entity" -> {
+                 requireSizeFrom(tokens, index, 6, "execute store ${tokens[index].text} entity <target> <path> <type> <scale>", location)
+@@ -3030,7 +3030,7 @@ class DatapackSandbox(
+                     )
+                 }
+                 val updated = target.fullNbt(profile, location)
+-                JsonPaths.set(updated, tokens[index + 3].text, scaled)
++                JsonPaths.set(updated, tokens[index + 3].sourceText, scaled)
+                 target.writeFullNbt(profile, updated, location)
+             }
+             "block" -> {
+@@ -3039,7 +3039,7 @@ class DatapackSandbox(
+                 val block = world.requireBlock(pos)
+                 val scaled = scaledStoreValue(valueToStore, tokens[index + 6].text, tokens[index + 7].text, location)
+                 val updated = block.fullNbt(pos, profile, location)
+-                JsonPaths.set(updated, tokens[index + 5].text, scaled)
++                JsonPaths.set(updated, tokens[index + 5].sourceText, scaled)
+                 block.writeFullNbt(pos, profile, updated, location)
+             }
+             "bossbar" -> {
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
+index e77419a..1b98f77 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
+@@ -504,7 +504,7 @@ internal fun DatapackSandbox.evaluateDataCondition(
+     requireSizeFrom(tokens, index, 4, "execute if data <storage|entity> ...", location)
+     val (target, pathIndex) = parseDataTarget(tokens, index + 1, context, location)
+     requireIndex(tokens, pathIndex, "execute if data <target> <path>", location)
+-    return (dataTargetNbtValues(target, location).any { JsonPaths.exists(it, tokens[pathIndex].text) } to pathIndex + 1)
++    return (dataTargetNbtValues(target, location).any { JsonPaths.exists(it, tokens[pathIndex].sourceText) } to pathIndex + 1)
+ }
+ 
+ internal fun DatapackSandbox.executeData(
+@@ -538,7 +538,7 @@ internal fun DatapackSandbox.executeDataModify(
+     requireSize(tokens, 6, "data modify <storage|entity|block> <target> <path> <set|merge|append|prepend|insert> ...", location)
+     val (target, pathIndex) = parseDataTarget(tokens, 2, context, location)
+     requireIndex(tokens, pathIndex + 1, "data modify <target> <path> <operation>", location)
+-    val path = tokens[pathIndex].text
++    val path = tokens[pathIndex].sourceText
+     val mutation = tokens[pathIndex + 1].text
+     val insertIndex =
+         if (mutation == "insert") {
+@@ -601,7 +601,7 @@ internal fun DatapackSandbox.readDataModifyValues(
+         }
+         "from" -> {
+             val (sourceTarget, sourcePathIndex) = parseDataTarget(tokens, sourceKindIndex + 1, context, location)
+-            val sourcePath = tokens.getOrNull(sourcePathIndex)?.text
++            val sourcePath = tokens.getOrNull(sourcePathIndex)?.sourceText
+             dataTargetNbtValues(sourceTarget, location)
+                 .firstOrNull()
+                 ?.let { JsonPaths.getAll(it, sourcePath).map { value -> value.deepCopy() } }
+@@ -622,7 +622,7 @@ internal fun DatapackSandbox.readDataModifyString(
+     val source =
+         dataTargetNbtValues(sourceTarget, location)
+             .firstOrNull()
+-            ?.let { JsonPaths.get(it, tokens[sourcePathIndex].text) }
++            ?.let { JsonPaths.get(it, tokens[sourcePathIndex].sourceText) }
+             ?: throw SandboxException(DiagnosticCode.COMMAND_ERROR, "Data modify string source did not resolve", location)
+     if (!source.isJsonPrimitive) {
+         throw SandboxException(DiagnosticCode.COMMAND_ERROR, "Data modify string source must be a primitive value", location)
+@@ -684,7 +684,7 @@ internal fun DatapackSandbox.executeDataGet(
+ ): JsonElement? {
+     requireSize(tokens, 3, "data get <storage|entity|block> <target> [path] [scale]", location)
+     val (target, pathIndex) = parseDataTarget(tokens, 2, context, location)
+-    val path = tokens.getOrNull(pathIndex)?.text
++    val path = tokens.getOrNull(pathIndex)?.sourceText
+     val value = dataTargetNbtValues(target, location).firstOrNull()?.let { JsonPaths.get(it, path) }
+     val scale = if (path != null) tokens.getOrNull(pathIndex + 1)?.text?.let { parseDouble(it, "data get scale", location) } else null
+     return if (scale == null) value else value?.let { scaleDataGetResult(it, scale, location) }
+@@ -717,7 +717,7 @@ private fun DatapackSandbox.executeDataRemoveResult(
+     requireSize(tokens, 4, "data remove <storage|entity|block> <target> <path>", location)
+     val (target, pathIndex) = parseDataTarget(tokens, 2, context, location)
+     requireIndex(tokens, pathIndex, "data remove <target> <path>", location)
+-    val path = tokens[pathIndex].text
++    val path = tokens[pathIndex].sourceText
+     val before = dataTargetNbtValues(target, location).map { it.deepCopy() }
+     mutateDataTarget(target, location) { JsonPaths.remove(it, path) }
+     val after = dataTargetNbtValues(target, location).map { it.deepCopy() }
+diff --git a/core/src/test/kotlin/moe/afox/dpsandbox/core/QuotedNbtPathTest.kt b/core/src/test/kotlin/moe/afox/dpsandbox/core/QuotedNbtPathTest.kt
+new file mode 100644
+index 0000000..c91d65c
+--- /dev/null
++++ b/core/src/test/kotlin/moe/afox/dpsandbox/core/QuotedNbtPathTest.kt
+@@ -0,0 +1,40 @@
++package moe.afox.dpsandbox.core
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++
++class QuotedNbtPathTest {
++    @Test
++    fun `quoted first fields stay attached to their path suffix`() {
++        val tokens = CommandTokenizer.tokenize("data modify storage mcfpp:frames \"qwq:bounce_float\".t set value 9")
++        assertEquals(8, tokens.size)
++        assertEquals("\"qwq:bounce_float\".t", tokens[4].sourceText)
++        assertEquals("set", tokens[5].text)
++        assertEquals("Player Name", CommandTokenizer.tokenize("execute as \"Player Name\" run say hi")[2].text)
++    }
++
++    @Test
++    fun `compiled static frames preserve quoted keys for reads writes conditions and stores`() {
++        val sandbox = createFunctionSandboxFromString(
++            version = "1.21.8",
++            functionText = """
++                scoreboard objectives add result dummy
++                scoreboard players set input result 37
++                data modify storage mcfpp:frames "qwq.ns:bounce_float" set value {}
++                data modify storage mcfpp:frames "qwq.ns:bounce_float".t set value 9
++                data modify storage mcfpp:frames "qwq.ns:bounce_float"."${'$'}ir" set value {}
++                execute store result storage mcfpp:frames "qwq.ns:bounce_float"."${'$'}ir".float_2 int 1 run scoreboard players get input result
++                data modify storage mcfpp:frames "qwq.ns:bounce_float".copy set from storage mcfpp:frames "qwq.ns:bounce_float".t
++                execute if data storage mcfpp:frames "qwq.ns:bounce_float".copy store result score copied result run data get storage mcfpp:frames "qwq.ns:bounce_float".copy
++                data remove storage mcfpp:frames "qwq.ns:bounce_float".t
++            """.trimIndent(),
++        )
++        sandbox.runFunction(SingleFunctionDatapack.DEFAULT_ID)
++        val frame = sandbox.world.storage(ResourceLocation.parse("mcfpp:frames")).getAsJsonObject("qwq.ns:bounce_float")
++        assertEquals(37, frame.getAsJsonObject("\$ir").get("float_2").asInt)
++        assertEquals(9, frame.get("copy").asInt)
++        assertEquals(9, sandbox.world.getScore("copied", "result"))
++        assertFalse(frame.has("t"))
++    }
++}

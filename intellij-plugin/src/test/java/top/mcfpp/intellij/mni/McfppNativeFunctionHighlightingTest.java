@@ -36,6 +36,6 @@ public final class McfppNativeFunctionHighlightingTest extends McfppJavaFixtureT
         assertNotNull(nativeFunction.getForegroundColor());
         assertFalse(macro.getForegroundColor().equals(nativeFunction.getForegroundColor()));
         assertEquals(java.awt.Font.BOLD, macro.getFontType());
-        assertEquals(java.awt.Font.ITALIC, nativeFunction.getFontType());
+        assertEquals(java.awt.Font.PLAIN, nativeFunction.getFontType());
     }
 }

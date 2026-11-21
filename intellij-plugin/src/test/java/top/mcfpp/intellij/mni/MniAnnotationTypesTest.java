@@ -1,6 +1,7 @@
 package top.mcfpp.intellij.mni;
 
 import com.intellij.lang.annotation.HighlightSeverity;
+import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
 import com.intellij.psi.*;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
@@ -14,7 +15,7 @@ public final class MniAnnotationTypesTest extends McfppJavaFixtureTestCase {
         super.setUp();
         myFixture.addClass("package top.mcfpp.annotations; public @interface MNIFunction { String[] normalParams() default {}; String[] readOnlyParams() default {}; String returnType() default \"void\"; String caller() default \"void\"; String[] genericType() default {}; String identifier() default \"\"; String[] tag() default {}; }");
         myFixture.addClass("package top.mcfpp.annotations; public @interface MNIOperator { String paramType() default \"\"; String returnType(); String operator(); }");
-        myFixture.addClass("package top.mcfpp.annotations; public @interface MNIMacro { MacroParam[] params() default {}; String returnType() default \"void\"; String identifier() default \"\"; }");
+        myFixture.addClass("package top.mcfpp.annotations; public @interface MNIMacro { String[] normalParams() default {}; MacroParam[] params() default {}; String returnType() default \"void\"; String identifier() default \"\"; }");
         myFixture.addClass("package top.mcfpp.annotations; public @interface MacroParam { String name(); String type(); }");
         myFixture.addFileToProject("mcfpp.toml", "schema=1\nnamespace=\"demo\"\nsourcePath=\"src/main/mcfpp\"\n");
         myFixture.addFileToProject("src/main/mcfpp/types.mcfpp", "namespace demo;\n/** A test type. */\ndata Widget {}\ndata Box<T> {}\n");
@@ -189,6 +190,34 @@ public final class MniAnnotationTypesTest extends McfppJavaFixtureTestCase {
         assertEquals("Wid\\u0067et", reference.getRangeInElement().substring(literal.getText()));
         new RenameProcessor(getProject(), reference.resolve(), "Gadget", false, false).run();
         assertTrue(file.getText(), file.getText().replaceAll("=\\s*\"", "=\"").contains("returnType=\"demo:Gadget\""));
+    }
+
+    public void testKotlinMacroParameterTypesAreHighlightedCheckedAndCompleted() {
+        var file = myFixture.configureByText("Provider.kt", """
+                import top.mcfpp.annotations.MNIMacro
+                object Provider {
+                    @JvmStatic
+                    @MNIMacro(normalParams = ["(int, int)->int", "list<demo:Widget>", "Missing"], returnType = "int")
+                    fun expand() {}
+                }
+                """);
+        var highlights = myFixture.doHighlighting();
+        int widget = file.getText().indexOf("Widget");
+        assertTrue(highlights.toString(), highlights.stream().anyMatch(info ->
+                info.startOffset == widget && info.endOffset == widget + "Widget".length() &&
+                        info.forcedTextAttributesKey == DefaultLanguageHighlighterColors.CLASS_NAME));
+        assertTrue(highlights.toString(), highlights.stream().anyMatch(info ->
+                "Unknown MCFPP type 'Missing'".equals(info.getDescription())));
+
+        myFixture.configureByText("Provider.kt", """
+                import top.mcfpp.annotations.MNIMacro
+                object Provider {
+                    @MNIMacro(normalParams = ["(int, list<<caret>>)->int"])
+                    fun expand() {}
+                }
+                """);
+        myFixture.completeBasic();
+        assertContainsElements(myFixture.getLookupElementStrings(), "int", "demo:Widget");
     }
 
     public void testUnqualifiedTypeUsesTheNativeDeclarationNamespace() {

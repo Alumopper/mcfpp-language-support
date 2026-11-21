@@ -1,0 +1,39 @@
+import mcfpp.lang:*
+
+/// 返回 1 到 limit 的和；范围的右端点包含在内。
+/// @param limit 最后一个整数。
+/// @return 累计结果。
+func sumTo(limit: int): int {
+    var total = 0
+    for (value : 1..limit) {
+        total += value
+    }
+    return total
+}
+
+func factorial(value: int): int {
+    if (value <= 1) { return 1 }
+    return value * factorial(value - 1)
+}
+
+func award(base: int, bonus: int = 5): int {
+    return base + bonus
+}
+
+#if MC >= 26.3
+func half(value: float): float {
+    value /= 2.0
+    return value
+}
+#else
+func half(value: float): float { return value * 0.5 }
+#endif
+
+func main() {
+    var total = sumTo(5)
+    var product = factorial(5)
+    var decimal = half(5.0)
+    print(Text.of("sum=") + Text.of(total))
+    print(Text.of("factorial=") + Text.of(product))
+    print(decimal)
+}

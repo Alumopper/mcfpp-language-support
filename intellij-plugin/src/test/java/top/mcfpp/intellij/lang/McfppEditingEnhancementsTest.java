@@ -198,6 +198,28 @@ public final class McfppEditingEnhancementsTest extends BasePlatformTestCase {
         assertEquals(List.of("Undefined symbol `missing`"), errors);
     }
 
+    public void testInterpolationOffersOrdinaryCompletionAndDiagnostics() {
+        myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
+        myFixture.configureByText(McfppFileType.INSTANCE, """
+                func main(points: int) {
+                    var label = "Total: ${poi<caret>}${missing}";
+                }
+                """);
+        ready();
+        LookupElement[] items = complete();
+        if (items != null) {
+            var points = Arrays.stream(items).filter(item -> item.getLookupString().equals("points")).findFirst().orElseThrow();
+            myFixture.getLookup().setCurrentItem(points);
+            myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR);
+        }
+        myFixture.checkResult("""
+                func main(points: int) {
+                    var label = "Total: ${points<caret>}${missing}";
+                }
+                """);
+        assertEquals(List.of("Undefined symbol `missing`"), undefinedMessages());
+    }
+
     public void testIncompleteSyntaxAndUnavailableImportsStayLspOwned() {
         myFixture.enableInspections(McfppUnresolvedReferenceInspection.class);
         myFixture.configureByText(McfppFileType.INSTANCE, "func main() { missing(");

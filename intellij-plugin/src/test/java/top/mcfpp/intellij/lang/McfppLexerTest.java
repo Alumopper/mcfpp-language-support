@@ -11,6 +11,29 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class McfppLexerTest {
     @Test
+    void lexesNestedInterpolationAndRestartsInsideExpressions() {
+        String source = "\"prefix ${echo({key: \"${value}\"})} suffix\"";
+        List<Token> tokens = tokens(source);
+        assertEquals(McfppTokenTypes.STRING, typeOf(tokens, "\"prefix "));
+        assertEquals(McfppTokenTypes.INTERPOLATION_DELIMITER, typeOf(tokens, "${"));
+        assertEquals(McfppTokenTypes.IDENTIFIER, typeOf(tokens, "echo"));
+        assertEquals(McfppTokenTypes.LEFT_BRACE, typeOf(tokens, "{"));
+        assertEquals(McfppTokenTypes.IDENTIFIER, typeOf(tokens, "value"));
+        assertEquals(McfppTokenTypes.STRING, typeOf(tokens, " suffix\""));
+        assertEquals(List.of(new Token(McfppTokenTypes.STRING, "\"\\${literal}\"")), tokens("\"\\${literal}\""));
+
+        Lexer lexer = new McfppLexer();
+        lexer.start(source);
+        int offset = source.indexOf("value");
+        while (lexer.getTokenStart() < offset) lexer.advance();
+        lexer.start(source, offset, source.length(), lexer.getState());
+        assertEquals(McfppTokenTypes.IDENTIFIER, lexer.getTokenType());
+        lexer.advance();
+        assertEquals(McfppTokenTypes.INTERPOLATION_DELIMITER, lexer.getTokenType());
+        assertEquals(McfppTokenTypes.IDENTIFIER, typeOf(tokens("\"\"\"${incomplete"), "incomplete"));
+    }
+
+    @Test
     void recognizesVersionDirectivesAndKeepsArithmeticDistinctFromCommands() {
         List<Token> tokens = tokens("""
                 #if MC >= 26.3

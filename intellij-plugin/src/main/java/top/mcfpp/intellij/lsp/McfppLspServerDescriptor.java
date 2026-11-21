@@ -2,23 +2,34 @@ package top.mcfpp.intellij.lsp;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor;
 import org.jetbrains.annotations.NotNull;
+import top.mcfpp.intellij.tooling.McfppToolchain;
 
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
-    @Override public @NotNull Class<? extends org.eclipse.lsp4j.services.LanguageServer> getLsp4jServerClass() {
+    @Override
+    public @NotNull Class<? extends org.eclipse.lsp4j.services.LanguageServer> getLsp4jServerClass() {
         return McfppExtendedServer.class;
     }
 
-    @Override public Object createInitializationOptions() {
-        var javaPlugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(com.intellij.openapi.extensions.PluginId.getId("com.intellij.java"));
-        if (javaPlugin == null || !javaPlugin.isEnabled() || com.intellij.openapi.project.DumbService.isDumb(getProject())) return null;
-        return com.intellij.openapi.application.ReadAction.compute(() -> top.mcfpp.intellij.mni.McfppMacroIndex.snapshot(getProject()));
+    @Override
+    public Object createInitializationOptions() {
+        var javaPlugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
+                com.intellij.openapi.extensions.PluginId.getId("com.intellij.java"));
+        if (javaPlugin == null || !javaPlugin.isEnabled() ||
+                com.intellij.openapi.project.DumbService.isDumb(getProject())) {
+            return null;
+        }
+        return com.intellij.openapi.application.ReadAction.compute(
+                () -> top.mcfpp.intellij.mni.McfppMacroIndex.snapshot(getProject()));
     }
+
     McfppLspServerDescriptor(@NotNull Project project) {
         super(project, "MCFPP");
     }
@@ -26,12 +37,20 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
     @Override
     public @NotNull com.intellij.platform.lsp.api.customization.LspCustomization getLspCustomization() {
         return new com.intellij.platform.lsp.api.customization.LspCustomization() {
-            @Override public @NotNull com.intellij.platform.lsp.api.customization.LspCompletionCustomizer
-            getCompletionCustomizer() { return new McfppLspCompletionSupport(); }
-            @Override public @NotNull com.intellij.platform.lsp.api.customization.LspDiagnosticsCustomizer
-            getDiagnosticsCustomizer() { return new McfppLspDiagnosticsSupport(); }
-            @Override public @NotNull com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
-            getFormattingCustomizer() { return com.intellij.platform.lsp.api.customization.LspFormattingDisabled.INSTANCE; }
+            @Override
+            public @NotNull com.intellij.platform.lsp.api.customization.LspCompletionCustomizer getCompletionCustomizer() {
+                return new McfppLspCompletionSupport();
+            }
+
+            @Override
+            public @NotNull com.intellij.platform.lsp.api.customization.LspDiagnosticsCustomizer getDiagnosticsCustomizer() {
+                return new McfppLspDiagnosticsSupport();
+            }
+
+            @Override
+            public @NotNull com.intellij.platform.lsp.api.customization.LspFormattingCustomizer getFormattingCustomizer() {
+                return com.intellij.platform.lsp.api.customization.LspFormattingDisabled.INSTANCE;
+            }
         };
     }
 
@@ -43,17 +62,25 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
     @Override
     public @NotNull GeneralCommandLine createCommandLine() {
         Path javaExecutable;
+        Path compilerJar = null;
         try {
-            javaExecutable = top.mcfpp.intellij.tooling.McfppToolchain.javaHome(getProject())
-                    .resolve("bin").resolve(SystemInfo.isWindows ? "java.exe" : "java");
-        } catch (java.io.IOException exception) {
+            javaExecutable = McfppToolchain.javaExecutable(getProject());
+            try {
+                compilerJar = McfppToolchain.compiler(getProject());
+            } catch (IOException ignored) {
+                // Allow standalone server JAR to fall back to classpath bin.mclib if CLI JAR is unavailable.
+            }
+        } catch (IOException exception) {
             throw new IllegalStateException(exception.getMessage(), exception);
         }
-        return new GeneralCommandLine(
-                javaExecutable.toString(),
-                "-Xmx768m",
-                "-jar",
-                McfppLanguageServerResource.extract().toString()
-        );
+        List<String> args = new ArrayList<>();
+        args.add(javaExecutable.toString());
+        args.add("-Xmx768m");
+        if (compilerJar != null) {
+            args.add("-Dmcfpp.stdlib.jar=" + compilerJar);
+        }
+        args.add("-jar");
+        args.add(McfppLanguageServerResource.extract().toString());
+        return new GeneralCommandLine(args);
     }
 }

@@ -13,7 +13,18 @@ public final class McfppProjectStartup implements ProjectActivity {
     @Override public Object execute(@NotNull Project project,@NotNull Continuation<? super Unit> continuation) {
         var service=project.getService(McfppProjectService.class);
         var root=service.root();
-        if(root==null) return Unit.INSTANCE;
+        if(root==null) {
+            var connection = project.getMessageBus().connect();
+            connection.subscribe(com.intellij.openapi.fileEditor.FileEditorManagerListener.FILE_EDITOR_MANAGER, new com.intellij.openapi.fileEditor.FileEditorManagerListener() {
+                @Override public void fileOpened(@NotNull com.intellij.openapi.fileEditor.FileEditorManager manager, @NotNull com.intellij.openapi.vfs.VirtualFile file) {
+                    service.openedInCollection(file);
+                }
+            });
+            for (var file : com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getOpenFiles()) service.openedInCollection(file);
+            return Unit.INSTANCE;
+        }
+        if(!ApplicationManager.getApplication().isUnitTestMode()) ApplicationManager.getApplication().executeOnPooledThread(() ->
+            top.mcfpp.intellij.tooling.McfppNotifications.checkRenderAssets(project,root));
         ApplicationManager.getApplication().invokeLater(() -> {
             if(project.isDisposed()) return;
             try {

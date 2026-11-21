@@ -13,7 +13,7 @@ import top.mcfpp.intellij.run.*;
 public final class McfppDebugRunner extends GenericProgramRunner<RunnerSettings> {
     @Override public @NotNull String getRunnerId() { return "MCFPP.Debugger"; }
     @Override public boolean canRun(@NotNull String executor, @NotNull RunProfile profile) {
-        return DefaultDebugExecutor.EXECUTOR_ID.equals(executor) && profile instanceof McfppRunConfiguration configuration &&
+        return DefaultDebugExecutor.EXECUTOR_ID.equals(executor) && profile instanceof McfppRunConfiguration configuration && !configuration.render &&
             (configuration.task == McfppTask.TEST || configuration.task == McfppTask.BUILD && !configuration.debugFunction.isBlank());
     }
     @Override protected RunContentDescriptor doExecute(@NotNull RunProfileState state, @NotNull ExecutionEnvironment environment) throws ExecutionException {

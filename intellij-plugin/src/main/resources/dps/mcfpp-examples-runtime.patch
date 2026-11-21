@@ -1,0 +1,599 @@
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxEntityCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxEntityCommands.kt
+index 3326e9a7..6b4bee08 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxEntityCommands.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxEntityCommands.kt
+@@ -43,7 +43,7 @@ internal fun DatapackSandbox.executeSummon(
+     tokens: List<CommandToken>,
+     location: SourceLocation?,
+     context: ExecutionContext,
+-) {
++): SandboxEntity {
+     requireSize(tokens, 2, "summon <entity> [x y z] [nbt]", location)
+     val type = ResourceLocation.parse(tokens[1].text)
+     var position = context.position
+@@ -89,6 +89,7 @@ internal fun DatapackSandbox.executeSummon(
+                 entityVariantPayloads(entity.type, fullNbt, location)?.let { payload.add("variantResources", it) }
+             },
+     )
++    return entity
+ }
+ 
+ private fun summonUuid(
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
+index 480d3ac4..6c4d4b2e 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteCommands.kt
+@@ -54,6 +54,15 @@ internal fun DatapackSandbox.executeExecute(
+                     }
+                 index += 2
+             }
++            "summon" -> {
++                requireIndex(tokens, index + 1, "execute summon <entity>", location)
++                val summon = "summon ${tokens[index + 1].text}"
++                val summonTokens = CommandTokenizer.tokenize(summon, location)
++                contexts = contexts.map { ctx ->
++                    ctx.copy(entity = executeSummon(summon, summonTokens, location, ctx))
++                }
++                index += 2
++            }
+             "at" -> {
+                 requireIndex(tokens, index + 1, "execute at <selector>", location)
+                 contexts =
+@@ -175,63 +184,28 @@ internal fun DatapackSandbox.executeExecute(
+                 index += 3
+             }
+             "store" -> {
+-                val runIndex = tokens.indexOfFirst { it.text == "run" }
+-                if (runIndex < 0) throw SandboxException(DiagnosticCode.INPUT_FORMAT, "execute store requires run", location)
+-                val storeIndices = mutableListOf<Int>()
+-                var storeIndex = index
+-                while (storeIndex < runIndex) {
+-                    if (tokens.getOrNull(storeIndex)?.text != "store") {
+-                        throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Expected another execute store clause or run", location)
+-                    }
+-                    requireIndex(tokens, storeIndex + 2, "execute store <result|success> <target> ...", location)
+-                    storeIndices += storeIndex + 1
+-                    storeIndex +=
+-                        when (tokens[storeIndex + 2].text) {
+-                            "score", "bossbar" -> 5
+-                            "storage", "entity" -> 7
+-                            "block" -> 9
+-                            else ->
+-                                throw SandboxException(
+-                                    DiagnosticCode.INPUT_FORMAT,
+-                                    "Unsupported execute store target '${tokens[storeIndex + 2].text}'",
+-                                    location,
+-                                )
+-                        }
+-                }
+-                if (storeIndex != runIndex) {
+-                    throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Malformed execute store clause", location)
+-                }
+-                val rest = CommandTokenizer.tailAfter(command, tokens[runIndex])
+-                var anySuccess = false
+-                contexts.forEach { storeContext ->
+-                    val commandsBefore = commandsExecuted
+-                    val outputsBefore = world.outputs.size
+-                    lastFunctionReturnValue = null
+-                    val commandSuccess = executeOne(rest, location, storeContext)
+-                    val commandsRun = (commandsExecuted - commandsBefore).coerceAtLeast(0)
+-                    storeIndices.forEach { valueIndex ->
+-                        val stored =
+-                            executeStoreValue(
+-                                tokens[valueIndex].text,
+-                                commandsRun,
+-                                outputsBefore,
+-                                lastFunctionReturnValue,
+-                                commandSuccess,
+-                            )
+-                        storeExecuteValue(tokens, valueIndex, stored, location, storeContext)
+-                    }
+-                    anySuccess = anySuccess || commandSuccess
+-                }
+-                return anySuccess
++                return executeStoreChain(command, tokens, index, contexts, location)
+             }
+             "if", "unless" -> {
+                 val positive = tokens[index].text == "if"
+-                val evaluated = contexts.map { it to evaluateCondition(tokens, index + 1, location, it) }
++                val conditionIndex = index + 1
++                val evaluated = contexts.map { it to evaluateCondition(tokens, conditionIndex, location, it) }
+                 contexts =
+                     evaluated
+                         .filter { (_, result) -> result.first == positive }
+                         .map { (ctx, _) -> ctx }
+-                index = evaluated.firstOrNull()?.second?.second ?: nextConditionIndex(tokens, index + 1, location)
++                index = evaluated.firstOrNull()?.second?.second ?: nextConditionIndex(tokens, conditionIndex, location)
++                if (index == tokens.size) {
++                    val result =
++                        if (positive && tokens[conditionIndex].text == "entity") {
++                            contexts.sumOf { ctx ->
++                                EntitySelectors.select(world, tokens[conditionIndex + 1].text, ctx, location).size
++                            }
++                        } else {
++                            contexts.size
++                        }
++                    world.recordOutput("execute", "data", text = result.toString())
++                }
+             }
+             else -> unsupportedFeature("Unsupported execute subcommand '${tokens[index].text}'", profile.id, location, command)
+         }
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteStoreCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteStoreCommands.kt
+new file mode 100644
+index 00000000..c7768621
+--- /dev/null
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxExecuteStoreCommands.kt
+@@ -0,0 +1,66 @@
++package moe.afox.dpsandbox.core.command
++
++import moe.afox.dpsandbox.core.CommandToken
++import moe.afox.dpsandbox.core.CommandTokenizer
++import moe.afox.dpsandbox.core.DatapackSandbox
++import moe.afox.dpsandbox.core.DiagnosticCode
++import moe.afox.dpsandbox.core.ExecutionContext
++import moe.afox.dpsandbox.core.SandboxException
++import moe.afox.dpsandbox.core.SourceLocation
++
++/** Store callbacks also accept conditions or modifiers before the final command. */
++internal fun DatapackSandbox.executeStoreChain(
++    command: String,
++    tokens: List<CommandToken>,
++    index: Int,
++    contexts: List<ExecutionContext>,
++    location: SourceLocation?,
++): Boolean {
++    val storeIndices = mutableListOf<Int>()
++    var next = index
++    while (tokens.getOrNull(next)?.text == "store") {
++        requireIndex(tokens, next + 2, "execute store <result|success> <target> ...", location)
++        storeIndices += next + 1
++        next +=
++            when (tokens[next + 2].text) {
++                "score", "bossbar" -> 5
++                "storage", "entity" -> 7
++                "block" -> 9
++                else ->
++                    throw SandboxException(
++                        DiagnosticCode.INPUT_FORMAT,
++                        "Unsupported execute store target '${tokens[next + 2].text}'",
++                        location,
++                    )
++            }
++    }
++    requireIndex(tokens, next, "execute store must be followed by a condition or command", location)
++    val rest =
++        if (tokens[next].text == "run") {
++            requireIndex(tokens, next + 1, "execute run <command>", location)
++            CommandTokenizer.tailAfter(command, tokens[next])
++        } else {
++            "execute " + CommandTokenizer.tailFrom(command, tokens[next])
++        }
++    var anySuccess = false
++    contexts.forEach { storeContext ->
++        val commandsBefore = commandsExecuted
++        val outputsBefore = world.outputs.size
++        lastFunctionReturnValue = null
++        val commandSuccess = executeOne(rest, location, storeContext)
++        val commandsRun = (commandsExecuted - commandsBefore).coerceAtLeast(0)
++        storeIndices.forEach { valueIndex ->
++            val stored =
++                executeStoreValue(
++                    tokens[valueIndex].text,
++                    commandsRun,
++                    outputsBefore,
++                    lastFunctionReturnValue,
++                    commandSuccess,
++                )
++            storeExecuteValue(tokens, valueIndex, stored, location, storeContext)
++        }
++        anySuccess = anySuccess || commandSuccess
++    }
++    return anySuccess
++}
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/NbtSchemas.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/NbtSchemas.kt
+index 36af1cdb..8a66773e 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/NbtSchemas.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/NbtSchemas.kt
+@@ -275,7 +275,13 @@ object NbtSchemas {
+             )
+         }
+         json.addProperty("id", entity.type.toString())
+-        json.addProperty("UUID", entity.uuid)
++        val uuid = java.util.UUID.fromString(entity.uuid)
++        json.add("UUID", JsonArray().also { parts ->
++            parts.add((uuid.mostSignificantBits ushr 32).toInt())
++            parts.add(uuid.mostSignificantBits.toInt())
++            parts.add((uuid.leastSignificantBits ushr 32).toInt())
++            parts.add(uuid.leastSignificantBits.toInt())
++        })
+         json.add("Pos", entity.position.toNbtArray())
+         if (entity.tags.isNotEmpty()) {
+             val tagsJson = JsonArray()
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/World.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/World.kt
+index 43e41b14..3a44137a 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/World.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/World.kt
+@@ -662,6 +662,7 @@ data class CommandTraceEvent(
+     val success: Boolean,
+     val commandsExecuted: Int,
+     val outputs: Int,
++    /** Direct outputs of this source command; nested commands have their own trace events. */
+     val outputEvents: List<OutputEvent> = emptyList(),
+     val snapshotDiffs: List<SnapshotDiffEntry> = emptyList(),
+     val errorCode: DiagnosticCode? = null,
+@@ -1134,7 +1135,12 @@ class SandboxWorld {
+     /**
+      * Returns a deterministic JSON snapshot of the complete modeled world state.
+      */
+-    fun snapshot(profile: VersionProfile = VersionProfiles.default): JsonObject {
++    fun snapshot(profile: VersionProfile = VersionProfiles.default): JsonObject = snapshot(profile, includeHistory = true)
++
++    /** State used for per-command diffs; each trace carries its own output events. */
++    internal fun snapshotState(profile: VersionProfile): JsonObject = snapshot(profile, includeHistory = false)
++
++    private fun snapshot(profile: VersionProfile, includeHistory: Boolean): JsonObject {
+         val root = JsonObject()
+         root.addProperty("gameTime", gameTime)
+         root.addProperty("dayTime", dayTime)
+@@ -1252,17 +1258,19 @@ class SandboxWorld {
+         root.add("biomes", biomeJson)
+         root.add("worldBorder", worldBorder.toJson())
+ 
+-        val outputJson = JsonArray()
+-        outputs.forEach { outputJson.add(it.toJson()) }
+-        root.add("outputs", outputJson)
++        if (includeHistory) {
++            val outputJson = JsonArray()
++            outputs.forEach { outputJson.add(it.toJson()) }
++            root.add("outputs", outputJson)
+ 
+-        val traceJson = JsonArray()
+-        traces.forEach { traceJson.add(it.toJson()) }
+-        root.add("traces", traceJson)
++            val traceJson = JsonArray()
++            traces.forEach { traceJson.add(it.toJson()) }
++            root.add("traces", traceJson)
+ 
+-        val playerEventTraceJson = JsonArray()
+-        playerEventTraces.forEach { playerEventTraceJson.add(it.toJson()) }
+-        root.add("playerEventTraces", playerEventTraceJson)
++            val playerEventTraceJson = JsonArray()
++            playerEventTraces.forEach { playerEventTraceJson.add(it.toJson()) }
++            root.add("playerEventTraces", playerEventTraceJson)
++        }
+         return root
+     }
+ }
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+index ecc9ca7b..c7b86ef8 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+@@ -424,7 +424,7 @@ class DatapackSandbox(
+         val traceMode = world.commandTraceMode
+         val beforeSnapshot =
+             if (traceMode == CommandTraceMode.FULL) {
+-                buildSnapshotJson().also(::checkSnapshotSize)
++                buildCommandSnapshot(outputsBefore).also(::checkSnapshotSize)
+             } else {
+                 null
+             }
+@@ -445,7 +445,7 @@ class DatapackSandbox(
+             val commandSuccess = executeOne(normalized, location, runtimeContext)
+             checkOutputLimit(location)
+             if (traceMode == CommandTraceMode.FULL) {
+-                afterSnapshot = buildSnapshotJson()
++                afterSnapshot = buildCommandSnapshot(outputsBefore, source)
+                 checkSnapshotSize(afterSnapshot)
+             }
+             success = commandSuccess
+@@ -473,11 +473,11 @@ class DatapackSandbox(
+                         success = success,
+                         commandsExecuted = commandsExecuted - before,
+                         outputs = world.outputs.size - outputsBefore,
+-                        outputEvents = world.outputs.drop(outputsBefore),
++                        outputEvents = world.outputs.drop(outputsBefore).filter { it.source === source },
+                         snapshotDiffs =
+                             beforeSnapshot
+                                 ?.let { snapshot ->
+-                                    SnapshotDiff.stateDiff(snapshot, afterSnapshot ?: buildSnapshotJson())
++                                    SnapshotDiff.stateDiff(snapshot, afterSnapshot ?: buildCommandSnapshot(outputsBefore, source))
+                                 }.orEmpty(),
+                         errorCode = errorCode,
+                         errorMessage = errorMessage,
+@@ -576,6 +576,15 @@ class DatapackSandbox(
+         return snapshot
+     }
+ 
++    private fun buildCommandSnapshot(outputsBefore: Int, source: CommandSource? = null): JsonObject {
++        val snapshot = world.snapshotState(profile)
++        val outputs = JsonArray()
++        world.outputs.drop(outputsBefore).filter { it.source === source }.forEach { outputs.add(it.toJson()) }
++        snapshot.add("outputs", outputs)
++        snapshot.addProperty("version", profile.id)
++        return snapshot
++    }
++
+     /**
+      * Returns [snapshotJson] rendered as stable JSON text.
+      */
+diff --git a/core/src/test/kotlin/moe/afox/dpsandbox/core/ExecuteCompositionTest.kt b/core/src/test/kotlin/moe/afox/dpsandbox/core/ExecuteCompositionTest.kt
+new file mode 100644
+index 00000000..53f122e1
+--- /dev/null
++++ b/core/src/test/kotlin/moe/afox/dpsandbox/core/ExecuteCompositionTest.kt
+@@ -0,0 +1,64 @@
++package moe.afox.dpsandbox.core
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertTrue
++
++class ExecuteCompositionTest {
++    private fun sandbox() =
++        createFunctionSandboxFromString(version = "26.3", functionText = "", functionId = "demo:empty")
++
++    @Test
++    fun `entity UUID data can be copied and indexed as four signed integers`() {
++        val sandbox = sandbox()
++        sandbox.executeCommand("summon minecraft:block_display 0 64 0 {UUID:[I;1,-2,3,-4]}")
++        sandbox.executeCommand("data modify storage demo:identity uuid set from entity @e[type=minecraft:block_display,limit=1] UUID")
++        val parts = sandbox.world.storage(ResourceLocation.parse("demo:identity")).getAsJsonArray("uuid")
++        assertEquals(listOf(1, -2, 3, -4), parts.map { it.asInt })
++        sandbox.executeCommand("scoreboard objectives add checks dummy")
++        sandbox.executeCommand("execute store result score #part checks run data get storage demo:identity uuid[1]")
++        assertEquals(-2, sandbox.world.getScore("#part", "checks"))
++    }
++
++    @Test
++    fun `execute summon binds the new entity in the current position and dimension`() {
++        val sandbox = sandbox()
++        sandbox.executeCommand(
++            "execute positioned 3 64 -2 in minecraft:the_nether summon minecraft:block_display run tag @s add created",
++        )
++        val entity = sandbox.world.entities.single { "created" in it.tags }
++        assertEquals(ResourceLocation.parse("minecraft:block_display"), entity.type)
++        assertEquals(Position(3.0, 64.0, -2.0), entity.position)
++        assertEquals(ResourceLocation.parse("minecraft:the_nether"), entity.dimension)
++        assertTrue("created" in entity.tags)
++    }
++
++    @Test
++    fun `store accepts terminal float predicates and resets a failed condition to zero`() {
++        val sandbox = sandbox()
++        sandbox.executeCommand("scoreboard objectives add checks dummy")
++        sandbox.executeCommand("data modify storage demo:values decimal set value 2.5f")
++        val provider = "{type:\"minecraft:storage\",storage:\"demo:values\",path:\"decimal\"}"
++        val equal = "{type:\"minecraft:float_value_check\",value:$provider,test:2.5}"
++        val lower = "{type:\"minecraft:float_value_check\",value:$provider,test:{max:2.4}}"
++        sandbox.executeCommand("execute store success score #equal checks if predicate $equal")
++        sandbox.executeCommand("execute store success score #lower checks if predicate $lower")
++        sandbox.executeCommand("execute store success score #unless checks unless predicate $lower")
++        assertEquals(1, sandbox.world.getScore("#equal", "checks"))
++        assertEquals(0, sandbox.world.getScore("#lower", "checks"))
++        assertEquals(1, sandbox.world.getScore("#unless", "checks"))
++    }
++
++    @Test
++    fun `multiple stores retain terminal entity counts`() {
++        val sandbox = sandbox()
++        sandbox.executeCommand("scoreboard objectives add checks dummy")
++        sandbox.executeCommand("summon minecraft:marker 0 0 0 {Tags:[\"counted\"]}")
++        sandbox.executeCommand("summon minecraft:marker 1 0 0 {Tags:[\"counted\"]}")
++        sandbox.executeCommand(
++            "execute store result score #count checks store success score #present checks if entity @e[tag=counted]",
++        )
++        assertEquals(2, sandbox.world.getScore("#count", "checks"))
++        assertEquals(1, sandbox.world.getScore("#present", "checks"))
++    }
++}
+diff --git a/core/src/test/kotlin/moe/afox/dpsandbox/core/CommandTraceOutputTest.kt b/core/src/test/kotlin/moe/afox/dpsandbox/core/CommandTraceOutputTest.kt
+new file mode 100644
+index 00000000..4aa107d2
+--- /dev/null
++++ b/core/src/test/kotlin/moe/afox/dpsandbox/core/CommandTraceOutputTest.kt
+@@ -0,0 +1,32 @@
++package moe.afox.dpsandbox.core
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++
++class CommandTraceOutputTest {
++    @Test
++    fun `function callers do not repeat their nested commands output payloads`() {
++        val sandbox = createFunctionSandboxFromString(version = "26.3", functionText = "say nested", functionId = "demo:main")
++        sandbox.executeCommand("function demo:main")
++        val child = sandbox.world.traces.single { it.command == "say nested" }
++        val caller = sandbox.world.traces.single { it.command == "function demo:main" }
++        assertEquals(1, child.outputEvents.size)
++        assertEquals(1, caller.outputs)
++        assertEquals(0, caller.outputEvents.size)
++        assertEquals("<Server> nested", sandbox.world.outputs.single().text)
++    }
++
++    @Test
++    fun `command diffs retain new output without copying previous output history`() {
++        val sandbox = createFunctionSandboxFromString(version = "26.3", functionText = "", functionId = "demo:empty")
++        sandbox.executeCommand("say first")
++        sandbox.executeCommand("say second")
++        val trace = sandbox.world.traces.last()
++        val outputDiff = trace.snapshotDiffs.single { it.path.startsWith("/outputs/") }
++        assertEquals("/outputs/0", outputDiff.path)
++        assertEquals(null, outputDiff.before)
++        assertEquals("<Server> second", outputDiff.after!!.asJsonObject.get("text").asString)
++        assertEquals(listOf("<Server> first", "<Server> second"), sandbox.world.outputs.map { it.text })
++        assertEquals(2, sandbox.snapshotJson().getAsJsonArray("outputs").size())
++    }
++}
+diff --git a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/RunCommand.kt b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/RunCommand.kt
+index 91fbc26b..66b11657 100644
+--- a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/RunCommand.kt
++++ b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/RunCommand.kt
+@@ -14,6 +14,7 @@ import com.google.gson.JsonArray
+ import com.google.gson.JsonObject
+ import com.google.gson.JsonParser
+ import com.google.gson.JsonPrimitive
++import moe.afox.dpsandbox.core.CommandTraceMode
+ import moe.afox.dpsandbox.core.DatapackSandbox
+ import moe.afox.dpsandbox.core.DiagnosticCode
+ import moe.afox.dpsandbox.core.FunctionSource
+@@ -174,6 +175,12 @@ class RunCommand : CliktCommand(name = "run") {
+                         "run requires at least one --pack path, --mcfunction file, --mcfunction-text string, --stdin, --command, --command-file, --event, --event-file, --world, --assert, or output/snapshot/trace/screenshot option",
+                     )
+                 }
++            // Match realtime viewport behavior for screenshots unless trace data was requested.
++            if (screenshotFile != null && !trace && traceFile == null && traceFilters.isEmpty() &&
++                assertions.isEmpty() && assertionFiles.isEmpty()
++            ) {
++                sandbox.world.commandTraceMode = CommandTraceMode.OFF
++            }
+             applyWorldFixtures(sandbox)
+             seed?.let { sandbox.world.seed = it }
+             val beforeSnapshot = sandbox.snapshotJson()
+diff --git a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/Main.kt b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/Main.kt
+index 0ed88065..84fed749 100644
+--- a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/Main.kt
++++ b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/Main.kt
+@@ -144,6 +144,11 @@ class CheckCommand : CliktCommand(name = "check") {
+                             unsupportedFeatureMode = if (strict) UnsupportedFeatureMode.ERROR else unsupportedFeatureMode(unsupported),
+                             limits = limits,
+                             coverage = coverageOptions,
++                            commandTraceMode = if (trace || traceFile != null || traceFilters.isNotEmpty()) {
++                                moe.afox.dpsandbox.core.CommandTraceMode.FULL
++                            } else {
++                                moe.afox.dpsandbox.core.CommandTraceMode.OFF
++                            },
+                         ),
+                     )
+                 val resultTraces = TraceFilters.apply(result.traces, traceFilters)
+diff --git a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/CheckCommandTest.kt b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/CheckCommandTest.kt
+index 2253c472..f9ed1562 100644
+--- a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/CheckCommandTest.kt
++++ b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/CheckCommandTest.kt
+@@ -241,6 +241,35 @@ class CheckCommandTest {
+         assertTrue("\"root\": \"say\"" in traceJson, traceJson)
+         assertTrue("scoreboard objectives add filtered_check dummy" !in traceJson, traceJson)
+         assertTrue("scoreboard players set #check filtered_check 4" !in traceJson, traceJson)
++        val automatic = captureStdout { main(arrayOf("check", manifest.toString())) }
++        assertTrue("PASS $manifest" in automatic, automatic)
++    }
++
++    @Test
++    fun `basic manifest tracing keeps command metadata without world diffs`() {
++        val dir = Files.createTempDirectory("dps-check-basic-trace")
++        val pack = writeVerbosePack(dir, "basic-pack", "basic", includeMissingLoad = false)
++        val manifest = dir.resolve("basic.dps.json")
++        Files.writeString(
++            manifest,
++            """
++            {"version":"26.3","packs":["${manifestPath(pack)}"],
++             "steps":[{"command":"say before"},{"reset":true},{"command":"say after"}]}
++            """.trimIndent(),
++        )
++        val result = ManifestRunner.run(
++            manifest,
++            ManifestOptions(commandTraceMode = moe.afox.dpsandbox.core.CommandTraceMode.BASIC),
++        )
++        assertTrue(result.passed, result.messages.joinToString())
++        assertEquals("say after", result.traces.last().command)
++        assertTrue(result.traces.all { it.snapshotDiffs.isEmpty() })
++        assertEquals("<Server> after", result.outputs.last().text)
++        val report = dir.resolve("report.json")
++        val output = captureStdout { main(arrayOf("check", manifest.toString(), "--report-file", report.toString())) }
++        assertTrue("PASS $manifest" in output, output)
++        val json = JsonParser.parseString(Files.readString(report)).asJsonArray[0].asJsonObject
++        assertEquals(0, json.get("traceCount").asInt)
+     }
+ 
+     @Test
+@@ -371,7 +400,7 @@ class CheckCommandTest {
+ 
+         val output =
+             captureStdout {
+-                main(arrayOf("check", manifest.toString(), "--report-file", reportFile.toString()))
++                main(arrayOf("check", manifest.toString(), "--trace", "--report-file", reportFile.toString()))
+             }
+ 
+         assertTrue("PASS $manifest" in output, output)
+diff --git a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/RenderCommandTest.kt b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/RenderCommandTest.kt
+index 15fd2dd4..9836cdfc 100644
+--- a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/RenderCommandTest.kt
++++ b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/RenderCommandTest.kt
+@@ -1,5 +1,6 @@
+ package moe.afox.dpsandbox.cli
+ 
++import com.google.gson.JsonParser
+ import java.nio.file.Files
+ import javax.imageio.ImageIO
+ import kotlin.test.Test
+@@ -8,6 +9,27 @@ import kotlin.test.assertFalse
+ import kotlin.test.assertTrue
+ 
+ class RenderCommandTest : RunCommandTestSupport() {
++    @Test
++    fun `screenshot runs retain command traces when explicitly requested`() {
++        val directory = Files.createTempDirectory("dps-cli-render-traces")
++        for (tracing in listOf(false, true)) {
++            val snapshot = directory.resolve("state-$tracing.json")
++            val screenshot = directory.resolve("state-$tracing.png")
++            captureStdout {
++                main(
++                    (listOf(
++                        "run", "--version", "26.3", "--command", "say rendered",
++                        "--snapshot-file", snapshot.toString(), "--screenshot-file", screenshot.toString(),
++                        "--screenshot-width", "320", "--screenshot-height", "180",
++                    ) + if (tracing) listOf("--trace") else emptyList()).toTypedArray(),
++                )
++            }
++            val state = JsonParser.parseString(Files.readString(snapshot)).asJsonObject
++            assertEquals(tracing, state.getAsJsonArray("traces").size() > 0)
++            assertTrue(Files.isRegularFile(screenshot))
++        }
++    }
++
+     @Test
+     fun `run writes screenshot after executing commands`() {
+         val output = Files.createTempDirectory("dps-cli-render").resolve("nested/state.png")
+diff --git a/manifest/src/main/kotlin/moe/afox/dpsandbox/cli/ManifestRunner.kt b/manifest/src/main/kotlin/moe/afox/dpsandbox/cli/ManifestRunner.kt
+index f961d274..9eb5ba22 100644
+--- a/manifest/src/main/kotlin/moe/afox/dpsandbox/cli/ManifestRunner.kt
++++ b/manifest/src/main/kotlin/moe/afox/dpsandbox/cli/ManifestRunner.kt
+@@ -6,6 +6,7 @@ import com.google.gson.JsonObject
+ import com.google.gson.JsonParser
+ import moe.afox.dpsandbox.core.BlockPos
+ import moe.afox.dpsandbox.core.CommandTraceEvent
++import moe.afox.dpsandbox.core.CommandTraceMode
+ import moe.afox.dpsandbox.core.DatapackCoverageOptions
+ import moe.afox.dpsandbox.core.DatapackCoverageReport
+ import moe.afox.dpsandbox.core.DatapackMissingResourceReference
+@@ -79,6 +80,7 @@ data class ManifestOptions(
+     val unsupportedFeatureMode: UnsupportedFeatureMode = UnsupportedFeatureMode.WARN,
+     val limits: SandboxLimits = SandboxLimits(),
+     val coverage: DatapackCoverageOptions = DatapackCoverageOptions(),
++    val commandTraceMode: CommandTraceMode = CommandTraceMode.FULL,
+ )
+ 
+ internal data class ManifestDiagnostic(
+@@ -375,6 +377,15 @@ object ManifestRunner {
+         options: ManifestOptions,
+     ): ManifestAttemptResult {
+         var sandbox = createSandbox(config.version, config.packs, unsupportedFeatureMode = unsupportedMode, limits = options.limits)
++        // Trace assertions and artifact steps require full diffs even when CLI tracing is disabled.
++        fun requiresFullTrace(element: JsonElement): Boolean =
++            when {
++                element.isJsonObject -> element.asJsonObject.entrySet().any { (key, value) -> key == "trace" || requiresFullTrace(value) }
++                element.isJsonArray -> element.asJsonArray.any(::requiresFullTrace)
++                else -> false
++            }
++        sandbox.world.commandTraceMode =
++            if ((document.steps + document.assertions).any { requiresFullTrace(it.element) }) CommandTraceMode.FULL else options.commandTraceMode
+         sandbox.world.seed = options.seed
+         document.worlds.forEach { world ->
+             if (!world.element.isJsonObject) {
+@@ -905,6 +916,7 @@ object ManifestRunner {
+             sandbox.datapack,
+             SandboxWorld().also { world ->
+                 world.seed = options.seed
++                world.commandTraceMode = sandbox.world.commandTraceMode
+                 world.createPlayer("Steve")
+             },
+             sandbox.unsupportedFeatureMode,

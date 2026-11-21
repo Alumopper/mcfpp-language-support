@@ -36,6 +36,7 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
         PsiFile file = element.getContainingFile();
         if (McfppFileModels.versionAnalysis(file).inactiveRanges().stream().anyMatch(range ->
                 range.start() <= element.getTextOffset() && element.getTextOffset() < range.end())) return;
+        boolean lspActive = McfppLspState.isRunning(file.getProject());
         McfppSemanticTokens.Analysis analysis = CachedValuesManager.getCachedValue(file, () -> {
             var dependency = McfppNamespaceResolver.infer(file).dependency();
             var value = McfppSemanticTokens.analyzeDetailed(McfppFileModels.activeSource(file));
@@ -43,7 +44,7 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
                     : CachedValueProvider.Result.create(value, file, dependency);
         });
         if (identifier) {
-            if ("ref".equals(element.getText())) {
+            if (!lspActive && "ref".equals(element.getText())) {
                 holder.newAnnotation(HighlightSeverity.ERROR,
                                 "'ref expression' has been removed. Pass a ScoreRef or NBTRef<T> created from an explicit Minecraft address.")
                         .range(element).create();
@@ -55,9 +56,16 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
             if ((key == McfppSyntaxHighlighter.FUNCTION_DECLARATION || key == McfppSyntaxHighlighter.FUNCTION_CALL) &&
                     javaPlugin != null && javaPlugin.isEnabled() && !com.intellij.openapi.project.DumbService.isDumb(element.getProject())) {
                 var nativeKey = top.mcfpp.intellij.mni.McfppNativeFunctionHighlighting.keyFor(element);
-                if (nativeKey != null) key = nativeKey;
+                if (nativeKey != null) {
+                    holder.newSilentAnnotation(HighlightSeverity.INFORMATION)
+                            .range(element)
+                            .textAttributes(nativeKey)
+                            .create();
+                    return;
+                }
             }
-            if (key == null) return;
+            // When LSP is running, let LSP semanticTokensProvider own standard semantic coloring.
+            if (lspActive || key == null) return;
             holder.newSilentAnnotation(HighlightSeverity.INFORMATION)
                     .range(element)
                     .textAttributes(key)

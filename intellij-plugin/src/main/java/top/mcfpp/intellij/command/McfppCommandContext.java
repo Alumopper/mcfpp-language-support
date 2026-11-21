@@ -16,6 +16,7 @@ public record McfppCommandContext(
     public static @Nullable McfppCommandContext at(CharSequence source, int caretOffset) {
         int boundedCaret = Math.max(0, Math.min(caretOffset, source.length()));
         var blockLine = top.mcfpp.intellij.lang.McfppCommandBlocks.lineAt(source, boundedCaret);
+        if (blockLine.kind() == top.mcfpp.intellij.lang.McfppCommandBlocks.Kind.OPEN) return null;
         if (blockLine.kind() == top.mcfpp.intellij.lang.McfppCommandBlocks.Kind.ORDINARY && blockLine.insideBlock()) {
             return null;
         }
@@ -56,7 +57,7 @@ public record McfppCommandContext(
                 }
                 continue;
             }
-            if (line.insideBlock()) continue;
+            if (line.kind() != top.mcfpp.intellij.lang.McfppCommandBlocks.Kind.ORDINARY || line.insideBlock()) continue;
             int slash = firstNonWhitespace(source, line.start(), line.end());
             if (slash < line.end() && source.charAt(slash) == '/' &&
                     (slash + 1 >= line.end() || source.charAt(slash + 1) != '/') &&

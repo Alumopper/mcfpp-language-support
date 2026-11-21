@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "top.mcfpp"
-version = "0.6.2"
+version = "0.6.3"
 
 val localIdeaPath = providers.gradleProperty("ideaLocalPath")
 
@@ -49,23 +49,24 @@ java {
 
 tasks.withType<JavaCompile>().configureEach { options.release.set(21) }
 
-// Use the language server's compiler grammar for annotation type expressions, too.
+// Compile MNI annotation type syntax directly from the compiler's single-source ANTLR grammar (targeted at JBR 21).
+val compilerGrammarDir = layout.projectDirectory.dir("../../MCFPP/src/main/antlr")
 val typeGrammarOutput = layout.buildDirectory.dir("generated-src/mni-types")
 tasks.generateGrammarSource { enabled = false }
 val generateMniUnicode by tasks.registering(AntlrTask::class) {
-    source = fileTree("../language-server/src/main/antlr4") { include("unicodeClass.g4") }
+    source = fileTree(compilerGrammarDir) { include("unicodeClass.g4") }
     outputDirectory = typeGrammarOutput.get().asFile
     arguments = listOf("-package", "top.mcfpp.intellij.typesyntax")
 }
 val generateMniLexer by tasks.registering(AntlrTask::class) {
     dependsOn(generateMniUnicode)
-    source = fileTree("../language-server/src/main/antlr4") { include("mcfppLexer.g4") }
+    source = fileTree(compilerGrammarDir) { include("mcfppLexer.g4") }
     outputDirectory = typeGrammarOutput.get().asFile
     arguments = listOf("-package", "top.mcfpp.intellij.typesyntax", "-lib", typeGrammarOutput.get().asFile.path)
 }
 val generateMniParser by tasks.registering(AntlrTask::class) {
     dependsOn(generateMniLexer)
-    source = fileTree("../language-server/src/main/antlr4") { include("mcfppParser.g4") }
+    source = fileTree(compilerGrammarDir) { include("mcfppParser.g4") }
     outputDirectory = typeGrammarOutput.get().asFile
     arguments = listOf("-package", "top.mcfpp.intellij.typesyntax", "-lib", typeGrammarOutput.get().asFile.path)
 }
@@ -106,7 +107,8 @@ intellijPlatform {
     }
 }
 
-val languageServerJar = layout.projectDirectory.file("../vscode-extension/server/mcfpp-language-server.jar")
+val languageServerJar = providers.gradleProperty("mcfppLanguageServerJar").map { layout.projectDirectory.file(it) }
+    .orElse(layout.projectDirectory.file("../language-server/build/libs/mcfpp-language-server-intellij.jar"))
 val compilerStandardLibrary = layout.projectDirectory.dir("../../MCFPP/src/main/mcfpp")
 val compilerConfiguration = layout.projectDirectory.file("../../MCFPP/mcfpp.json")
 val compilerCli = providers.gradleProperty("mcfppCompilerJar").map(::file)
@@ -133,7 +135,7 @@ val toolchainManifest by tasks.registering {
     val targetFile = target.get().asFile
     val cliFile = compilerCli.get()
     val sourcesFile = compilerSources.get()
-    val serverFile = languageServerJar.asFile
+    val serverFile = languageServerJar.get().asFile
     val formatterFile = formatterBundle.get().archiveFile.get().asFile
     val versionJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }.get().executablePath.asFile
     val linterPackage = linterRoot.file("package.json").asFile
@@ -149,6 +151,11 @@ val toolchainManifest by tasks.registering {
     outputs.file(target)
     doLast {
         fun sha(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        JarFile(cliFile).use { compiler ->
+            check(compiler.getJarEntry("moe/afox/mcfpm/repository/maven/ProjectPackageApi.class") != null) {
+                "The bundled CLI lacks the MCFPM project package API. Rebuild the compiler with its runtime dependencies using shadowJar."
+            }
+        }
         val compilerHash = sha(cliFile)
         val versionProcess = ProcessBuilder(versionJava.path, "-jar", cliFile.path, "--version").start()
         val versionOutput = versionProcess.inputStream.bufferedReader().readText()
@@ -195,6 +202,7 @@ tasks {
         inputs.file(bundledDatapackSandboxJar)
         from(languageServerJar) {
             into("server")
+            rename { "mcfpp-language-server.jar" }
         }
         from("../../MCFPP/src/main/resources/testing/assertions.mcfpp") {
             into("stdlib/src/main/mcfpp/test")

@@ -1,0 +1,118 @@
+diff --git a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/GlHudRenderer.kt b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/GlHudRenderer.kt
+index bd020d8..dc03691 100644
+--- a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/GlHudRenderer.kt
++++ b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/GlHudRenderer.kt
+@@ -80,8 +80,9 @@ internal class GlHudRenderer(
+                 GL_UNSIGNED_BYTE,
+                 bitmap,
+             )
+-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
++            val filter = if (font.smooth) org.lwjgl.opengl.GL11.GL_LINEAR else GL_NEAREST
++            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter)
++            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter)
+             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+         } finally {
+@@ -241,7 +242,7 @@ internal class GlHudRenderer(
+     private fun glyph(codePoint: Int): MinecraftBitmapGlyph = font.glyphs[codePoint] ?: font.fallback ?: font.glyphs.values.first()
+ 
+     private fun pixelScale(scale: Float): Float =
+-        (BASE_TEXT_PIXELS * scale.coerceIn(0.5f, 4f) / MINECRAFT_LINE_HEIGHT).roundToInt().coerceIn(1, 8).toFloat()
++        (BASE_TEXT_PIXELS * scale.coerceIn(0.5f, 4f) / MINECRAFT_LINE_HEIGHT).coerceIn(0.5f, 8f)
+ 
+     private fun uploadColor(
+         targetProgram: Int,
+@@ -280,7 +281,7 @@ internal class GlHudRenderer(
+ 
+     companion object {
+         private const val MINECRAFT_LINE_HEIGHT = 9f
+-        private const val BASE_TEXT_PIXELS = 11f
++        private const val BASE_TEXT_PIXELS = 16f
+         private const val FLOATS_PER_FONT_VERTEX = 4
+         private const val FONT_VERTEX_BYTES = FLOATS_PER_FONT_VERTEX * Float.SIZE_BYTES
+         private const val VERTICES_PER_GLYPH = 6
+diff --git a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResources.kt b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResources.kt
+index dfbedce..0138ed4 100644
+--- a/cli/src/main/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResources.kt
++++ b/cli/src/main/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResources.kt
+@@ -108,19 +108,28 @@ internal class MinecraftClientResources(
+     }
+ 
+     private fun fallbackFont(): MinecraftBitmapFont {
+-        val cellWidth = 12
+-        val cellHeight = 16
++        val oversample = 4f
++        val measuringImage = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
++        val measuringGraphics = measuringImage.createGraphics()
++        val font = Font(Font.SANS_SERIF, Font.PLAIN, 32)
++        val metrics = try {
++            measuringGraphics.getFontMetrics(font)
++        } finally {
++            measuringGraphics.dispose()
++        }
++        val cellWidth = (32..126).maxOf { metrics.charWidth(it) } + 2
++        val cellHeight = metrics.height + 2
+         val columns = 16
+         val rows = 6
+         val image = BufferedImage(columns * cellWidth, rows * cellHeight, BufferedImage.TYPE_INT_ARGB)
+         val graphics = image.createGraphics()
+         try {
+             graphics.color = Color.WHITE
+-            graphics.font = Font(Font.MONOSPACED, Font.PLAIN, 14)
++            graphics.font = font
+             graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+             for (codePoint in 32..126) {
+                 val index = codePoint - 32
+-                graphics.drawString(codePoint.toChar().toString(), index % columns * cellWidth, index / columns * cellHeight + 13)
++                graphics.drawString(codePoint.toChar().toString(), index % columns * cellWidth + 1, index / columns * cellHeight + metrics.ascent + 1)
+             }
+         } finally {
+             graphics.dispose()
+@@ -133,13 +142,13 @@ internal class MinecraftClientResources(
+                     y = index / columns * cellHeight,
+                     width = cellWidth,
+                     height = cellHeight,
+-                    renderedWidth = 6f,
+-                    renderedHeight = 8f,
+-                    advance = 7f,
+-                    topOffset = 0f,
++                    renderedWidth = cellWidth / oversample,
++                    renderedHeight = cellHeight / oversample,
++                    advance = metrics.charWidth(codePoint) / oversample,
++                    topOffset = DEFAULT_ASCENT - (metrics.ascent + 1) / oversample,
+                 )
+             }
+-        return MinecraftBitmapFont(image, glyphs, glyphs.getValue('?'.code), source = "system fallback")
++        return MinecraftBitmapFont(image, glyphs, glyphs.getValue('?'.code), source = "system fallback", smooth = true)
+     }
+ 
+     private fun bytes(key: String): ByteArray? =
+@@ -278,6 +287,7 @@ internal data class MinecraftBitmapFont(
+     val glyphs: Map<Int, MinecraftBitmapGlyph>,
+     val fallback: MinecraftBitmapGlyph?,
+     val source: String,
++    val smooth: Boolean = false,
+ )
+ 
+ internal data class MinecraftBitmapGlyph(
+diff --git a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResourcesTest.kt b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResourcesTest.kt
+index c8efec0..dae9f79 100644
+--- a/cli/src/test/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResourcesTest.kt
++++ b/cli/src/test/kotlin/moe/afox/dpsandbox/cli/MinecraftClientResourcesTest.kt
+@@ -16,6 +16,15 @@ class MinecraftClientResourcesTest {
+     @TempDir
+     lateinit var tempDirectory: Path
+ 
++    @Test
++    fun `fallback HUD font uses measured advances instead of widely spaced fixed cells`() {
++        val font = MinecraftClientResources(RenderAssets()).defaultFont()
++        assertEquals("system fallback", font.source)
++        assertTrue(font.smooth)
++        assertTrue(font.glyphs.getValue('W'.code).advance > font.glyphs.getValue('i'.code).advance)
++        assertTrue(font.glyphs.getValue(' '.code).advance < font.glyphs.getValue('W'.code).advance)
++    }
++
+     @Test
+     fun `loads the default bitmap font and particle sprites from a client resource source`() {
+         val fontDirectory = tempDirectory.resolve("assets/minecraft/font")

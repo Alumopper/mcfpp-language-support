@@ -14,7 +14,7 @@ class McfppSyntaxMigrationTest {
         assertEquals("->", lexer.getBufferSequence().subSequence(lexer.getTokenStart(), lexer.getTokenEnd()).toString());
         var model = McfppFileModel.parse("func run() { var score = scoreRef(\"counter\", \"hp\"); var saved = nbtStorageRef<int>(\"demo:state\", \"counter\"); }");
         assertEquals("ScoreRef", McfppTypes.declaredType(model.symbols().stream().filter(it -> it.name().equals("score")).findFirst().orElseThrow()));
-        assertEquals("NBTRef", McfppTypes.declaredType(model.symbols().stream().filter(it -> it.name().equals("saved")).findFirst().orElseThrow()));
+        assertEquals("NBTRef<int>", McfppTypes.declaredType(model.symbols().stream().filter(it -> it.name().equals("saved")).findFirst().orElseThrow()));
     }
 
     @Test void indexesAbstractDataAndExternalDeclarations() {

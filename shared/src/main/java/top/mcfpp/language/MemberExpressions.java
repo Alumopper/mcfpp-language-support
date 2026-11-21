@@ -4,6 +4,18 @@ package top.mcfpp.language;
 public final class MemberExpressions {
     private MemberExpressions() {}
 
+    public static boolean endsAtCall(String text, int open) {
+        if (open < 0 || !text.endsWith(")")) return false;
+        boolean[] code = codeMask(text, text.length());
+        int depth = 0;
+        for (int i = open; i < text.length(); i++) {
+            if (!code[i]) continue;
+            if (text.charAt(i) == '(') depth++;
+            if (text.charAt(i) == ')' && --depth == 0) return i == text.length() - 1;
+        }
+        return false;
+    }
+
     /** Receiver of a final member call, excluding calls nested inside its arguments. */
     public static String calledMemberReceiver(String expression, String name) {
         String text = expression.strip();
@@ -27,6 +39,23 @@ public final class MemberExpressions {
 
     public static String receiverBefore(CharSequence source, int separator) {
         if (separator < 0 || separator >= source.length() || source.charAt(separator) != '.') return null;
+        // Either dot in a range operator is not a member separator.
+        if (separator > 0 && source.charAt(separator - 1) == '.' ||
+                separator + 1 < source.length() && source.charAt(separator + 1) == '.') return null;
+        return expressionBefore(source, separator);
+    }
+
+    /** Receiver in a reference read with a trailing callback. */
+    public static String tryReadReceiver(String source, int brace) {
+        int end = brace;
+        while (end > 0 && Character.isWhitespace(source.charAt(end - 1))) end--;
+        int start = end - "tryRead".length();
+        if (start < 0 || !source.startsWith("tryRead", start)) return null;
+        while (start > 0 && Character.isWhitespace(source.charAt(start - 1))) start--;
+        return receiverBefore(source, start - 1);
+    }
+
+    static String expressionBefore(CharSequence source, int separator) {
         boolean[] code = codeMask(source, separator);
         int end = separator;
         if (end > 0 && source.charAt(end - 1) == '?') end--;
@@ -55,11 +84,27 @@ public final class MemberExpressions {
                 while (right < end && Character.isWhitespace(source.charAt(right))) right++;
                 char before = left < 0 ? '\0' : source.charAt(left);
                 char after = right >= end ? '\0' : source.charAt(right);
-                if (before != '.' && before != ':' && after != '.' && after != ':' && after != '(') break;
+                boolean trailingBlock = after == '{' && isTrailingBlockAttachment(source, left, right);
+                if (before != '.' && before != ':' && after != '.' && after != ':' && after != '(' && !trailingBlock) break;
             }
         }
         String expression = source.subSequence(index + 1, end).toString().strip();
         return expression.isEmpty() ? null : expression;
+    }
+
+    private static boolean isTrailingBlockAttachment(CharSequence source, int left, int right) {
+        if (left < 0) return false;
+        for (int i = left + 1; i < right; i++) {
+            char c = source.charAt(i);
+            if (c == '\n' || c == '\r') return false;
+        }
+        char before = source.charAt(left);
+        if (before == ')') return true;
+        if (!Character.isUnicodeIdentifierPart(before)) return false;
+        int start = left;
+        while (start > 0 && Character.isUnicodeIdentifierPart(source.charAt(start - 1))) start--;
+        String word = source.subSequence(start, left + 1).toString();
+        return !java.util.Set.of("return", "else", "do", "try", "if", "while", "for", "var", "const", "external", "global", "in", "as").contains(word);
     }
 
     private static boolean literalKeyColon(CharSequence source, int colon) {

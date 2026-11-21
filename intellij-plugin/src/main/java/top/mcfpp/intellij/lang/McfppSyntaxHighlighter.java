@@ -66,7 +66,7 @@ public final class McfppSyntaxHighlighter extends SyntaxHighlighterBase {
     public static final TextAttributesKey MACRO_FUNCTION = createTextAttributesKey(
             "MCFPP_MACRO_FUNCTION", DefaultLanguageHighlighterColors.METADATA);
     public static final TextAttributesKey MNI_FUNCTION = createTextAttributesKey(
-            "MCFPP_MNI_FUNCTION", DefaultLanguageHighlighterColors.STATIC_METHOD);
+            "MCFPP_MNI_FUNCTION", DefaultLanguageHighlighterColors.FUNCTION_DECLARATION);
     public static final TextAttributesKey TYPE_NAME = createTextAttributesKey(
             "MCFPP_TYPE_NAME", DefaultLanguageHighlighterColors.CLASS_NAME);
     public static final TextAttributesKey VARIABLE = createTextAttributesKey(
@@ -107,6 +107,7 @@ public final class McfppSyntaxHighlighter extends SyntaxHighlighterBase {
         if (tokenType == McfppTokenTypes.TYPE_KEYWORD) return pack(TYPE_KEYWORD);
         if (tokenType == McfppTokenTypes.IDENTIFIER) return pack(IDENTIFIER);
         if (tokenType == McfppTokenTypes.STRING) return pack(STRING);
+        if (tokenType == McfppTokenTypes.INTERPOLATION_DELIMITER) return pack(OPERATOR);
         if (tokenType == McfppTokenTypes.NUMBER) return pack(NUMBER);
         if (tokenType == McfppTokenTypes.COMMENT) return pack(COMMENT);
         if (tokenType == McfppTokenTypes.DOC_COMMENT) return pack(DOC_COMMENT);

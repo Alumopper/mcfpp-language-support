@@ -1,0 +1,251 @@
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt
+index 502fdef..987db32 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/JsonPaths.kt
+@@ -240,6 +240,7 @@ object JsonPaths {
+ private sealed interface PathPart {
+     data class Field(
+         val name: String,
++        val expected: JsonObject? = null,
+     ) : PathPart
+ 
+     data class Index(
+@@ -263,7 +264,7 @@ private data class NbtPath(
+             current.flatMap { element ->
+                 when (part) {
+                     is PathPart.Field ->
+-                        if (element.isJsonObject) listOfNotNull(element.asJsonObject.get(part.name)) else emptyList()
++                        if (element.isJsonObject) listOfNotNull(element.asJsonObject.get(part.name)?.takeIf { part.matches(it) }) else emptyList()
+                     is PathPart.Index -> {
+                         if (!element.isJsonArray) {
+                             emptyList()
+@@ -306,6 +307,10 @@ private data class NbtPath(
+                     if (!current.isJsonObject) {
+                         throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Path target '${part.name}' is not an object")
+                     }
++                    val previous = current.asJsonObject.get(part.name)
++                    if (previous != null && !part.matches(previous)) {
++                        throw SandboxException(DiagnosticCode.COMMAND_ERROR, "Path compound matcher did not match '${part.name}'")
++                    }
+                     current.asJsonObject.add(part.name, value.deepCopy())
+                 }
+                 is PathPart.Index -> {
+@@ -360,7 +365,10 @@ private data class NbtPath(
+                 val objectCurrent = current.asJsonObject
+                 val child =
+                     objectCurrent.get(part.name)?.takeUnless { it is JsonNull }
+-                        ?: pathContainer(next).also { objectCurrent.add(part.name, it) }
++                        ?: (part.expected?.deepCopy() ?: pathContainer(next)).also { objectCurrent.add(part.name, it) }
++                if (!part.matches(child)) {
++                    throw SandboxException(DiagnosticCode.COMMAND_ERROR, "Path compound matcher did not match '${part.name}'")
++                }
+                 setAt(child, partIndex + 1, value)
+             }
+             is PathPart.Index -> {
+@@ -415,7 +423,9 @@ private data class NbtPath(
+         val part = parts[partIndex]
+         if (partIndex == parts.lastIndex) {
+             return when (part) {
+-                is PathPart.Field -> current.isJsonObject && current.asJsonObject.remove(part.name) != null
++                is PathPart.Field -> current.isJsonObject && current.asJsonObject.get(part.name)?.let {
++                    part.matches(it) && current.asJsonObject.remove(part.name) != null
++                } == true
+                 is PathPart.Index -> {
+                     if (!current.isJsonArray) return false
+                     val array = current.asJsonArray
+@@ -441,7 +451,7 @@ private data class NbtPath(
+         val children =
+             when (part) {
+                 is PathPart.Field ->
+-                    if (current.isJsonObject) listOfNotNull(current.asJsonObject.get(part.name)) else emptyList()
++                    if (current.isJsonObject) listOfNotNull(current.asJsonObject.get(part.name)?.takeIf { part.matches(it) }) else emptyList()
+                 is PathPart.Index -> {
+                     if (!current.isJsonArray) {
+                         emptyList()
+@@ -461,6 +471,9 @@ private data class NbtPath(
+         return children.fold(false) { changed, child -> removeAt(child, partIndex + 1) || changed }
+     }
+ 
++    private fun PathPart.Field.matches(value: JsonElement): Boolean =
++        expected == null || value.isJsonObject && objectMatches(value.asJsonObject, expected)
++
+     private fun objectMatches(
+         actual: JsonObject,
+         expected: JsonObject,
+@@ -548,6 +561,15 @@ private data class NbtPath(
+                             }
+                         index = end + 1
+                     }
++                    '{' -> {
++                        flushName()
++                        val field = parts.lastOrNull() as? PathPart.Field
++                            ?: throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Expected a named field before compound matcher in '$path'")
++                        val end = findClosingCompound(path, index)
++                        if (end < 0) throw SandboxException(DiagnosticCode.INPUT_FORMAT, "Unclosed compound matcher in '$path'")
++                        parts[parts.lastIndex] = field.copy(expected = JsonValues.parse(path.substring(index, end + 1)).asJsonObject)
++                        index = end + 1
++                    }
+                     else -> {
+                         name.append(char)
+                         index++
+@@ -558,6 +580,27 @@ private data class NbtPath(
+             return NbtPath(parts)
+         }
+ 
++        private fun findClosingCompound(path: String, start: Int): Int {
++            var depth = 0
++            var quote: Char? = null
++            var escaped = false
++            for (index in start until path.length) {
++                val char = path[index]
++                if (quote != null) {
++                    when {
++                        escaped -> escaped = false
++                        char == '\\' -> escaped = true
++                        char == quote -> quote = null
++                    }
++                } else when (char) {
++                    '"', '\'' -> quote = char
++                    '{' -> depth++
++                    '}' -> if (--depth == 0) return index
++                }
++            }
++            return -1
++        }
++
+         private fun findClosingBracket(
+             path: String,
+             start: Int,
+@@ -692,7 +735,7 @@ private class SnbtParser(
+             token.matches(Regex("[-+]?\\d+[bBsSlL]")) -> JsonPrimitive(token.dropLast(1).toLong())
+             token.matches(Regex("[-+]?\\d+")) -> JsonPrimitive(token.toLong())
+             token.matches(
+-                Regex("[-+]?(\\d+\\.\\d*|\\d*\\.\\d+)([fFdD])?"),
++                Regex("[-+]?(\\d+\\.?\\d*|\\.\\d+)([eE][-+]?\\d+)?[fFdD]?"),
+             ) ->
+                 JsonPrimitive(
+                     token
+@@ -702,7 +745,6 @@ private class SnbtParser(
+                         .removeSuffix("D")
+                         .toDouble(),
+                 )
+-            token.matches(Regex("[-+]?\\d+[fFdD]")) -> JsonPrimitive(token.dropLast(1).toDouble())
+             else -> JsonPrimitive(token)
+         }
+     }
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxWorldCommands.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxWorldCommands.kt
+index e5302f4..9998e77 100644
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxWorldCommands.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/command/SandboxWorldCommands.kt
+@@ -902,9 +902,9 @@ internal fun DatapackSandbox.executeScoreOperation(
+             location,
+         )
+     }
+-    val sourceValue = world.getScore(sourceTargets.single(), tokens[7].text)
+     var commandResult: Int? = null
+     scoreTargets(tokens[3].text, context, location).forEach { target ->
++        val sourceValue = world.getScore(sourceTargets.single(), tokens[7].text)
+         val current = world.getScore(target, tokens[4].text)
+         val result =
+             when (operation) {
+@@ -920,6 +920,10 @@ internal fun DatapackSandbox.executeScoreOperation(
+                 "%=" -> if (sourceValue == 0) current else Math.floorMod(current, sourceValue)
+                 "<" -> minOf(current, sourceValue)
+                 ">" -> maxOf(current, sourceValue)
++                "><" -> {
++                    world.setScore(sourceTargets.single(), tokens[7].text, current)
++                    sourceValue
++                }
+                 else -> unsupportedFeature("Unsupported scoreboard operation '$operation'", profile.id, location)
+             }
+         world.setScore(target, tokens[4].text, result)
+diff --git a/core/src/test/kotlin/moe/afox/dpsandbox/core/JsonValuesTest.kt b/core/src/test/kotlin/moe/afox/dpsandbox/core/JsonValuesTest.kt
+index 4bfcb4c..d22ccae 100644
+--- a/core/src/test/kotlin/moe/afox/dpsandbox/core/JsonValuesTest.kt
++++ b/core/src/test/kotlin/moe/afox/dpsandbox/core/JsonValuesTest.kt
+@@ -3,8 +3,64 @@ package moe.afox.dpsandbox.core
+ import com.google.gson.JsonPrimitive
+ import kotlin.test.Test
+ import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++import kotlin.test.assertNull
++import kotlin.test.assertTrue
+ 
+ class JsonValuesTest {
++    @Test
++    fun `named compound filters read scheduler dispatch and repeat flags`() {
++        val value = JsonValues.parse("{current:{code:0,keep:1b,nested:{label:'a}b'}}}").asJsonObject
++        assertEquals(0, JsonPaths.get(value, "current{code:0}.code")?.asInt)
++        assertEquals(1, JsonPaths.get(value, "current{keep:1b}.keep")?.asInt)
++        assertEquals(0, JsonPaths.get(value, "current{nested:{label:'a}b'}}.code")?.asInt)
++        assertNull(JsonPaths.get(value, "current{code:1}"))
++        JsonPaths.set(value, "current{code:0}.keep", JsonPrimitive(2))
++        assertEquals(2, JsonPaths.get(value, "current.keep")?.asInt)
++        assertFalse(JsonPaths.remove(value, "current{code:1}"))
++        assertTrue(JsonPaths.remove(value, "current{code:0}.keep"))
++    }
++
++    @Test
++    fun `execute if data dispatches a matching scheduler compound`() {
++        val sandbox = createFunctionSandboxFromString("1.21.8", "")
++        sandbox.executeCommand("scoreboard objectives add result dummy")
++        sandbox.executeCommand("data modify storage demo:scheduler current set value {code:0,keep:1b}")
++        sandbox.executeCommand("execute if data storage demo:scheduler current{code:0} run scoreboard players set #dispatch result 1")
++        sandbox.executeCommand("execute if data storage demo:scheduler current{keep:1b} run scoreboard players set #repeat result 1")
++        sandbox.executeCommand("execute if data storage demo:scheduler current{code:1} run scoreboard players set #wrong result 1")
++        assertEquals(1, sandbox.world.getScore("#dispatch", "result"))
++        assertEquals(1, sandbox.world.getScore("#repeat", "result"))
++        assertEquals(0, sandbox.world.getScore("#wrong", "result"))
++    }
++
++    @Test
++    fun `execute store data get returns UUID string length`() {
++        val sandbox = createFunctionSandboxFromString("1.21.8", "")
++        sandbox.executeCommand("scoreboard objectives add result dummy")
++        sandbox.executeCommand("data modify storage demo:state uuid set value '00000000-0000-0000-0000-000000000001'")
++        sandbox.executeCommand("execute store result score #length result run data get storage demo:state uuid")
++        assertEquals(36, sandbox.world.getScore("#length", "result"))
++    }
++
++    @Test
++    fun `display values accept scientific SNBT float notation`() {
++        assertEquals(5.0, JsonValues.parse("50000000e-7f").asDouble)
++        assertEquals(-2.5, JsonValues.parse("-25e-1d").asDouble)
++        assertEquals(100.0, JsonValues.parse("1E+2").asDouble)
++    }
++
++    @Test
++    fun `scoreboard swap used by display float arithmetic updates both holders`() {
++        val sandbox = createFunctionSandboxFromString("1.21.8", "")
++        sandbox.executeCommand("scoreboard objectives add result dummy")
++        sandbox.executeCommand("scoreboard players set #left result 3")
++        sandbox.executeCommand("scoreboard players set #right result 7")
++        sandbox.executeCommand("scoreboard players operation #left result >< #right result")
++        assertEquals(7, sandbox.world.getScore("#left", "result"))
++        assertEquals(3, sandbox.world.getScore("#right", "result"))
++    }
++
+     @Test
+     fun `parses trailing commas in snbt compounds and lists`() {
+         val value =
+diff --git a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+--- a/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
++++ b/core/src/main/kotlin/moe/afox/dpsandbox/core/Sandbox.kt
+@@ -3102,6 +3102,17 @@
+             .drop(outputsBefore)
+             .asReversed()
+             .firstNotNullOfOrNull { output ->
++                val payload = output.payload
++                if (output.command == "get" && payload != null) {
++                    when {
++                        payload.isJsonArray -> return@firstNotNullOfOrNull payload.asJsonArray.size()
++                        payload.isJsonObject -> return@firstNotNullOfOrNull payload.asJsonObject.size()
++                        payload.isJsonPrimitive && payload.asJsonPrimitive.isString ->
++                            return@firstNotNullOfOrNull payload.asString.length
++                        payload.isJsonPrimitive && payload.asJsonPrimitive.isBoolean ->
++                            return@firstNotNullOfOrNull if (payload.asBoolean) 1 else 0
++                    }
++                }
+                 output.text
+                     .trim()
+                     .toDoubleOrNull()

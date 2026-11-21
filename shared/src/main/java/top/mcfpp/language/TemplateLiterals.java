@@ -98,6 +98,21 @@ public final class TemplateLiterals {
         expected.put(literal.open, types);
         return types;
     }
+    /** Resolve a bare value at its first character using the surrounding expression. */
+    public List<String> expectedValueTypes(int start) {
+        Literal parent = containers.stream().filter(it -> it.open < start && start <= it.close)
+                .max(Comparator.comparingInt(it -> it.open)).orElse(null);
+        int operator = start;
+        while (operator > 0 && Character.isWhitespace(code.charAt(operator - 1))) operator--;
+        if (operator >= 2 && (code.startsWith("==", operator - 2) || code.startsWith("!=", operator - 2))) {
+            String left = MemberExpressions.expressionBefore(code, operator - 2);
+            if (left != null) {
+                String type = resolver.valueType(left, operator - 2);
+                if (type != null) return List.of(type);
+            }
+        }
+        return inferTypes(new Literal(start, start, ' ', parent));
+    }
     public List<String> templateTypes(Literal literal) {
         var targets = types(literal);
         var templates = targets.stream().filter(type -> resolver.fields(type, literal.open) != null).toList();
@@ -124,13 +139,17 @@ public final class TemplateLiterals {
         String prefix = code.substring(start, literal.open);
         if (prefix.stripTrailing().endsWith("return")) return resolver.returnTypes(literal.open);
         int assignment = prefix.lastIndexOf('=');
+        // A completed statement before this literal is not its assignment context.
+        if (assignment >= 0 && !prefix.substring(assignment + 1).isBlank()) assignment = -1;
         if (assignment >= 0 && (assignment == 0 || "=!<>".indexOf(prefix.charAt(assignment - 1)) < 0)) {
             String left = prefix.substring(0, assignment).stripTrailing();
             var annotation = ANNOTATION.matcher(left);
             if (annotation.find()) return List.of(annotation.group(1).strip());
             if (parent != null && parent.kind == '(') return resolver.argumentTypes(literal.open);
             int boundary = Math.max(Math.max(left.lastIndexOf(';'), left.lastIndexOf('\n')), left.lastIndexOf('}'));
-            String valueType = resolver.assignmentType(left.substring(boundary + 1).strip(), literal.open);
+            String target = left.substring(boundary + 1).strip();
+            if (target.matches("(?:var|const|external)\\s+\\w+")) return List.of();
+            String valueType = resolver.assignmentType(target, literal.open);
             if (valueType != null) return List.of(valueType);
         }
         return resolver.argumentTypes(literal.open);

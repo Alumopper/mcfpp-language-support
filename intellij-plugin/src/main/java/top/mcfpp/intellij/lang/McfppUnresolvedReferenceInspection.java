@@ -47,6 +47,17 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
     }
 
     static boolean isResolved(PsiElement element) {
+        if (top.mcfpp.language.EnumProperties.TYPES.containsKey(element.getText())) {
+            var file = element.getContainingFile();
+            var source = file.getViewProvider().getContents();
+            int dot = element.getTextOffset() - 1;
+            while (dot >= 0 && Character.isWhitespace(source.charAt(dot))) dot--;
+            String receiver = top.mcfpp.language.MemberExpressions.receiverBefore(source, dot);
+            if (receiver != null) {
+                var enumeration = McfppTemplateLiterals.enumAccess(file, receiver, element.getTextOffset());
+                if (enumeration != null && enumeration.value()) return true;
+            }
+        }
         for (PsiReference reference : element.getReferences()) {
             if (reference instanceof PsiPolyVariantReference poly) {
                 if (poly.multiResolve(false).length > 0) return true;
@@ -209,7 +220,13 @@ public final class McfppUnresolvedReferenceInspection extends LocalInspectionToo
     private static boolean balanced(List<McfppSourceTokens.Token> tokens) {
         Deque<String> stack = new ArrayDeque<>();
         for (var token : tokens) {
+            if (token.type() == McfppTokenTypes.STRING) continue;
             String value = token.text();
+            if (token.type() == McfppTokenTypes.INTERPOLATION_DELIMITER) {
+                if (value.equals("${")) stack.push(value);
+                else if (stack.isEmpty() || !stack.pop().equals("${")) return false;
+                continue;
+            }
             if (value.equals("(") || value.equals("[") || value.equals("{")) stack.push(value);
             if (value.equals(")") || value.equals("]") || value.equals("}")) {
                 String open = value.equals(")") ? "(" : value.equals("]") ? "[" : "{";

@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 public final class McfppProjectService {
     private final Project project;
     private final Semaphore commands=new Semaphore(1,true);
+    private final Set<Path> nestedImports = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile JsonObject model;
     private volatile String status="Ready";
     public McfppProjectService(Project project) {
@@ -57,24 +58,50 @@ public final class McfppProjectService {
         return model;
     }
     public void synchronize() {
-        if(root()==null || project.isDisposed()) return;
+        Path directory = root();
+        if (directory != null) synchronize(directory, false);
+    }
+
+    /** Import the JVM classpath of the nested MCFPP project owning an opened source file. */
+    public void openedInCollection(VirtualFile file) {
+        if (!file.isInLocalFileSystem() || project.getBasePath() == null) return;
+        Path base = Path.of(project.getBasePath());
+        Path path;
+        try { path = file.toNioPath(); }
+        catch (UnsupportedOperationException unsupported) { return; }
+        if (!path.startsWith(base) || !Set.of("mcfpp", "kt", "java", "toml").contains(Objects.toString(file.getExtension(), ""))) return;
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            Path config = ProjectConfiguration.find(path);
+            if (config == null || !config.startsWith(base) || !config.endsWith("mcfpp.toml")) return;
+            try {
+                if (ProjectConfiguration.read(config).mniEnabled() && nestedImports.add(config.getParent()))
+                    synchronize(config.getParent(), true);
+            } catch (Exception error) { McfppNotifications.error(project, error.getMessage()); }
+        });
+    }
+    private void synchronize(Path directory, boolean nested) {
+        if(project.isDisposed()) return;
         new Task.Backgroundable(project,"Synchronize MCFPP project",true) {
             @Override public void run(@NotNull ProgressIndicator indicator) {
-                boolean acquired=false;
+                boolean acquired=false, imported=false;
                 try {
                     acquire(); acquired=true; status="Synchronizing dependencies…";
-                    Path directory=root();
                     var handler=new CapturingProcessHandler(McfppToolchain.cli(project,directory,List.of("ide-model","--json","--project",directory.toString())));
                     var output=handler.runProcessWithProgressIndicator(indicator);
                     if(output.isCancelled()) return;
                     if(output.getExitCode()!=0) throw new ExecutionException(output.getStderr().isBlank() ? output.getStdout() : output.getStderr());
                     JsonObject next=readModel(output.getStdout(),directory);
                     ApplicationManager.getApplication().invokeAndWait(() -> {
-                        if(!project.isDisposed()) { importModel(next); model=next; status="Ready"; refresh(); McfppToolWindowFactory.refresh(project); McfppNotifications.clear(project); }
+                        if(!project.isDisposed()) {
+                            importModel(next, directory, nested);
+                            if (!nested) { model=next; refresh(); McfppToolWindowFactory.refresh(project); }
+                            status="Ready"; McfppNotifications.clear(project);
+                        }
                     });
+                    imported=true;
                 } catch(com.intellij.openapi.progress.ProcessCanceledException cancelled) { status="Synchronization cancelled"; }
                 catch(Exception error) { status="Synchronization failed — previous model retained"; McfppNotifications.error(project,error.getMessage()); }
-                finally { if(acquired) release(); }
+                finally { if(acquired) release(); if (nested && !imported) nestedImports.remove(directory); }
             }
         }.queue();
     }
@@ -85,33 +112,35 @@ public final class McfppProjectService {
         VirtualFile directory=LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root);
         if(directory!=null) directory.refresh(true,true);
     }
-    private void importModel(JsonObject next) {
+    private void importModel(JsonObject next, Path directory, boolean nested) {
         WriteAction.run(() -> {
             var manager=ModuleManager.getInstance(project);
             var properties=com.intellij.ide.util.PropertiesComponent.getInstance(project);
-            String moduleName=properties.getValue("mcfpp.managedModule",project.getName()+"-mcfpp");
+            String property = nested ? "mcfpp.managedModule." + directory : "mcfpp.managedModule";
+            String defaultName = nested ? directory.getFileName() + "-mcfpp-" + Integer.toHexString(directory.hashCode()) : project.getName()+"-mcfpp";
+            String moduleName=properties.getValue(property,defaultName);
             var module=Arrays.stream(manager.getModules()).filter(m -> m.getName().equals(moduleName)).findFirst().orElse(null);
             if(module==null) module=Arrays.stream(manager.getModules()).filter(candidate -> {
                 var external=ExternalSystemModulePropertyManager.getInstance(candidate);
                 var existing=ModuleRootManager.getInstance(candidate);
                 var entries=existing.getContentEntries();
                 return !external.isMavenized() && external.getExternalSystemId()==null && entries.length==1 &&
-                    entries[0].getUrl().equals(VfsUtilCore.pathToUrl(root().toString())) &&
+                    entries[0].getUrl().equals(VfsUtilCore.pathToUrl(directory.toString())) &&
                     entries[0].getSourceFolders().length==0 && Arrays.stream(existing.getOrderEntries())
                         .allMatch(entry -> entry instanceof ModuleSourceOrderEntry || entry instanceof JdkOrderEntry);
             }).findFirst().orElse(null);
-            if(module==null) module=manager.newModule(root().resolve(".idea/"+moduleName+".iml"),"JAVA_MODULE");
-            properties.setValue("mcfpp.managedModule",module.getName());
+            if(module==null) module=manager.newModule(Path.of(project.getBasePath(), ".idea", moduleName+".iml"),"JAVA_MODULE");
+            properties.setValue(property,module.getName());
             var roots=ModuleRootManager.getInstance(module).getModifiableModel();
             try {
                 for(var entry:roots.getContentEntries()) roots.removeContentEntry(entry);
-                var content=roots.addContentEntry(VfsUtilCore.pathToUrl(root().toString()));
+                var content=roots.addContentEntry(VfsUtilCore.pathToUrl(directory.toString()));
                 for(var library:roots.getModuleLibraryTable().getLibraries()) if(library.getName()!=null && library.getName().startsWith("MCFPP: ")) roots.getModuleLibraryTable().removeLibrary(library);
                 addSource(content,Path.of(next.get("sourcePath").getAsString()),false,false);
                 Path data=Path.of(next.get("dataPath").getAsString());
                 addSource(content,data,false,true);
                 if(next.has("assetsPath")) addSource(content,Path.of(next.get("assetsPath").getAsString()),false,true);
-                content.addExcludeFolder(VfsUtilCore.pathToUrl(root().resolve(".mcfpp").toString()));
+                content.addExcludeFolder(VfsUtilCore.pathToUrl(directory.resolve(".mcfpp").toString()));
                 content.addExcludeFolder(VfsUtilCore.pathToUrl(next.get("targetPath").getAsString()));
                 try {
                     Path home=McfppToolchain.javaHome(project);
@@ -138,7 +167,7 @@ public final class McfppProjectService {
         });
     }
     private void addSource(ContentEntry entry,Path path,boolean test,boolean resource) {
-        if(!path.normalize().startsWith(root())) return;
+        if(!path.normalize().startsWith(Path.of(VfsUtilCore.urlToPath(entry.getUrl())))) return;
         String url=VfsUtilCore.pathToUrl(path.toString());
         if(Arrays.stream(entry.getSourceFolders()).anyMatch(f -> f.getUrl().equals(url))) return;
         if(resource) entry.addSourceFolder(url,test ? org.jetbrains.jps.model.java.JavaResourceRootType.TEST_RESOURCE : org.jetbrains.jps.model.java.JavaResourceRootType.RESOURCE);

@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import top.mcfpp.language.VersionPreprocessor;
 
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -40,13 +41,31 @@ public final class McfppLexer extends LexerBase {
     private int tokenEnd;
     private IElementType tokenType;
     private final Map<Integer, McfppCommandBlocks.Kind> commandBlockLines = new HashMap<>();
+    private final ArrayDeque<Interpolation> interpolations = new ArrayDeque<>();
+    private int tokenState;
+
+    private static final class Interpolation {
+        final boolean multiline;
+        int braceDepth = -1; // A negative depth means the lexer is reading literal text.
+
+        Interpolation(boolean multiline) {
+            this.multiline = multiline;
+        }
+    }
+
+    private record StringEnd(int offset, boolean interpolation) {}
 
     @Override
     public void start(@NotNull CharSequence buffer, int startOffset, int endOffset, int initialState) {
         this.buffer = buffer;
         this.bufferEnd = endOffset;
-        this.tokenStart = startOffset;
         indexCommandBlocks();
+        interpolations.clear();
+        this.tokenStart = initialState == 0 ? startOffset : 0;
+        while (tokenStart < startOffset) {
+            locateToken();
+            tokenStart = tokenEnd;
+        }
         locateToken();
     }
 
@@ -65,7 +84,7 @@ public final class McfppLexer extends LexerBase {
 
     @Override
     public int getState() {
-        return 0;
+        return tokenState;
     }
 
     @Override
@@ -100,6 +119,7 @@ public final class McfppLexer extends LexerBase {
     }
 
     private void locateToken() {
+        tokenState = interpolations.isEmpty() ? 0 : 1;
         if (tokenStart >= bufferEnd) {
             tokenEnd = tokenStart;
             tokenType = null;
@@ -107,13 +127,39 @@ public final class McfppLexer extends LexerBase {
         }
 
         char current = buffer.charAt(tokenStart);
+        Interpolation interpolation = interpolations.peek();
+        if (interpolation != null && interpolation.braceDepth < 0) {
+            if (startsWith(tokenStart, "${")) {
+                interpolation.braceDepth = 0;
+                tokenEnd = tokenStart + 2;
+                tokenType = McfppTokenTypes.INTERPOLATION_DELIMITER;
+                return;
+            }
+            StringEnd end = consumeInterpolatedText(tokenStart, interpolation.multiline);
+            tokenEnd = end.offset();
+            if (!end.interpolation()) interpolations.pop();
+            if (tokenEnd > tokenStart) {
+                tokenType = McfppTokenTypes.STRING;
+                return;
+            }
+            interpolation = null;
+        }
+        if (interpolation != null) {
+            if (current == '{') interpolation.braceDepth++;
+            if (current == '}' && interpolation.braceDepth-- == 0) {
+                tokenEnd = tokenStart + 1;
+                tokenType = McfppTokenTypes.INTERPOLATION_DELIMITER;
+                return;
+            }
+        }
+
         if (Character.isWhitespace(current)) {
             tokenEnd = consumeWhile(tokenStart + 1, character -> Character.isWhitespace(character));
             tokenType = McfppTokenTypes.WHITE_SPACE;
             return;
         }
 
-        McfppCommandBlocks.Kind blockLine = commandBlockLines.get(tokenStart);
+        McfppCommandBlocks.Kind blockLine = interpolation == null ? commandBlockLines.get(tokenStart) : null;
         if (blockLine == McfppCommandBlocks.Kind.OPEN) {
             tokenEnd = tokenStart + 2;
             tokenType = McfppTokenTypes.COMMAND_BLOCK_OPEN;
@@ -164,13 +210,21 @@ public final class McfppLexer extends LexerBase {
             tokenType = McfppTokenTypes.WHITE_SPACE;
             return;
         }
-        if (current == '/' && isAtLineStart(tokenStart)) {
+        if (interpolation == null && current == '/' && isAtLineStart(tokenStart)) {
             tokenEnd = consumeLine(tokenStart + 1);
             tokenType = McfppTokenTypes.COMMAND;
             return;
         }
 
-        if (current == '\'' || current == '"') {
+        if (current == '"') {
+            boolean multiline = startsWith(tokenStart, "\"\"\"");
+            StringEnd end = consumeInterpolatedText(tokenStart + (multiline ? 3 : 1), multiline);
+            tokenEnd = end.offset();
+            if (end.interpolation()) interpolations.push(new Interpolation(multiline));
+            tokenType = McfppTokenTypes.STRING;
+            return;
+        }
+        if (current == '\'') {
             tokenEnd = consumeString(tokenStart, current);
             tokenType = McfppTokenTypes.STRING;
             return;
@@ -196,7 +250,7 @@ public final class McfppLexer extends LexerBase {
             String text = buffer.subSequence(tokenStart, tokenEnd).toString();
             int previous = tokenStart - 1;
             while (previous >= 0 && Character.isWhitespace(buffer.charAt(previous))) previous--;
-            tokenType = (text.equals("text") || text.equals("new")) && previous >= 0 && buffer.charAt(previous) == '.'
+            tokenType = (text.equals("text") || text.equals("new") || text.equals("data")) && previous >= 0 && buffer.charAt(previous) == '.'
                     ? McfppTokenTypes.IDENTIFIER : keywordType(text);
             return;
         }
@@ -289,9 +343,6 @@ public final class McfppLexer extends LexerBase {
     }
 
     private int consumeString(int start, char quote) {
-        if (quote == '"' && startsWith(start, "\"\"\"")) {
-            return consumeUntil(start + 3, "\"\"\"");
-        }
         int offset = start + 1;
         boolean escaped = false;
         while (offset < bufferEnd) {
@@ -309,9 +360,25 @@ public final class McfppLexer extends LexerBase {
         return offset;
     }
 
-    private int consumeUntil(int offset, String delimiter) {
-        int closing = indexOf(delimiter, offset);
-        return closing >= 0 ? closing + delimiter.length() : bufferEnd;
+    private StringEnd consumeInterpolatedText(int offset, boolean multiline) {
+        while (offset < bufferEnd) {
+            char current = buffer.charAt(offset);
+            if (startsWith(offset, "${")) return new StringEnd(offset, true);
+            if (multiline) {
+                if (startsWith(offset, "\"\"\"")) {
+                    return new StringEnd(consumeWhile(offset + 3, character -> character == '"'), false);
+                }
+            } else {
+                if (current == '"') return new StringEnd(offset + 1, false);
+                if (current == '\r' || current == '\n') break;
+                if (current == '\\' && offset + 1 < bufferEnd) {
+                    char next = buffer.charAt(offset + 1);
+                    if (next == '\\' || next == '"' || startsWith(offset + 1, "${")) offset++;
+                }
+            }
+            offset++;
+        }
+        return new StringEnd(offset, false);
     }
 
     private int consumeLine(int offset) {
@@ -338,16 +405,6 @@ public final class McfppLexer extends LexerBase {
             }
         }
         return true;
-    }
-
-    private int indexOf(String value, int fromOffset) {
-        int lastStart = bufferEnd - value.length();
-        for (int offset = fromOffset; offset <= lastStart; offset++) {
-            if (startsWith(offset, value)) {
-                return offset;
-            }
-        }
-        return -1;
     }
 
     private static boolean isIdentifierStart(char character) {

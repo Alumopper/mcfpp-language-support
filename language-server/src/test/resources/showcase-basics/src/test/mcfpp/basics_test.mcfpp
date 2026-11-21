@@ -1,0 +1,11 @@
+import mcfpp.test:*
+
+@Test
+func arithmetic() {
+    assertEquals(15, sumTo(5))
+    assertEquals(120, factorial(5))
+    assertEquals(15, award(10))
+    assertEquals(17, award(10, 7))
+    assertEquals(25, toInt(half(5.0) * 10.0))
+    assertTrue(half(5.0) == 2.5)
+}

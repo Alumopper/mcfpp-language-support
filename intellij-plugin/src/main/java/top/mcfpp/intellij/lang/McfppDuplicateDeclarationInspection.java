@@ -24,7 +24,7 @@ public final class McfppDuplicateDeclarationInspection extends LocalInspectionTo
         return new PsiElementVisitor() {
             @Override
             public void visitFile(@NotNull PsiFile file) {
-                if (!(file instanceof McfppFile)) return;
+                if (!(file instanceof McfppFile) || McfppLspState.isRunning(file.getProject())) return;
                 Map<String, McfppSymbol> declarations = new HashMap<>();
                 McfppFileModel model = McfppFileModels.get(file);
                 for (McfppSymbol symbol : model.symbols()) {

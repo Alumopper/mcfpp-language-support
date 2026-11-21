@@ -12,6 +12,8 @@ public final class McfppSettings implements PersistentStateComponent<McfppSettin
     public String javaHome = "";
     public String nodePath = "";
     public String dpsJavaPath = "";
+    public String minecraftAssetsPath = "";
+    public String renderResourcePacks = "";
     public String linterPath = "";
     public String prettierPath = "";
     public boolean formatOnSave = true;

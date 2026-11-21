@@ -59,6 +59,13 @@ final class McfppSymbolResolver {
         }
 
         Project project = usage.getProject();
+        if (!context.callPosition() && !context.typePosition() && context.namespaceQualifier() == null) {
+            var enumeration = McfppTemplateLiterals.enumAccess(currentFile, context.ownerQualifier(), offset);
+            if (enumeration != null && !enumeration.value()) {
+                var member = enumeration.members().stream().filter(it -> it.name().equals(usedName)).findFirst();
+                if (member.isPresent()) return List.of(elementFor(enumeration.file(), member.get()));
+            }
+        }
         if (context.ownerQualifier() == null && context.namespaceQualifier() == null) {
             PsiElement builtin = McfppEntityApi.function(project, usedName);
             if (builtin != null) return List.of(builtin);

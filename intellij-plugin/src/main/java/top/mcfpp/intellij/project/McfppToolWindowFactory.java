@@ -45,7 +45,6 @@ public final class McfppToolWindowFactory implements ToolWindowFactory {
             for(var task:McfppTask.values()) {
                 var button=new JButton(task.title); tasks.add(button);
                 button.addActionListener(e -> McfppRunConfigurations.run(project,task));
-                if(task==McfppTask.TEST) button.setEnabled(service.model()!=null && service.model().get("mniEnabled").getAsBoolean());
             }
             heading.add(Box.createVerticalStrut(12)); heading.add(tasks);
             var tableModel=new DefaultTableModel(new String[]{"Dependency","Version","Scope"},0) {
@@ -105,8 +104,7 @@ public final class McfppToolWindowFactory implements ToolWindowFactory {
             var timer=new javax.swing.Timer(1000,e -> {
                 status.setText(service.status());
                 for(Component component:tasks.getComponents()) if(component instanceof JButton button) {
-                    boolean test="Test".equals(button.getText());
-                    button.setEnabled(!service.busy() && (!test || service.model()!=null && service.model().get("mniEnabled").getAsBoolean()));
+                    button.setEnabled(!service.busy());
                 }
             });
             timer.start(); activeTimer[0] = timer;

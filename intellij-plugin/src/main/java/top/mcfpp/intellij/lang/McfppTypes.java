@@ -26,7 +26,7 @@ final class McfppTypes {
             name = name.substring(name.lastIndexOf(':') + 1).strip();
             if (initializer.contains("(") && name.equals("scoreRef")) return "ScoreRef";
             if (initializer.contains("(") && factory.endsWith(">") &&
-                    List.of("nbtStorageRef", "nbtEntityRef", "nbtBlockRef").contains(name)) return "NBTRef";
+                    List.of("nbtStorageRef", "nbtEntityRef", "nbtBlockRef").contains(name)) return "NBTRef" + factory.substring(generic);
             return symbol.kind() == McfppSymbolKind.PARAMETER &&
                     signature.matches("[A-Za-z_$][A-Za-z0-9_$]*(?:\\s*=.*)?") ? "type" : null;
         }
@@ -62,6 +62,8 @@ final class McfppTypes {
     static @Nullable String receiverType(String expression, McfppFileModel model, int offset) {
         expression = expression.strip();
         if (expression.startsWith("{") && expression.endsWith("}")) return "nbt";
+        String literalType = stringLiteralType(expression);
+        if (literalType != null) return literalType;
         String mergeReceiver = top.mcfpp.language.MemberExpressions.calledMemberReceiver(expression, "merge");
         if (mergeReceiver != null && "nbt".equals(receiverType(mergeReceiver, model, offset))) return "nbt";
         if (expression.strip().startsWith("@")) return "entity";
@@ -76,7 +78,9 @@ final class McfppTypes {
                 if (assignment >= 0) {
                     String value = signature.substring(assignment + 1).strip();
                     String factoryOwner = top.mcfpp.language.MemberExpressions.calledMemberReceiver(value, "new");
+                    String stringType = stringLiteralType(value);
                     if (factoryOwner != null) type = factoryOwner;
+                    else if (stringType != null) type = stringType;
                     else if (!value.equals(expression) && "nbt".equals(receiverType(value, model, locals.getFirst().nameOffset()))) type = "nbt";
                     else if (value.startsWith("@")) type = "entity";
                     else if (value.matches("[\\w.]+") && !value.equals(expression))
@@ -109,6 +113,17 @@ final class McfppTypes {
             type = member.type();
         }
         return type;
+    }
+
+    private static @Nullable String stringLiteralType(String expression) {
+        if (expression.length() < 2 || expression.charAt(0) != '"' && expression.charAt(0) != '\'') return null;
+        McfppLexer lexer = new McfppLexer();
+        lexer.start(expression);
+        if (lexer.getTokenType() != McfppTokenTypes.STRING) return null;
+        int end = lexer.getTokenEnd();
+        lexer.advance();
+        if (lexer.getTokenType() == McfppTokenTypes.INTERPOLATION_DELIMITER) return "text";
+        return end == expression.length() ? "string" : null;
     }
 
     /** Whether the model declares {@code type} with the compiler's `entity` template keyword. */

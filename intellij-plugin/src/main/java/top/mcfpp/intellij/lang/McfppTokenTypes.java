@@ -12,6 +12,7 @@ public final class McfppTokenTypes {
     /** The `/{` that opens a command block; the matching `}` is {@link #RIGHT_BRACE}. */
     public static final IElementType COMMAND_BLOCK_OPEN = new McfppTokenType("COMMAND_BLOCK_OPEN");
     public static final IElementType STRING = new McfppTokenType("STRING");
+    public static final IElementType INTERPOLATION_DELIMITER = new McfppTokenType("INTERPOLATION_DELIMITER");
     public static final IElementType NUMBER = new McfppTokenType("NUMBER");
     public static final IElementType KEYWORD = new McfppTokenType("KEYWORD");
     public static final IElementType CONTROL_KEYWORD = new McfppTokenType("CONTROL_KEYWORD");

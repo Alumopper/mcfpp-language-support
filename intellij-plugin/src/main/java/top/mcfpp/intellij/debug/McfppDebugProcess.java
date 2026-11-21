@@ -2,6 +2,13 @@ package top.mcfpp.intellij.debug;
 
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.process.*;
+import com.intellij.execution.filters.TextConsoleBuilderFactory;
+import com.intellij.execution.ui.ConsoleView;
+import com.intellij.execution.ui.ConsoleViewContentType;
+import com.intellij.execution.ui.ExecutionConsole;
+import com.intellij.execution.ui.RunnerLayoutUi;
+import com.intellij.ui.content.Content;
+import com.intellij.xdebugger.ui.XDebugTabLayouter;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.EditorFactory;
@@ -37,8 +44,11 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
     private final McfppRunConfiguration configuration;
     private final Process process;
     private final Handler handler = new Handler();
+    private final ConsoleView compilation;
+    private final AnsiEscapeDecoder compilationDecoder = new AnsiEscapeDecoder();
     private final IDebugProtocolServer remote;
     private final AtomicBoolean stopped = new AtomicBoolean();
+    private final com.intellij.openapi.Disposable sessionDisposable = Disposer.newDisposable("McfppDebugProcess");
     private final Map<String, CopyOnWriteArrayList<XLineBreakpoint<McfppBreakpointProperties>>> breakpoints = new ConcurrentHashMap<>();
     private volatile boolean ready;
     private volatile Integer debugExitCode;
@@ -60,6 +70,7 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
     public McfppDebugProcess(XDebugSession session, McfppRunConfiguration configuration) throws ExecutionException {
         super(session);
         this.configuration = configuration;
+        compilation = console(session.getProject());
         var service = session.getProject().getService(McfppProjectService.class);
         service.acquire();
         try {
@@ -70,15 +81,17 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
             launcher.startListening();
             process.onExit().thenAccept(exited -> {
                 handler.finished(debugExitCode == null ? exited.exitValue() : debugExitCode); service.release();
+                Disposer.dispose(sessionDisposable);
                 ui(() -> { if (!getSession().getProject().isDisposed()) getSession().stop(); });
             });
             AppExecutorUtil.getAppExecutorService().execute(() -> {
                 try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
-                    reader.lines().forEach(line -> handler.notifyTextAvailable(line + "\n", ProcessOutputTypes.STDERR));
+                    reader.lines().forEach(line -> compilationOutput(line + "\n", ProcessOutputTypes.STDERR));
                 } catch (java.io.IOException ignored) { /* The process exit is reported separately. */ }
             });
-            Disposer.register(session.getProject(), this::stop);
-        } catch (Exception error) { service.release(); throw new ExecutionException(error.getMessage(), error); }
+            Disposer.register(session.getProject(), sessionDisposable);
+            Disposer.register(sessionDisposable, this::stop);
+        } catch (Exception error) { Disposer.dispose(sessionDisposable); Disposer.dispose(compilation); service.release(); throw new ExecutionException(error.getMessage(), error); }
         session.setPauseActionSupported(true);
     }
 
@@ -91,7 +104,7 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
                 var launch = new HashMap<String, Object>();
                 launch.put("projectPath", configuration.directory().toString());
                 launch.put("dsbJar", McfppDatapackSandboxResource.extract().toString());
-                launch.put("dsbJava", getSession().getProject().getService(McfppCommandService.class).sandboxJavaExecutable());
+                launch.put("dsbJava", McfppToolchain.dsbJavaExecutable(getSession().getProject()));
                 launch.put("stopOnEntry", configuration.debugStopOnEntry);
                 launch.put("offline", configuration.offline); launch.put("locked", configuration.locked);
                 if (configuration.task == McfppTask.TEST) launch.put("test", selectedTest());
@@ -141,7 +154,13 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
         }).exceptionally(error -> { fail(error); return null; });
     }
     @Override public void output(OutputEventArguments event) {
-        handler.notifyTextAvailable(event.getOutput(), "stderr".equals(event.getCategory()) ? ProcessOutputTypes.STDERR : ProcessOutputTypes.STDOUT);
+        if ("stdout".equals(event.getCategory()) || "stderr".equals(event.getCategory()))
+            handler.notifyTextAvailable(event.getOutput(), "stderr".equals(event.getCategory()) ? ProcessOutputTypes.STDERR : ProcessOutputTypes.STDOUT);
+        else compilationOutput(event.getOutput(), ProcessOutputTypes.STDOUT);
+    }
+    private synchronized void compilationOutput(String text, com.intellij.openapi.util.Key<?> stream) {
+        compilationDecoder.escapeText(text, stream, (plain, attributes) ->
+            compilation.print(plain, ConsoleViewContentType.getConsoleViewType(attributes)));
     }
     @Override public void terminated(TerminatedEventArguments event) { ui(() -> getSession().stop()); }
     @Override public void exited(ExitedEventArguments event) {
@@ -150,12 +169,30 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
     }
     @Override public XBreakpointHandler<?> @NotNull [] getBreakpointHandlers() { return new XBreakpointHandler<?>[]{breakpointHandler}; }
     @Override protected ProcessHandler doGetProcessHandler() { return handler; }
-    @Override public @NotNull com.intellij.execution.ui.ExecutionConsole createConsole() {
-        var console = com.intellij.execution.filters.TextConsoleBuilderFactory.getInstance()
-            .createBuilder(getSession().getProject()).getConsole();
-        console.addMessageFilter(new McfppConsoleFilter(getSession().getProject()));
-        console.attachToProcess(handler);
+    private static ConsoleView console(Project project) {
+        var console = TextConsoleBuilderFactory.getInstance().createBuilder(project).getConsole();
+        console.addMessageFilter(new McfppConsoleFilter(project));
         return console;
+    }
+    @Override public @NotNull ExecutionConsole createConsole() {
+        var runtime = console(getSession().getProject());
+        runtime.attachToProcess(handler);
+        return runtime;
+    }
+    @Override public @NotNull XDebugTabLayouter createTabLayouter() {
+        return new XDebugTabLayouter() {
+            @Override public Content registerConsoleContent(@NotNull RunnerLayoutUi ui, @NotNull ExecutionConsole console) {
+                var content = super.registerConsoleContent(ui, console);
+                content.setDisplayName("Program Output");
+                return content;
+            }
+            @Override public void registerAdditionalContent(@NotNull RunnerLayoutUi ui) {
+                var content = ui.createContent("MCFPP.Compilation", compilation.getComponent(), "Compilation", null,
+                    compilation.getPreferredFocusableComponent());
+                content.setDisposer(compilation);
+                ui.addContent(content);
+            }
+        };
     }
     @Override public @NotNull XDebuggerEditorsProvider getEditorsProvider() {
         return new XDebuggerEditorsProvider() {
@@ -180,6 +217,7 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
     @Override public void startPausing() { var args = new PauseArguments(); args.setThreadId(1); command(() -> remote.pause(args)); }
     @Override public void stop() {
         if (!stopped.compareAndSet(false, true)) return;
+        Disposer.dispose(sessionDisposable);
         remote.disconnect(new DisconnectArguments()).orTimeout(5, TimeUnit.SECONDS).whenComplete((ignored, error) -> handler.destroyProcess());
     }
     private void fail(Throwable error) {

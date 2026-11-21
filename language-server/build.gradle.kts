@@ -1,13 +1,13 @@
-import org.gradle.api.plugins.antlr.AntlrTask
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import java.security.MessageDigest
 
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.4.10"
-    id("antlr")
     application
+    id("com.gradleup.shadow") version "9.2.2"
 }
 
-group = "com.simplelanguage"
+group = "top.mcfpp"
 version = "1.0-SNAPSHOT"
 
 repositories {
@@ -20,56 +20,29 @@ repositories {
 
 val lsp4jVersion = "0.22.0"
 val antlrVersion = "4.13.1"
-val antlrPackage = "com.simplelanguage.lsp"
-val generatedAntlrDir = layout.buildDirectory.dir("generated-src/antlr/antlr4")
 val compilerJar = providers.gradleProperty("mcfppCompilerJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0.jar")
-val verifyCompilerGrammar by tasks.registering {
-    val upstream = file(providers.gradleProperty("mcfppCompilerGrammar").orElse("../../MCFPP/src/main/antlr").get())
-    val copies = file("src/main/antlr4")
-    inputs.files(listOf("mcfppLexer.g4", "mcfppParser.g4").flatMap { listOf(upstream.resolve(it), copies.resolve(it)) })
-    doLast {
-        for (name in listOf("mcfppLexer.g4", "mcfppParser.g4")) {
-            check(upstream.resolve(name).readText().replace("\r\n", "\n") == copies.resolve(name).readText().replace("\r\n", "\n")) {
-                "The language server grammar differs from the compiler: $name. Synchronize the grammar before building."
-            }
-        }
-    }
-}
-// Compile against the compiler API and our Kotlin version; the executable distribution also contains the SDK's newer Kotlin runtime.
-val compilerEditorApi by tasks.registering(Jar::class) {
-    archiveFileName.set("compiler-editor-api.jar")
-    destinationDirectory.set(layout.buildDirectory.dir("compiler-api"))
-    from(compilerJar.map { zipTree(file(it)) }) {
-        exclude("kotlin/**", "kotlinx/**", "moe/**", "META-INF/kotlin*", "META-INF/moe*", "META-INF/*.kotlin_module")
-        exclude("org/junit/**", "org/opentest4j/**", "org/apiguardian/**", "junit/**")
-        include("**")
-    }
-}
-// The CLI distribution embeds its own test API. Keep it out of the editor and its test runtime.
-val compilerEditorRuntime by tasks.registering(Jar::class) {
-    archiveFileName.set("compiler-editor-runtime.jar")
-    destinationDirectory.set(layout.buildDirectory.dir("compiler-api"))
-    from(compilerJar.map { zipTree(file(it)) }) {
-        exclude("org/junit/**", "org/opentest4j/**", "org/apiguardian/**", "junit/**", "META-INF/services/org.junit.*")
-    }
-}
+val compilerPlainJar = providers.gradleProperty("mcfppCompilerPlainJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0-plain.jar")
+val compilerEditorJar = providers.gradleProperty("mcfppCompilerEditorJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0-editor.jar")
+val compilerStdlibIndexJar = providers.gradleProperty("mcfppCompilerStdlibIndexJar").orElse("../../MCFPP/build/libs/MCFPP-0.1.0-stdlib-index.jar")
 
 dependencies {
     implementation(kotlin("stdlib"))
-    implementation(kotlin("reflect"))
-
-    antlr("org.antlr:antlr4:$antlrVersion")
     implementation("org.antlr:antlr4-runtime:$antlrVersion")
-
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:$lsp4jVersion")
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:$lsp4jVersion")
-    compileOnly(files(compilerEditorApi))
-    testCompileOnly(files(compilerEditorApi))
-    runtimeOnly(files(compilerEditorRuntime))
+    implementation(files(compilerEditorJar))
+    // Transitive runtime dependencies required by top.mcfpp:nbt:1.0 (minimized by ShadowJar)
+    implementation("com.mojang:brigadier:1.3.10")
+    implementation("org.apache.commons:commons-lang3:3.18.0")
+    implementation("com.google.guava:guava:33.4.5-jre")
+    implementation("it.unimi.dsi:fastutil:8.5.12")
     implementation("org.tomlj:tomlj:1.1.1")
-
     implementation("org.slf4j:slf4j-simple:2.0.9")
 
+    // Only compiler cross-check tests inspect compiler registries directly; production jars stay lightweight.
+    testImplementation(files(compilerPlainJar))
+    testRuntimeOnly(files(compilerStdlibIndexJar))
+    testRuntimeOnly(kotlin("reflect"))
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.1")
 }
@@ -84,80 +57,19 @@ kotlin {
     jvmToolchain(25)
 }
 
-tasks.generateGrammarSource {
-    enabled = false
-}
-
-val generateUnicodeClassGrammar by tasks.registering(AntlrTask::class) {
-    outputDirectory = generatedAntlrDir.get().asFile
-    arguments = listOf(
-        "-visitor",
-        "-listener",
-        "-package", antlrPackage
-    )
-    source = fileTree("src/main/antlr4") {
-        include("unicodeClass.g4")
-    }
-}
-
-val generateMcfppLexerGrammar by tasks.registering(AntlrTask::class) {
-    dependsOn(generateUnicodeClassGrammar)
-    outputDirectory = generatedAntlrDir.get().asFile
-    arguments = listOf(
-        "-visitor",
-        "-listener",
-        "-package", antlrPackage,
-        "-lib", generatedAntlrDir.get().asFile.absolutePath
-    )
-    source = fileTree("src/main/antlr4") {
-        include("mcfppLexer.g4")
-    }
-}
-
-val generateMcfppParserGrammar by tasks.registering(AntlrTask::class) {
-    dependsOn(generateMcfppLexerGrammar)
-    outputDirectory = generatedAntlrDir.get().asFile
-    arguments = listOf(
-        "-visitor",
-        "-listener",
-        "-package", antlrPackage,
-        "-lib", generatedAntlrDir.get().asFile.absolutePath
-    )
-    source = fileTree("src/main/antlr4") {
-        include("mcfppParser.g4")
-    }
-}
-
-val generateSimpleLanguageGrammar by tasks.registering(AntlrTask::class) {
-    outputDirectory = generatedAntlrDir.get().asFile
-    arguments = listOf(
-        "-visitor",
-        "-listener",
-        "-package", antlrPackage,
-        "-lib", file("src/main/antlr4").absolutePath
-    )
-    source = fileTree("src/main/antlr4") {
-        include("SimpleLanguage.g4")
-    }
-}
-
-val generateAllGrammarSources by tasks.registering {
-    dependsOn(verifyCompilerGrammar, generateMcfppParserGrammar, generateSimpleLanguageGrammar)
-}
-
 sourceSets {
     main {
         java {
-            srcDirs("src/main/kotlin", "build/generated-src/antlr/antlr4", "../shared/src/main/java")
+            srcDirs("src/main/kotlin", "../shared/src/main/java")
         }
         kotlin {
-            srcDirs("src/main/kotlin", "build/generated-src/antlr/antlr4")
+            srcDirs("src/main/kotlin")
         }
     }
 }
 
 application {
-    mainClass.set("com.simplelanguage.lsp.MainKt")
+    mainClass.set("top.mcfpp.lsp.MainKt")
 }
 
 val generateEntityEditorApi by tasks.registering(JavaExec::class) {
@@ -168,45 +80,54 @@ val generateEntityEditorApi by tasks.registering(JavaExec::class) {
     args(output.get().asFile.absolutePath)
     outputs.file(output)
 }
+
 tasks.processResources {
     dependsOn(generateEntityEditorApi)
     from(layout.buildDirectory.dir("generated-entity-api"))
 }
 
+fun ShadowJar.configureServerShadowJar(fileName: String, includeStdlibIndex: Boolean) {
+    val distribution = file(compilerJar.get())
+    val stdlibArchive = file(compilerStdlibIndexJar.get())
+    inputs.file(distribution)
+    if (includeStdlibIndex) inputs.file(stdlibArchive)
+    archiveFileName.set(fileName)
+    archiveClassifier.set("")
+    from(sourceSets.main.get().output)
+    configurations.set(setOf(project.configurations.runtimeClasspath.get()))
+    if (includeStdlibIndex) {
+        from({ zipTree(stdlibArchive) })
+    }
+    doFirst {
+        check(file(compilerEditorJar.get()).isFile) {
+            "Missing compiler editor artifact: ${compilerEditorJar.get()}. Run `gradlew editorRuntimeJar stdlibIndexJar shadowJar` in MCFPP."
+        }
+        manifest.attributes["Mcfpp-Compiler-Sha256"] =
+            MessageDigest.getInstance("SHA-256").digest(distribution.readBytes()).joinToString("") { "%02x".format(it) }
+    }
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+        attributes["Multi-Release"] = "true"
+    }
+    mergeServiceFiles()
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/INDEX.LIST", "module-info.class", "META-INF/versions/**/module-info.class")
+    minimize {
+        exclude(dependency("org.slf4j:.*"))
+        exclude(dependency("org.eclipse.lsp4j:.*"))
+        exclude(dependency("org.jetbrains.kotlin:kotlin-stdlib.*"))
+    }
+}
+
 tasks {
-    compileJava {
-        dependsOn(generateAllGrammarSources)
-    }
-
-    compileKotlin {
-        dependsOn(generateAllGrammarSources)
-    }
-
-    compileTestKotlin {
-        dependsOn(generateTestGrammarSource)
+    shadowJar {
+        configureServerShadowJar("mcfpp-language-server.jar", includeStdlibIndex = true)
     }
 
     jar {
-        dependsOn(compilerEditorRuntime)
-        val distribution = file(compilerJar.get())
-        inputs.file(distribution)
-        doFirst {
-            manifest.attributes["Mcfpp-Compiler-Sha256"] = MessageDigest.getInstance("SHA-256").digest(distribution.readBytes()).joinToString("") { "%02x".format(it) }
-        }
-        archiveFileName.set("mcfpp-language-server.jar")
+        archiveClassifier.set("plain")
         manifest {
             attributes["Main-Class"] = application.mainClass.get()
-            // Runtime dependencies such as Log4j ship Java 9+ implementations in
-            // META-INF/versions. Preserve their multi-release behaviour in the fat JAR.
-            attributes["Multi-Release"] = "true"
         }
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-        from({
-            configurations.runtimeClasspath.get().map { dependency ->
-                if (dependency.isDirectory) dependency else zipTree(dependency)
-            }
-        })
     }
 
     test {
@@ -214,12 +135,19 @@ tasks {
     }
 }
 
+val intellijServerJar by tasks.registering(ShadowJar::class) {
+    group = "build"
+    description = "Thin language server JAR for IntelliJ IDEA (reuses bin.mclib from bundled mcfpp-cli.jar)."
+    configureServerShadowJar("mcfpp-language-server-intellij.jar", includeStdlibIndex = false)
+}
+
 val syncExtensionServer by tasks.registering(Copy::class) {
-    dependsOn(tasks.jar)
-    from(tasks.jar.flatMap { it.archiveFile })
+    dependsOn(tasks.shadowJar)
+    from(tasks.shadowJar.flatMap { it.archiveFile })
     into(layout.projectDirectory.dir("../vscode-extension/server"))
 }
 
 tasks.build {
+    dependsOn(tasks.shadowJar, intellijServerJar)
     finalizedBy(syncExtensionServer)
 }

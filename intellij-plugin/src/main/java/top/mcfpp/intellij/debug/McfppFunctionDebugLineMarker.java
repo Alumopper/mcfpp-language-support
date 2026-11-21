@@ -24,6 +24,9 @@ public final class McfppFunctionDebugLineMarker extends RunLineMarkerContributor
         var action = new DumbAwareAction("Debug " + id) {
             @Override public void actionPerformed(@NotNull AnActionEvent event) { McfppRunConfigurations.debugFunction(file.getProject(), config.getParent(), id); }
         };
-        return new Info(AllIcons.Actions.StartDebugger, new AnAction[]{action}, e -> "Debug MCFPP function " + id);
+        var render = new DumbAwareAction("Run (Render) " + id) {
+            @Override public void actionPerformed(@NotNull AnActionEvent event) { McfppRunConfigurations.renderFunction(file.getProject(), config.getParent(), id); }
+        };
+        return new Info(AllIcons.Actions.StartDebugger, new AnAction[]{action, render}, e -> "Debug or render MCFPP function " + id);
     }
 }

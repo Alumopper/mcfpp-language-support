@@ -5,11 +5,17 @@ import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 
 public final class McfppConsoleFilterTest extends BasePlatformTestCase {
+    public void testFailureReportWithoutLocationDoesNotRescanEveryCharacter() {
+        String line="{\"outputs\":["+"{\"command\":\"data get storage demo:state value\",\"text\":\"1\"},".repeat(10000)+"]}\n";
+        assertNull(new McfppConsoleFilter(getProject()).applyFilter(line,line.length()));
+    }
+
     public void testTimestampedCompilerErrorLinksHeaderAndSourceLine() throws Exception {
         var path=java.nio.file.Files.createTempFile("mcfpp-console-", ".mcfpp");
         java.nio.file.Files.writeString(path,"func first() {}\nfunc main() { missing(); }\n");
         com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),path.toString());
         com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),path.getParent().toString());
+        com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),path.toRealPath().getParent().toString());
         var source=com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
         assertNotNull(source);
         try {

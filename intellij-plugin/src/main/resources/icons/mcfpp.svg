@@ -1,4 +1,12 @@
 <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-  <path fill="#5B8DEF" d="M1 2.5 4 1l4 2 4-2 3 1.5v11L12 15l-4-2-4 2-3-1.5z"/>
-  <path fill="#FFF" d="M3 4h2l3 4 3-4h2v8h-2V7l-3 4-3-4v5H3z"/>
+  <polygon points="2,4 4,4 4,7 1,7 1,5" fill="#6442C9"/>
+  <rect x="5" y="4" width="3" height="3" fill="#1B7D63"/>
+  <rect x="1" y="8" width="3" height="3" fill="#1B7D63"/>
+  <rect x="5" y="8" width="3" height="3" fill="#C27200"/>
+  <rect x="9" y="8" width="3" height="3" fill="#1B7D63"/>
+  <polygon points="1,12 4,12 4,15 2,15 1,14" fill="#6442C9"/>
+  <rect x="5" y="12" width="3" height="3" fill="#1B7D63"/>
+  <polygon points="9,12 12,12 12,14 11,15 9,15" fill="#6442C9"/>
+  <rect x="13" y="1" width="1" height="3" fill="#D95314"/>
+  <rect x="12" y="2" width="3" height="1" fill="#D95314"/>
 </svg>

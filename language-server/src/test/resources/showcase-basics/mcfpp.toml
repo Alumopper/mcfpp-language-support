@@ -1,0 +1,13 @@
+schema = 1
+name = "basics"
+namespace = "showcase.basics"
+version = "26.3"
+description = "语言基础与 26.3 浮点"
+sourcePath = "src/main/mcfpp"
+targetPath = "build"
+
+[toolchain]
+version = "java25-v1"
+
+[mni]
+enabled = false
