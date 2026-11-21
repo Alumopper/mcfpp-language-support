@@ -374,7 +374,7 @@ class MCFPPTypeChecker(
             val function = call?.functionCall()
             val target = function?.let(::functionCallOccurrence)?.let(resolveCallSymbol)
                 ?: call?.varWithSuffix()?.Identifier()?.text?.let { resolveGlobalSymbol(it, tokenPosition(ctx.start)) }
-            val count = function?.arguments()?.normalArgs().argumentExpressions()?.size ?: 0
+            val count = function?.arguments()?.normalArgs().argumentExpressions().size
             val callbackType = target?.parameters?.filterNot { it.isReadOnly }?.getOrNull(count)?.typeName
             val resultType = declaration?.type()?.typeBody()?.functionType()?.functionReturnType()?.text
                 ?: if (ContextBuiltins.entryBefore(document.analysisText, ctx.start.startIndex) != null) "void" else callbackType?.let(::functionResult)
@@ -929,6 +929,8 @@ class MCFPPTypeChecker(
         val identifiers = ctx.namespaceID()?.getTokens(mcfppParser.Identifier).orEmpty()
         val nameToken = identifiers.lastOrNull()?.symbol ?: return null
         val position = tokenPosition(nameToken)
+        val readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
+        val normalArguments = ctx.arguments()?.normalArgs().argumentExpressions()
         return MCFPPReferenceOccurrence(
             name = nameToken.text,
             range = tokenRange(nameToken),
@@ -936,10 +938,10 @@ class MCFPPTypeChecker(
             enclosingFunctionScopeId = document.innermostFunctionScope(position)?.id,
             isCall = true,
             namespaceQualifier = identifiers.dropLast(1).joinToString(".") { it.text }.takeIf { it.isNotEmpty() },
-            readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map { it.text }.orEmpty(),
-            normalArguments = ctx.arguments()?.normalArgs().argumentExpressions()?.map { it.text }.orEmpty(),
-            readOnlyArgumentRanges = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map(::contextRange).orEmpty(),
-            normalArgumentRanges = ctx.arguments()?.normalArgs().argumentExpressions()?.map(::contextRange).orEmpty()
+            readOnlyArguments = readOnlyArguments.map { it.text },
+            normalArguments = normalArguments.map { it.text },
+            readOnlyArgumentRanges = readOnlyArguments.map(::contextRange),
+            normalArgumentRanges = normalArguments.map(::contextRange)
         )
     }
 
@@ -1012,9 +1014,12 @@ class MCFPPTypeChecker(
         }
     }
 
+    internal fun expressionType(expression: mcfppParser.ExpressionContext): String? = inferExpressionType(expression)
+
     internal fun expressionType(expression: String, offset: Int): String? {
         val cacheKey = offset to expression
         if (cacheKey in expressionTypeCache) return expressionTypeCache[cacheKey]
+        document.expressionAt(offset, expression)?.let { return expressionType(it) }
         val lexer = mcfppLexer(CharStreams.fromString(expression))
         lexer.removeErrorListeners()
         val tokens = CommonTokenStream(lexer)
@@ -1233,15 +1238,6 @@ class MCFPPTypeChecker(
             argument.trim().takeIf { it.isNotEmpty() }?.let { name to it }
         }
         .toMap()
-
-    private fun substituteTypeParameters(typeName: String, substitutions: Map<String, String>): String {
-        return substitutions.entries.fold(typeName) { current, (parameter, argument) ->
-            current.replace(
-                Regex("(?<![A-Za-z0-9_])${Regex.escape(parameter)}(?![A-Za-z0-9_])"),
-                Regex.escapeReplacement(argument)
-            )
-        }
-    }
 
     private fun symbolKey(symbol: MCFPPSymbol): String {
         return listOf(

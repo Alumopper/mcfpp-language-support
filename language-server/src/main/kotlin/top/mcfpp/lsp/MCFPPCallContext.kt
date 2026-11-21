@@ -14,7 +14,8 @@ internal data class MCFPPCallContext(
     val argumentGroup: MCFPPArgumentGroup,
     val activeParameter: Int,
     val arguments: List<String>,
-    val readOnlyArguments: List<String> = emptyList()
+    val readOnlyArguments: List<String> = emptyList(),
+    val argumentPositions: List<Position> = emptyList()
 )
 
 /** Finds incomplete call expressions without requiring the parser to recover a missing closing delimiter. */
@@ -78,7 +79,8 @@ internal object MCFPPCallContextFinder {
         group: MCFPPArgumentGroup
     ): MCFPPCallContext? {
         val head = parseHead(text, openOffset, mask) ?: return null
-        val arguments = splitArguments(text, openOffset + 1, cursorOffset, mask)
+        val argumentRanges = splitArgumentRanges(text, openOffset + 1, cursorOffset, mask)
+        val arguments = argumentRanges.map { text.substring(it.first, it.last + 1) }
         val readOnlyArguments = if (group == MCFPPArgumentGroup.NORMAL) {
             readOnlyArgumentsBefore(text, openOffset, mask)
         } else {
@@ -91,7 +93,8 @@ internal object MCFPPCallContextFinder {
             argumentGroup = group,
             activeParameter = (arguments.size - 1).coerceAtLeast(0),
             arguments = arguments,
-            readOnlyArguments = readOnlyArguments
+            readOnlyArguments = readOnlyArguments,
+            argumentPositions = argumentRanges.map { offsetToPosition(text, it.first) }
         )
     }
 
@@ -104,7 +107,8 @@ internal object MCFPPCallContextFinder {
         if (openOffset < 0 || parseHead(text, openOffset, mask) == null) {
             return emptyList()
         }
-        return splitArguments(text, openOffset + 1, closeOffset, mask)
+        return splitArgumentRanges(text, openOffset + 1, closeOffset, mask)
+            .map { text.substring(it.first, it.last + 1) }
     }
 
     private data class CallHead(val name: String, val qualifier: String?, val separator: Char?)
@@ -159,11 +163,11 @@ internal object MCFPPCallContextFinder {
         return CallHead(name, qualifier, separator)
     }
 
-    private fun splitArguments(text: String, start: Int, end: Int, mask: BooleanArray): List<String> {
+    private fun splitArgumentRanges(text: String, start: Int, end: Int, mask: BooleanArray): List<IntRange> {
         if (start >= end) {
-            return listOf("")
+            return listOf(start until start)
         }
-        val result = mutableListOf<String>()
+        val result = mutableListOf<IntRange>()
         var segmentStart = start
         var parentheses = 0
         var brackets = 0
@@ -185,13 +189,13 @@ internal object MCFPPCallContextFinder {
                 '<' -> if (matchingClose(text, index, end, mask) >= 0 && parseHead(text, index, mask) != null) angles += 1
                 '>' -> if (angles > 0) angles -= 1
                 ',' -> if (parentheses == 0 && brackets == 0 && braces == 0 && angles == 0) {
-                    result += text.substring(segmentStart, index)
+                    result += segmentStart until index
                     segmentStart = index + 1
                 }
             }
             index += 1
         }
-        result += text.substring(segmentStart, end)
+        result += segmentStart until end
         return result
     }
 

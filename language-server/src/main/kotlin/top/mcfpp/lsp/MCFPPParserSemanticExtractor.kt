@@ -7,7 +7,6 @@ import org.antlr.v4.runtime.ParserRuleContext
 import org.antlr.v4.runtime.RecognitionException
 import org.antlr.v4.runtime.Recognizer
 import org.antlr.v4.runtime.Token
-import org.antlr.v4.runtime.misc.Interval
 import org.antlr.v4.runtime.tree.ParseTreeWalker
 import org.antlr.v4.runtime.tree.TerminalNode
 import org.eclipse.lsp4j.Diagnostic
@@ -19,9 +18,6 @@ import top.mcfpp.antlr.mcfppLexer
 import top.mcfpp.antlr.mcfppParser
 import top.mcfpp.antlr.mcfppParserBaseListener
 import top.mcfpp.language.ContextBuiltins
-
-private fun ParserRuleContext.sourceText(): String =
-    start.inputStream.getText(Interval(start.startIndex, stop.stopIndex))
 
 internal fun stringLiteralType(source: String): String? {
     if (source.length < 2 || source.first() != source.last() || source.first() !in "\"'") return null
@@ -271,6 +267,8 @@ object MCFPPParserSemanticExtractor {
             } else {
                 null
             }
+            val readOnlyArguments = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
+            val normalArguments = functionCall?.arguments()?.normalArgs().argumentExpressions()
             referencesByName.getOrPut(token.text) { mutableListOf() }.add(range)
             referenceOccurrencesByName.getOrPut(token.text) { mutableListOf() }.add(
                 MCFPPReferenceOccurrence(
@@ -280,11 +278,12 @@ object MCFPPParserSemanticExtractor {
                     enclosingFunctionScopeId = currentFunctionScopeId(),
                     isCall = isCall,
                     namespaceQualifier = namespaceQualifier,
-                    readOnlyArguments = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map { it.sourceText() }.orEmpty(),
-                    normalArguments = functionCall?.arguments()?.normalArgs().argumentExpressions()?.map { it.sourceText() }.orEmpty(),
-                    readOnlyArgumentRanges = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression()?.map(::contextRange).orEmpty(),
-                    normalArgumentRanges = functionCall?.arguments()?.normalArgs().argumentExpressions()?.map(::contextRange).orEmpty()
-                    , isNamedArgument = namedArgument, isAssignmentTarget = token.tokenIndex in assignmentTargets
+                    readOnlyArguments = readOnlyArguments.map { it.sourceText() },
+                    normalArguments = normalArguments.map { it.sourceText() },
+                    readOnlyArgumentRanges = readOnlyArguments.map(::contextRange),
+                    normalArgumentRanges = normalArguments.map(::contextRange),
+                    isNamedArgument = namedArgument,
+                    isAssignmentTarget = token.tokenIndex in assignmentTargets
                 )
             )
         }
@@ -1097,21 +1096,5 @@ object MCFPPParserSemanticExtractor {
             return Range(start, end)
         }
 
-        private fun offsetToPosition(text: String, offset: Int): Position {
-            val boundedOffset = offset.coerceIn(0, text.length)
-            var line = 0
-            var character = 0
-            var index = 0
-            while (index < boundedOffset) {
-                if (text[index] == '\n') {
-                    line += 1
-                    character = 0
-                } else {
-                    character += 1
-                }
-                index += 1
-            }
-            return Position(line, character)
-        }
     }
 }
