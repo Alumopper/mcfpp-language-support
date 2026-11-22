@@ -27,10 +27,12 @@ class MCFPPProjectWorkflowTest {
         }
         val snapshot = MniSymbolSnapshot().apply { projectUri = "file:///project/"; generation = 2; symbols = listOf(symbol) }
         index.setMniSymbols(snapshot)
+        assertEquals("answer", index.snapshot().librarySymbols.single().name)
         assertEquals("answer", index.refresh(emptyMap()).librarySymbols.single().name)
         index.setMniSymbols(MniSymbolSnapshot().apply { projectUri = snapshot.projectUri; generation = 3 })
-        assertTrue(index.refresh(emptyMap()).librarySymbols.isEmpty())
+        assertTrue(index.snapshot().librarySymbols.isEmpty())
         index.setMniSymbols(snapshot)
+        assertTrue(index.snapshot().librarySymbols.isEmpty())
         assertTrue(index.refresh(emptyMap()).librarySymbols.isEmpty())
     }
 }

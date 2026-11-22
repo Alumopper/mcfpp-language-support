@@ -51,11 +51,20 @@ private data class CachedProjectLibraries(
 )
 
 class MCFPPProjectIndex {
-    private val mniSnapshots = java.util.concurrent.ConcurrentHashMap<String, top.mcfpp.language.MniSymbolSnapshot>()
+    private data class MniSymbols(val generation: Long, val symbols: List<MCFPPSymbol>)
+
+    private val symbolPublicationLock = Any()
+    private val mniSnapshots = linkedMapOf<String, MniSymbols>()
+    private var diskLibrarySymbols = emptyList<MCFPPSymbol>()
+
     fun setMniSymbols(value: top.mcfpp.language.MniSymbolSnapshot) {
-        if (value.projectUri.isNullOrBlank()) return
-        mniSnapshots.compute(value.projectUri) { _, previous ->
-            if (previous != null && previous.generation > value.generation) previous else value
+        val project = value.projectUri
+        if (project.isNullOrBlank()) return
+        synchronized(symbolPublicationLock) {
+            val previous = mniSnapshots[project]
+            if (previous != null && previous.generation > value.generation) return
+            mniSnapshots[project] = MniSymbols(value.generation, value.toSymbols())
+            snapshot = snapshot.copy(librarySymbols = mergedLibrarySymbols())
         }
     }
     @Volatile
@@ -133,24 +142,25 @@ class MCFPPProjectIndex {
         workspaceFileCache = nextFileCache
         projectLibraryCache = nextLibraryCache
         indexedProjects = projects
-        snapshot = MCFPPProjectSnapshot(
-            fileAnalyses = fileAnalyses,
-            librarySymbols = (librarySymbols + mniSnapshots.values.flatMap { it.toSymbols() }).distinctBy {
-                listOf(
-                    it.name,
-                    it.kind,
-                    it.namespaceName,
-                    it.containerName,
-                    it.receiverType,
-                    it.parameters.joinToString(";") { parameter ->
-                        listOf(parameter.isReadOnly, parameter.typeName, parameter.hasDefault).joinToString(":")
-                    }
-                ).joinToString("|")
-            },
-            configFiles = configFiles.distinct()
-        )
-        return snapshot
+        return synchronized(symbolPublicationLock) {
+            diskLibrarySymbols = librarySymbols
+            MCFPPProjectSnapshot(fileAnalyses, mergedLibrarySymbols(), configFiles.distinct()).also { snapshot = it }
+        }
     }
+
+    private fun mergedLibrarySymbols(): List<MCFPPSymbol> =
+        (diskLibrarySymbols + mniSnapshots.values.flatMap { it.symbols }).distinctBy {
+            listOf(
+                it.name,
+                it.kind,
+                it.namespaceName,
+                it.containerName,
+                it.receiverType,
+                it.parameters.joinToString(";") { parameter ->
+                    listOf(parameter.isReadOnly, parameter.typeName, parameter.hasDefault).joinToString(":")
+                }
+            ).joinToString("|")
+        }
 
     fun snapshot(): MCFPPProjectSnapshot = snapshot
 

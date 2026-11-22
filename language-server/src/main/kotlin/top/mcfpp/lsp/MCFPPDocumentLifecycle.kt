@@ -145,7 +145,8 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
 
     fun updateMniSymbols(snapshot: MniSymbolSnapshot) {
         projectIndex.setMniSymbols(snapshot)
-        refreshProjectIndex()
+        workspace.invalidateWorkspaceSymbolCache()
+        scheduleDependentDiagnosticsRefresh()
     }
 
     fun shutdown() {
@@ -225,7 +226,7 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
         }
     }
 
-    private fun scheduleDependentDiagnosticsRefresh(changedUri: String) {
+    private fun scheduleDependentDiagnosticsRefresh(changedUri: String? = null) {
         synchronized(dependentDiagnosticsLock) {
             pendingDependentDiagnosticsRefresh?.cancel(false)
             pendingDependentDiagnosticsRefresh = analysisExecutor.schedule({
