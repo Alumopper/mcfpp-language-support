@@ -9,6 +9,7 @@ import org.eclipse.lsp4j.DocumentRangeFormattingParams
 import org.eclipse.lsp4j.MessageParams
 import org.eclipse.lsp4j.MessageType
 import org.eclipse.lsp4j.PublishDiagnosticsParams
+import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.TextEdit
 import org.eclipse.lsp4j.jsonrpc.ResponseErrorException
 import org.eclipse.lsp4j.jsonrpc.messages.ResponseError
@@ -204,7 +205,8 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                     }
                     val previous = analyses.put(uri, analysis)
                     val surfaceChanged = previous == null || semanticSurface(previous) != semanticSurface(analysis)
-                    if (surfaceChanged) workspace.invalidateWorkspaceSymbolCache()
+                    val rangesChanged = !surfaceChanged && symbolRanges(previous) != symbolRanges(analysis)
+                    if (surfaceChanged || rangesChanged) workspace.invalidateWorkspaceSymbolCache()
                     else workspace.evictDocumentSymbolCache(uri)
                     surfaceChanged
                 }
@@ -274,6 +276,8 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                         symbol.receiverType.orEmpty(),
                         symbol.typeName.orEmpty(),
                         symbol.accessModifier.name,
+                        symbol.isMacro.toString(),
+                        symbol.isNative.toString(),
                         symbol.superTypes.joinToString(","),
                         parameterSignatureKey(symbol)
                     ).joinToString("|")
@@ -282,6 +286,10 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                 .forEach(::add)
         }.joinToString("\n")
     }
+
+    private fun symbolRanges(analysis: MCFPPDocumentAnalysis): List<Range> =
+        (analysis.topLevelSymbols + analysis.typeMembers.values.flatten())
+            .map { it.range }
 
     private fun scheduleProjectIndexRefresh(delayMillis: Long) {
         synchronized(projectRefreshLock) {

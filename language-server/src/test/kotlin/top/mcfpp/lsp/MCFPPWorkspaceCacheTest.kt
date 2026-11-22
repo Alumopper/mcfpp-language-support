@@ -10,6 +10,7 @@ import org.eclipse.lsp4j.TextDocumentItem
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -72,6 +73,30 @@ class MCFPPWorkspaceCacheTest {
 
         assertTrue(workspace.isMacroSignature(native))
         assertTrue(workspace.hasEnumMember("Red"))
+    }
+
+    @Test
+    fun `body newline shifting downstream declaration refreshes workspace symbol ranges`() {
+        val lifecycle = MCFPPDocumentLifecycle(MCFPPLanguageServer())
+        val uri = "file:///workspace/shifted.mcfpp"
+        val initial = "func first() {\n    var x: int = 1;\n}\nfunc second() {}\n"
+        val shifted = "func first() {\n    var x: int = 1;\n\n}\nfunc second() {}\n"
+        try {
+            lifecycle.didOpen(DidOpenTextDocumentParams(TextDocumentItem(uri, "mcfpp", 1, initial)))
+            analysis(lifecycle, uri)
+            val beforeLine = lifecycle.workspace.workspaceSymbols().first { it.name == "second" }.range.start.line
+            assertEquals(3, beforeLine)
+
+            lifecycle.didChange(DidChangeTextDocumentParams(
+                VersionedTextDocumentIdentifier(uri, 2),
+                listOf(TextDocumentContentChangeEvent(null, null, shifted))
+            ))
+            analysis(lifecycle, uri)
+            val afterLine = lifecycle.workspace.workspaceSymbols().first { it.name == "second" }.range.start.line
+            assertEquals(4, afterLine)
+        } finally {
+            lifecycle.shutdown()
+        }
     }
 
     private fun analysis(lifecycle: MCFPPDocumentLifecycle, uri: String): MCFPPDocumentAnalysis =
