@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.project.Project;
+import top.mcfpp.intellij.tooling.McfppSettings;
 import top.mcfpp.intellij.tooling.McfppToolchain;
 
 import java.io.BufferedReader;
@@ -14,10 +15,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -32,6 +36,8 @@ public final class McfppNodeService implements Disposable {
     private final Object errorLock = new Object();
     private final StringBuilder errorBuffer = new StringBuilder();
     private final AtomicLong sequence = new AtomicLong();
+    private final AtomicBoolean availabilityProbeRunning = new AtomicBoolean();
+    private final Object availabilityLock = new Object();
     private final ExecutorService io = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "MCFPP formatter");
         t.setDaemon(true);
@@ -39,12 +45,60 @@ public final class McfppNodeService implements Disposable {
     });
 
     private volatile boolean disposed;
+    private volatile String checkedAvailabilityKey;
+    private volatile Boolean formatterAvailable;
     private Process process;
     private BufferedReader reader;
     private BufferedWriter writer;
 
     public McfppNodeService(Project project) {
         this.project = project;
+    }
+
+    /** Returns cached availability and schedules any new probe off the EDT. */
+    public boolean isFormatterAvailable() {
+        if (disposed || project.isDisposed()) return false;
+        String key = availabilityKey();
+        synchronized (availabilityLock) {
+            if (!Objects.equals(checkedAvailabilityKey, key)) {
+                checkedAvailabilityKey = key;
+                formatterAvailable = null;
+            }
+            if (formatterAvailable != null) return formatterAvailable;
+        }
+        if (availabilityProbeRunning.compareAndSet(false, true)) {
+            io.execute(() -> probeAvailability(key));
+        }
+        return false;
+    }
+
+    private String availabilityKey() {
+        return McfppSettings.get(project).nodePath.trim() + "\n" +
+                System.getProperty("mcfpp.formatter.path", "").trim();
+    }
+
+    private void probeAvailability(String key) {
+        boolean available = false;
+        Process probe = null;
+        try {
+            probe = McfppToolchain.node(project, "--version").createProcess();
+            available = probe.waitFor(3, TimeUnit.SECONDS) && probe.exitValue() == 0 &&
+                    Files.isRegularFile(McfppToolchain.formatter());
+        } catch (Exception ignored) {
+            // Missing Node.js or formatter files select the built-in PSI formatter.
+        } finally {
+            if (probe != null && probe.isAlive()) {
+                probe.destroy();
+                if (probe.isAlive()) probe.destroyForcibly();
+            }
+            synchronized (availabilityLock) {
+                if (Objects.equals(checkedAvailabilityKey, key)) formatterAvailable = available;
+            }
+            availabilityProbeRunning.set(false);
+            if (!disposed && !project.isDisposed() && !Objects.equals(key, availabilityKey())) {
+                isFormatterAvailable();
+            }
+        }
     }
 
     public JsonObject request(String operation, String path, String source, boolean fix, int cursor) throws IOException {
@@ -82,7 +136,10 @@ public final class McfppNodeService implements Disposable {
                 lineFuture.cancel(true);
                 throw e;
             }
-            if (line == null) throw new IOException("Node.js stopped. " + errorSnapshot());
+            if (line == null) {
+                markFormatterUnavailable();
+                throw new FormatterUnavailableException("Node.js stopped. " + errorSnapshot());
+            }
             JsonObject result = JsonParser.parseString(line).getAsJsonObject();
             if (!result.has("id") || result.get("id").getAsLong() != id) {
                 throw new IOException("Unexpected formatter response");
@@ -94,32 +151,47 @@ public final class McfppNodeService implements Disposable {
         } catch (Exception e) {
             stopProcess();
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (e instanceof FormatterUnavailableException unavailable) throw unavailable;
             throw e instanceof IOException ioe ? ioe : new IOException("MCFPP formatter: " + e.getMessage(), e);
         } finally {
             requestLock.unlock();
         }
     }
 
-    private void start() throws Exception {
+    private void start() throws IOException {
         if (process != null && process.isAlive() && reader != null && writer != null) return;
         stopProcess();
-        var command = McfppToolchain.formatterCommand(project);
-        command.withWorkDirectory(McfppToolchain.formatter().getParent().toFile());
-        Process started = command.createProcess();
-        process = started;
-        reader = new BufferedReader(new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8));
-        writer = new BufferedWriter(new OutputStreamWriter(started.getOutputStream(), StandardCharsets.UTF_8));
-        clearErrorBuffer();
-        io.submit(() -> {
-            try (var errors = new BufferedReader(new InputStreamReader(started.getErrorStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = errors.readLine()) != null) {
-                    appendError(line);
+        try {
+            var formatter = McfppToolchain.formatter();
+            if (!Files.isRegularFile(formatter)) throw new IOException("Formatter tool is missing");
+            var command = McfppToolchain.formatterCommand(project);
+            command.withWorkDirectory(formatter.getParent().toFile());
+            Process started = command.createProcess();
+            process = started;
+            reader = new BufferedReader(new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8));
+            writer = new BufferedWriter(new OutputStreamWriter(started.getOutputStream(), StandardCharsets.UTF_8));
+            clearErrorBuffer();
+            io.submit(() -> {
+                try (var errors = new BufferedReader(new InputStreamReader(started.getErrorStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = errors.readLine()) != null) {
+                        appendError(line);
+                    }
+                } catch (IOException ignored) {
+                    // Stream closed when process exits.
                 }
-            } catch (IOException ignored) {
-                // Stream closed when process exits.
-            }
-        });
+            });
+        } catch (Exception unavailable) {
+            markFormatterUnavailable();
+            throw new FormatterUnavailableException("Node.js or the formatter tool is unavailable", unavailable);
+        }
+    }
+
+    private void markFormatterUnavailable() {
+        synchronized (availabilityLock) {
+            checkedAvailabilityKey = availabilityKey();
+            formatterAvailable = false;
+        }
     }
 
     private void appendError(String line) {
@@ -184,5 +256,10 @@ public final class McfppNodeService implements Disposable {
         disposed = true;
         stopProcess();
         io.shutdownNow();
+    }
+
+    static final class FormatterUnavailableException extends IOException {
+        FormatterUnavailableException(String message) { super(message); }
+        FormatterUnavailableException(String message, Throwable cause) { super(message, cause); }
     }
 }
