@@ -89,7 +89,7 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
                     reader.lines().forEach(line -> compilationOutput(line + "\n", ProcessOutputTypes.STDERR));
                 } catch (java.io.IOException ignored) { /* The process exit is reported separately. */ }
             });
-            Disposer.register(session.getProject(), sessionDisposable);
+            Disposer.register(service, sessionDisposable);
             Disposer.register(sessionDisposable, this::stop);
         } catch (Exception error) { Disposer.dispose(sessionDisposable); Disposer.dispose(compilation); service.release(); throw new ExecutionException(error.getMessage(), error); }
         session.setPauseActionSupported(true);

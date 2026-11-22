@@ -27,12 +27,15 @@ import java.util.concurrent.locks.ReentrantLock;
 
 @Service(Service.Level.PROJECT)
 public final class McfppNodeService implements Disposable {
+    private record ProcessSession(Process process, BufferedReader reader, BufferedWriter writer) {}
+
     private static final int MAX_ERROR_BUFFER = 4000;
     private static final long REQUEST_TIMEOUT_SECONDS = 15L;
     private static final long LOCK_TIMEOUT_SECONDS = 5L;
 
     private final Project project;
     private final ReentrantLock requestLock = new ReentrantLock();
+    private final Object processLock = new Object();
     private final Object errorLock = new Object();
     private final StringBuilder errorBuffer = new StringBuilder();
     private final AtomicLong sequence = new AtomicLong();
@@ -47,9 +50,7 @@ public final class McfppNodeService implements Disposable {
     private volatile boolean disposed;
     private volatile String checkedAvailabilityKey;
     private volatile Boolean formatterAvailable;
-    private Process process;
-    private BufferedReader reader;
-    private BufferedWriter writer;
+    private volatile ProcessSession processSession;
 
     public McfppNodeService(Project project) {
         this.project = project;
@@ -116,6 +117,8 @@ public final class McfppNodeService implements Disposable {
         try {
             if (disposed || project.isDisposed()) throw new IOException("The project is closed");
             start();
+            ProcessSession active = processSession;
+            if (active == null) throw new IOException("MCFPP formatter process stopped");
             long id = sequence.incrementAndGet();
             JsonObject input = new JsonObject();
             input.addProperty("id", id);
@@ -124,11 +127,10 @@ public final class McfppNodeService implements Disposable {
             input.addProperty("source", source);
             input.addProperty("fix", fix);
             input.addProperty("cursorOffset", cursor);
-            writer.write(input.toString());
-            writer.newLine();
-            writer.flush();
-            BufferedReader activeReader = reader;
-            Future<String> lineFuture = io.submit(activeReader::readLine);
+            active.writer().write(input.toString());
+            active.writer().newLine();
+            active.writer().flush();
+            Future<String> lineFuture = io.submit(active.reader()::readLine);
             String line;
             try {
                 line = lineFuture.get(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -159,31 +161,35 @@ public final class McfppNodeService implements Disposable {
     }
 
     private void start() throws IOException {
-        if (process != null && process.isAlive() && reader != null && writer != null) return;
-        stopProcess();
-        try {
-            var formatter = McfppToolchain.formatter();
-            if (!Files.isRegularFile(formatter)) throw new IOException("Formatter tool is missing");
-            var command = McfppToolchain.formatterCommand(project);
-            command.withWorkDirectory(formatter.getParent().toFile());
-            Process started = command.createProcess();
-            process = started;
-            reader = new BufferedReader(new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8));
-            writer = new BufferedWriter(new OutputStreamWriter(started.getOutputStream(), StandardCharsets.UTF_8));
-            clearErrorBuffer();
-            io.submit(() -> {
-                try (var errors = new BufferedReader(new InputStreamReader(started.getErrorStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = errors.readLine()) != null) {
-                        appendError(line);
+        synchronized (processLock) {
+            ProcessSession current = processSession;
+            if (current != null && current.process().isAlive()) return;
+            stopProcess();
+            try {
+                var formatter = McfppToolchain.formatter();
+                if (!Files.isRegularFile(formatter)) throw new IOException("Formatter tool is missing");
+                var command = McfppToolchain.formatterCommand(project);
+                command.withWorkDirectory(formatter.getParent().toFile());
+                Process started = command.createProcess();
+                ProcessSession session = new ProcessSession(started,
+                        new BufferedReader(new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8)),
+                        new BufferedWriter(new OutputStreamWriter(started.getOutputStream(), StandardCharsets.UTF_8)));
+                processSession = session;
+                clearErrorBuffer();
+                io.submit(() -> {
+                    try (var errors = new BufferedReader(new InputStreamReader(started.getErrorStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = errors.readLine()) != null) {
+                            appendError(line);
+                        }
+                    } catch (IOException ignored) {
+                        // Stream closed when process exits.
                     }
-                } catch (IOException ignored) {
-                    // Stream closed when process exits.
-                }
-            });
-        } catch (Exception unavailable) {
-            markFormatterUnavailable();
-            throw new FormatterUnavailableException("Node.js or the formatter tool is unavailable", unavailable);
+                });
+            } catch (Exception unavailable) {
+                markFormatterUnavailable();
+                throw new FormatterUnavailableException("Node.js or the formatter tool is unavailable", unavailable);
+            }
         }
     }
 
@@ -216,15 +222,15 @@ public final class McfppNodeService implements Disposable {
     }
 
     private void stopProcess() {
-        Process current = process;
-        BufferedReader activeReader = reader;
-        BufferedWriter activeWriter = writer;
-        process = null;
-        reader = null;
-        writer = null;
-        closeQuietly(activeWriter);
-        closeQuietly(activeReader);
-        if (current != null) {
+        ProcessSession active;
+        synchronized (processLock) {
+            active = processSession;
+            processSession = null;
+        }
+        if (active != null) {
+            closeQuietly(active.writer());
+            closeQuietly(active.reader());
+            Process current = active.process();
             current.destroy();
             if (current.isAlive()) current.destroyForcibly();
         }

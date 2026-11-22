@@ -40,7 +40,7 @@ final class McfppRenderProcessHandler extends ProcessHandler implements Disposab
 
     McfppRenderProcessHandler(McfppRunConfiguration configuration,McfppProjectService service) {
         this.configuration=configuration; this.service=service;
-        Disposer.register(configuration.getProject(),this);
+        Disposer.register(service,this);
     }
 
     @Override public void startNotify() {

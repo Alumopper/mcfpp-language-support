@@ -5,6 +5,7 @@ import com.intellij.execution.ExecutionException;
 import com.intellij.execution.process.CapturingProcessHandler;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.components.Service;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager;
 import com.intellij.openapi.progress.*;
@@ -23,7 +24,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 @Service(Service.Level.PROJECT)
-public final class McfppProjectService {
+public final class McfppProjectService implements Disposable {
     private final Project project;
     private final Semaphore commands=new Semaphore(1,true);
     private final Set<Path> nestedImports = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -37,6 +38,8 @@ public final class McfppProjectService {
                 model=readModel(Files.readString(root.resolve(".mcfpp/ide-model.json")),root);
         } catch(Exception ignored) {}
     }
+
+    @Override public void dispose() { }
     public Path root() {
         if(project.getBasePath()==null) return null;
         Path config=ProjectConfiguration.find(Path.of(project.getBasePath()));

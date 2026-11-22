@@ -29,6 +29,22 @@ class MCFPPProjectIndexTest {
     }
 
     @Test
+    fun `closed workspace analyses do not retain ANTLR parse trees`() {
+        projectRoot.resolve("mcfpp.toml").writeText("schema=1\nnamespace=\"demo\"\nsourcePath=\"src/main/mcfpp\"\n")
+        val source = projectRoot.resolve("src/main/mcfpp/main.mcfpp")
+        source.parent.createDirectories()
+        source.writeText("func main(): int { return 1; }")
+        val index = MCFPPProjectIndex().apply { setWorkspaceRoots(listOf(projectRoot.toUri().toString())) }
+
+        val first = index.refresh(emptyMap()).fileAnalyses.getValue(source.toUri().toString())
+        val second = index.refresh(emptyMap()).fileAnalyses.getValue(source.toUri().toString())
+
+        assertEquals(null, first.compilationUnit)
+        assertEquals(null, second.compilationUnit)
+        assertEquals("int", second.topLevelSymbols.single { it.name == "main" }.typeName)
+    }
+
+    @Test
     fun `reads official singular jar key and legacy aliases`() {
         projectRoot.resolve("mcfpp.json").writeText(
             """

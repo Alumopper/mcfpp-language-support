@@ -79,9 +79,34 @@ data class MCFPPParserSemanticData(
 )
 
 object MCFPPParserSemanticExtractor {
-    fun extract(uri: String, text: String): MCFPPParserSemanticData {
-        val normalizedText = text.replace("\r\n", "\n")
+    private data class ParserDiagnosticKey(val line: Int, val character: Int, val message: String)
+
+    private class LineMap(text: String) {
+        private val textLength = text.length
+        private val starts = buildList {
+            add(0)
+            text.forEachIndexed { index, char -> if (char == '\n') add(index + 1) }
+        }.toIntArray()
+
+        fun position(offset: Int): Position {
+            val bounded = offset.coerceIn(0, textLength)
+            var low = 0
+            var high = starts.size
+            while (low < high) {
+                val middle = (low + high) ushr 1
+                if (starts[middle] <= bounded) low = middle + 1 else high = middle
+            }
+            val line = (low - 1).coerceAtLeast(0)
+            return Position(line, bounded - starts[line])
+        }
+    }
+
+    fun extract(uri: String, text: String): MCFPPParserSemanticData =
+        extractNormalized(uri, text.replace("\r\n", "\n"))
+
+    internal fun extractNormalized(uri: String, normalizedText: String): MCFPPParserSemanticData {
         val diagnostics = mutableListOf<Diagnostic>()
+        val lineMap = LineMap(normalizedText)
         val errorListener = object : BaseErrorListener() {
             override fun syntaxError(
                 recognizer: Recognizer<*, *>?,
@@ -96,7 +121,7 @@ object MCFPPParserSemanticExtractor {
                     "'ref expression' has been removed. Pass a ScoreRef or NBTRef<T> created from an explicit Minecraft address."
                 else msg
                 diagnostics += Diagnostic(
-                    diagnosticRange(normalizedText, line, charPositionInLine, offendingSymbol),
+                    diagnosticRange(lineMap, line, charPositionInLine, offendingSymbol),
                     message,
                     DiagnosticSeverity.Error,
                     "mcfpp"
@@ -110,45 +135,31 @@ object MCFPPParserSemanticExtractor {
             removeErrorListeners()
             addErrorListener(errorListener)
         }
-        val collector = SemanticCollector(uri, normalizedText, diagnostics)
+        val collector = SemanticCollector(uri, normalizedText, diagnostics, lineMap)
         val compilationUnit = parser.compilationUnit()
         ParseTreeWalker.DEFAULT.walk(collector, compilationUnit)
         return collector.build(
-            diagnostics.distinctBy { listOf(it.range.start.line, it.range.start.character, it.message) }
+            diagnostics.distinctBy { ParserDiagnosticKey(it.range.start.line, it.range.start.character, it.message) }
         ).copy(compilationUnit = compilationUnit)
     }
 
-    private fun diagnosticRange(text: String, line: Int, character: Int, offendingSymbol: Any?): Range {
+    private fun diagnosticRange(lineMap: LineMap, line: Int, character: Int, offendingSymbol: Any?): Range {
         val token = offendingSymbol as? Token
         if (token != null && token.startIndex >= 0 && token.stopIndex >= token.startIndex) {
             return Range(
-                offsetToPosition(text, token.startIndex),
-                offsetToPosition(text, token.stopIndex + 1)
+                lineMap.position(token.startIndex),
+                lineMap.position(token.stopIndex + 1)
             )
         }
         val start = Position((line - 1).coerceAtLeast(0), character.coerceAtLeast(0))
         return Range(start, Position(start.line, start.character + 1))
     }
 
-    private fun offsetToPosition(text: String, offset: Int): Position {
-        val boundedOffset = offset.coerceIn(0, text.length)
-        var line = 0
-        var character = 0
-        repeat(boundedOffset) { index ->
-            if (text[index] == '\n') {
-                line += 1
-                character = 0
-            } else {
-                character += 1
-            }
-        }
-        return Position(line, character)
-    }
-
     private class SemanticCollector(
         private val uri: String,
         private val text: String,
-        private val diagnostics: MutableList<Diagnostic>
+        private val diagnostics: MutableList<Diagnostic>,
+        private val lineMap: LineMap
     ) : mcfppParserBaseListener() {
         private data class ScopeFrame(
             val ctx: ParserRuleContext,
@@ -987,7 +998,7 @@ object MCFPPParserSemanticExtractor {
             val body = ctx.lambdaBody() ?: return
             val uses = Regex("\\bit\\b").findAll(body.text).toList()
             if (uses.isEmpty()) return
-            val range = Range(offsetToPosition(text, ctx.start.startIndex), offsetToPosition(text, ctx.start.stopIndex + 1))
+            val range = Range(lineMap.position(ctx.start.startIndex), lineMap.position(ctx.start.stopIndex + 1))
             symbols += MCFPPSymbol(uri, "it", SymbolKind.Variable, range,
                 containerName = currentFunctionName(), enclosingFunctionScopeId = currentBlockScopeId(),
                 isParameter = true, isSynthetic = true, typeName = referenceReadType(ctx), detail = "implicit lambda parameter")
@@ -1085,14 +1096,14 @@ object MCFPPParserSemanticExtractor {
         private fun contextRange(ctx: ParserRuleContext): Range {
             val stopToken = ctx.stop ?: ctx.start
             return Range(
-                offsetToPosition(text, ctx.start.startIndex),
-                offsetToPosition(text, stopToken.stopIndex + 1)
+                lineMap.position(ctx.start.startIndex),
+                lineMap.position(stopToken.stopIndex + 1)
             )
         }
 
         private fun tokenRange(token: Token): Range {
-            val start = offsetToPosition(text, token.startIndex)
-            val end = offsetToPosition(text, token.stopIndex + 1)
+            val start = lineMap.position(token.startIndex)
+            val end = lineMap.position(token.stopIndex + 1)
             return Range(start, end)
         }
 

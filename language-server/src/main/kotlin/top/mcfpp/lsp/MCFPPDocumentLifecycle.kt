@@ -44,6 +44,10 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
         Thread(task, "mcfpp-analysis").apply { isDaemon = true }
     }
 
+    private val projectIndexExecutor = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "mcfpp-project-index").apply { isDaemon = true }
+    }
+
     private val editorExecutor = Executors.newFixedThreadPool(2) { task ->
         Thread(task, "mcfpp-editor").apply { isDaemon = true }
     }
@@ -56,6 +60,9 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
 
     @Volatile
     private var workspaceRootUris: List<String> = emptyList()
+
+    @Volatile
+    private var workspaceIndexReady = true
 
     fun didOpen(params: DidOpenTextDocumentParams) {
         val document = params.textDocument
@@ -124,6 +131,7 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
     fun setWorkspaceRoots(rootUris: List<String>) {
         workspaceRootUris = rootUris.distinct()
         projectIndex.setWorkspaceRoots(workspaceRootUris)
+        workspaceIndexReady = false
         scheduleProjectIndexRefresh(0)
     }
 
@@ -160,6 +168,7 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
             pendingDependentDiagnosticsRefresh = null
         }
         analysisExecutor.shutdownNow()
+        projectIndexExecutor.shutdownNow()
         editorExecutor.shutdownNow()
     }
 
@@ -194,8 +203,10 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                         throw ResponseErrorException(ResponseError(ResponseErrorCode.ContentModified, "Target version changed during analysis", null))
                     }
                     val previous = analyses.put(uri, analysis)
-                    workspace.invalidateWorkspaceSymbolCache()
-                    previous == null || semanticSurface(previous) != semanticSurface(analysis)
+                    val surfaceChanged = previous == null || semanticSurface(previous) != semanticSurface(analysis)
+                    if (surfaceChanged) workspace.invalidateWorkspaceSymbolCache()
+                    else workspace.evictDocumentSymbolCache(uri)
+                    surfaceChanged
                 }
                 if (surfaceChanged) scheduleDependentDiagnosticsRefresh(uri)
                 analysis
@@ -206,6 +217,7 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
         val task = analysisExecutor.schedule({
             try {
                 if (documents[uri] !== document) return@schedule
+                if (!workspaceIndexReady) return@schedule
                 val analysis = parseDocument(uri, document).join()
                 publishDiagnostics(uri, document, analysis)
             } catch (error: Throwable) {
@@ -274,7 +286,7 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
     private fun scheduleProjectIndexRefresh(delayMillis: Long) {
         synchronized(projectRefreshLock) {
             pendingProjectRefresh?.cancel(false)
-            pendingProjectRefresh = analysisExecutor.schedule({
+            pendingProjectRefresh = projectIndexExecutor.schedule({
                 try {
                     projectIndex.refresh(documents.mapValues { it.value.text })
                     val openDocuments = synchronized(documents) {
@@ -287,14 +299,14 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                         parseDocument(uri, document).handle { _, _ -> Unit }
                     }
                     CompletableFuture.allOf(*pending.toTypedArray()).join()
-                    synchronized(documents) {
-                        openDocuments.forEach { (uri, document) ->
-                            if (documents[uri] === document) scheduleDocumentAnalysis(uri, document, 0)
-                        }
-                    }
-                    invalidateSemanticTokens()
                 } catch (error: Exception) {
                     reportBackgroundFailure("refreshing the project index", error)
+                } finally {
+                    workspaceIndexReady = true
+                    synchronized(documents) {
+                        documents.forEach { (uri, document) -> scheduleDocumentAnalysis(uri, document, 0) }
+                    }
+                    invalidateSemanticTokens()
                 }
             }, delayMillis, TimeUnit.MILLISECONDS)
         }

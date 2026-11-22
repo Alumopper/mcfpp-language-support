@@ -8,6 +8,20 @@ import org.eclipse.lsp4j.SemanticTokensRangeParams
 import org.eclipse.lsp4j.SymbolKind
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 
+private data class SemanticRangeKey(val line: Int, val character: Int, val endLine: Int, val endCharacter: Int)
+private data class UndefinedReferenceKey(val name: String, val line: Int, val character: Int)
+private data class DiagnosticKey(val line: Int, val character: Int, val message: String)
+private data class DuplicateDeclarationKey(
+    val kind: String,
+    val name: String,
+    val containerName: String,
+    val receiverType: String,
+    val typeScope: String,
+    val functionScope: String,
+    val topLevel: Boolean,
+    val parameterSignature: String
+)
+
 internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWorkspaceView) {
     fun semanticTokensFull(analysis: MCFPPDocumentAnalysis): SemanticTokens =
         SemanticTokens(encodeSemanticTokens(semanticTokenEntries(analysis)))
@@ -52,7 +66,7 @@ internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWork
     private fun semanticTokenEntries(analysis: MCFPPDocumentAnalysis): List<SemanticTokenEntry> {
         val cache = workspace.symbolCaches.forDocument(analysis)
         cache.semanticTokens?.let { return it }
-        val entriesByRange = linkedMapOf<String, SemanticTokenEntry>()
+        val entriesByRange = linkedMapOf<SemanticRangeKey, SemanticTokenEntry>()
         analysis.versionDirectives.forEach { range ->
             entriesByRange[semanticRangeKey(range)] = SemanticTokenEntry(range, "macro", 0)
         }
@@ -99,9 +113,7 @@ internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWork
     }
 
     private fun semanticTokenType(symbol: MCFPPSymbol): String {
-        if (symbol.isMacro || symbol.isNative && workspace.workspaceSymbols().any { it.isMacro &&
-                it.name == symbol.name && it.namespaceName == symbol.namespaceName &&
-                it.parameters.map { parameter -> parameter.typeName } == symbol.parameters.map { parameter -> parameter.typeName } }) return "macro"
+        if (symbol.isMacro || symbol.isNative && workspace.isMacroSignature(symbol)) return "macro"
         if (symbol.isNative) return "mniFunction"
         return when (symbol.kind) {
         SymbolKind.Namespace, SymbolKind.Module, SymbolKind.Package -> "namespace"
@@ -138,36 +150,25 @@ internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWork
         return data
     }
 
-    private fun semanticRangeKey(range: Range): String = listOf(
-        range.start.line,
-        range.start.character,
-        range.end.line,
-        range.end.character
-    ).joinToString(":")
+    private fun semanticRangeKey(range: Range): SemanticRangeKey =
+        SemanticRangeKey(range.start.line, range.start.character, range.end.line, range.end.character)
 
     private fun rangesOverlap(left: Range, right: Range): Boolean {
         return !isBeforeOrEqual(left.end, right.start) && !isBeforeOrEqual(right.end, left.start)
     }
 
-    private fun duplicateDeclarationKey(symbol: MCFPPSymbol): String {
-        return listOf(
-            symbol.kind.name,
-            symbol.name,
-            symbol.containerName ?: "",
-            symbol.receiverType ?: "",
-            symbol.enclosingTypeScopeId ?: "",
-            symbol.enclosingFunctionScopeId ?: "",
-            symbol.topLevel.toString(),
-            parameterSignatureKey(symbol)
-        ).joinToString("|")
-    }
+    private fun duplicateDeclarationKey(symbol: MCFPPSymbol) = DuplicateDeclarationKey(
+        symbol.kind.name, symbol.name, symbol.containerName.orEmpty(), symbol.receiverType.orEmpty(),
+        symbol.enclosingTypeScopeId.orEmpty(), symbol.enclosingFunctionScopeId.orEmpty(),
+        symbol.topLevel, parameterSignatureKey(symbol)
+    )
 
     private fun collectUndefinedVariableDiagnostics(document: MCFPPDocumentAnalysis): List<Diagnostic> {
         return document.referenceOccurrencesByName.values
             .flatten()
             .filter { shouldCheckUndefinedReference(document, it) }
             .filterNot { isReferenceResolved(document, it) }
-            .distinctBy { listOf(it.name, it.range.start.line, it.range.start.character).joinToString("|") }
+            .distinctBy { UndefinedReferenceKey(it.name, it.range.start.line, it.range.start.character) }
             .map {
                 Diagnostic(
                     it.range,
@@ -206,7 +207,7 @@ internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWork
                     "mcfpp"
                 )
             }
-            .distinctBy { listOf(it.range.start.line, it.range.start.character, it.message).joinToString("|") }
+            .distinctBy { DiagnosticKey(it.range.start.line, it.range.start.character, it.message) }
             .toList()
     }
 

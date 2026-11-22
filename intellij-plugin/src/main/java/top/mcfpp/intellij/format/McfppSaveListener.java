@@ -4,76 +4,154 @@ import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileDocumentManagerListener;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectLocator;
 import com.intellij.openapi.util.Key;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.tooling.McfppNotifications;
 import top.mcfpp.intellij.tooling.McfppSettings;
 
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Formats/fixes MCFPP documents before they are flushed to disk so formatting happens in a single
- * disk write instead of writing twice and re-triggering VFS/LSP save events.
- */
+/** Formats/fixes documents asynchronously when a save is requested. */
 public final class McfppSaveListener implements FileDocumentManagerListener {
     private static final Key<Boolean> SAVING = Key.create("mcfpp.formatted.save");
-    private static final long SAVE_FORMAT_TIMEOUT_MS = 1500L;
+    private static final Key<SaveState> IN_FLIGHT = Key.create("mcfpp.format.save.inFlight");
+
+    @FunctionalInterface
+    interface FormatterRequest {
+        JsonObject request(Project project, String operation, String path, String source, boolean fix, int cursor)
+                throws IOException;
+    }
+
+    private static final class SaveState {
+        private final AtomicBoolean running = new AtomicBoolean();
+        private final AtomicBoolean rerun = new AtomicBoolean();
+        private volatile long stamp;
+    }
+
+    private final FormatterRequest formatterRequest;
+
+    public McfppSaveListener() {
+        this((project, operation, path, source, fix, cursor) ->
+                project.getService(McfppNodeService.class).request(operation, path, source, fix, cursor));
+    }
+
+    McfppSaveListener(FormatterRequest formatterRequest) {
+        this.formatterRequest = formatterRequest;
+    }
 
     @Override
     public void beforeDocumentSaving(@NotNull Document document) {
         if (Boolean.TRUE.equals(document.getUserData(SAVING))) return;
         var file = FileDocumentManager.getInstance().getFile(document);
         if (file == null || !"mcfpp".equalsIgnoreCase(file.getExtension())) return;
-        var project = ProjectLocator.getInstance().guessProjectForFile(file);
+        Project project = ProjectLocator.getInstance().guessProjectForFile(file);
         if (project == null || project.isDisposed()) return;
         var settings = McfppSettings.get(project);
         if (!settings.formatOnSave && !settings.fixOnSave) return;
 
+        SaveState state = document.getUserData(IN_FLIGHT);
+        if (state == null) {
+            state = new SaveState();
+            document.putUserData(IN_FLIGHT, state);
+        }
+        if (!state.running.compareAndSet(false, true)) {
+            if (state.stamp != document.getModificationStamp()) state.rerun.set(true);
+            return;
+        }
+        startAttempt(project, file, document, state, settings.formatOnSave ? "format" : "fix", settings.fixOnSave);
+    }
+
+    private void startAttempt(Project project, com.intellij.openapi.vfs.VirtualFile file, Document document,
+                              SaveState state, String operation, boolean fix) {
         String source = document.getText();
         long stamp = document.getModificationStamp();
-        var editors = EditorFactory.getInstance().getEditors(document, project);
+        state.stamp = stamp;
+        Editor[] editors = EditorFactory.getInstance().getEditors(document, project);
         int cursor = editors.length == 0 ? 0 : editors[0].getCaretModel().getOffset();
-        String operation = settings.formatOnSave ? "format" : "fix";
-        boolean fix = settings.fixOnSave;
-
-        Future<JsonObject> future = ApplicationManager.getApplication().executeOnPooledThread(() ->
-                project.getService(McfppNodeService.class).request(operation, file.getPath(), source, fix, cursor));
-        try {
-            JsonObject response = future.get(SAVE_FORMAT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (response == null || project.isDisposed() || !file.isValid() || document.getModificationStamp() != stamp) {
-                return;
-            }
-            String formatted = response.get("source").getAsString();
-            if (source.equals(formatted)) return;
-
-            document.putUserData(SAVING, Boolean.TRUE);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            JsonObject response = null;
+            Throwable failure = null;
             try {
-                if (ApplicationManager.getApplication().isWriteAccessAllowed()) {
-                    replace(document, formatted);
-                } else {
-                    WriteCommandAction.runWriteCommandAction(project, "Format MCFPP on save", null,
-                            () -> replace(document, formatted));
-                }
-                if (response.has("cursorOffset") && editors.length > 0 && !editors[0].isDisposed() &&
-                        !editors[0].getSelectionModel().hasSelection()) {
-                    editors[0].getCaretModel().moveToOffset(
-                            Math.min(formatted.length(), response.get("cursorOffset").getAsInt()));
-                }
-            } finally {
-                document.putUserData(SAVING, null);
+                response = formatterRequest.request(project, operation, file.getPath(), source, fix, cursor);
+            } catch (Throwable error) {
+                failure = error;
             }
-        } catch (java.util.concurrent.TimeoutException timeout) {
-            future.cancel(false);
-            McfppNotifications.error(project, "MCFPP format-on-save timed out; saved without reformatting.");
-        } catch (Exception error) {
-            Throwable cause = error.getCause() != null ? error.getCause() : error;
-            McfppNotifications.error(project, cause.getMessage() != null ? cause.getMessage() : error.getMessage());
+            JsonObject result = response;
+            Throwable error = failure;
+            ApplicationManager.getApplication().invokeLater(() -> finishAttempt(
+                    project, file, document, state, operation, fix, source, stamp, cursor, result, error));
+        });
+    }
+
+    private void finishAttempt(Project project, com.intellij.openapi.vfs.VirtualFile file, Document document,
+                               SaveState state, String operation, boolean fix, String source, long stamp, int cursor,
+                               JsonObject response, Throwable failure) {
+        try {
+            if (failure != null && !project.isDisposed()) {
+                String message = failure.getMessage();
+                McfppNotifications.error(project, message == null ? failure.getClass().getSimpleName() : message);
+            }
+            if (response != null && !project.isDisposed() && file.isValid() &&
+                    isCurrent(project, file, document, stamp) && response.has("source")) {
+                String formatted = response.get("source").getAsString();
+                if (!source.equals(formatted)) {
+                    document.putUserData(SAVING, Boolean.TRUE);
+                    try {
+                        boolean[] replaced = {false};
+                        WriteCommandAction.runWriteCommandAction(project, "Format MCFPP on save", null, () -> {
+                            if (isCurrent(project, file, document, stamp)) {
+                                replace(document, formatted);
+                                replaced[0] = true;
+                            }
+                        });
+                        if (replaced[0]) {
+                            Editor[] editors = EditorFactory.getInstance().getEditors(document, project);
+                            if (response.has("cursorOffset") && editors.length > 0 && !editors[0].isDisposed() &&
+                                    !editors[0].getSelectionModel().hasSelection()) {
+                                editors[0].getCaretModel().moveToOffset(
+                                        Math.min(formatted.length(), response.get("cursorOffset").getAsInt()));
+                            }
+                            if (file.isValid() && FileDocumentManager.getInstance().isFileModified(file)) {
+                                FileDocumentManager.getInstance().saveDocument(document);
+                            }
+                        }
+                    } catch (RuntimeException error) {
+                        if (!project.isDisposed()) {
+                            McfppNotifications.error(project, error.getMessage() == null ? "Could not format MCFPP on save" : error.getMessage());
+                        }
+                    } finally {
+                        document.putUserData(SAVING, null);
+                    }
+                }
+            }
+        } finally {
+            finishState(project, file, document, state, operation, fix);
         }
+    }
+
+    private void finishState(Project project, com.intellij.openapi.vfs.VirtualFile file, Document document,
+                             SaveState state, String operation, boolean fix) {
+        if (!project.isDisposed() && file.isValid() && state.rerun.getAndSet(false)) {
+            startAttempt(project, file, document, state, operation, fix);
+            return;
+        }
+        state.running.set(false);
+        if (!project.isDisposed() && file.isValid() && state.rerun.getAndSet(false) && state.running.compareAndSet(false, true)) {
+            startAttempt(project, file, document, state, operation, fix);
+        }
+    }
+
+    static boolean isCurrent(Project project, com.intellij.openapi.vfs.VirtualFile file, Document document, long stamp) {
+        return !project.isDisposed() && file.isValid() &&
+                FileDocumentManager.getInstance().getFile(document) == file &&
+                document.getModificationStamp() == stamp;
     }
 
     public static void replace(Document document, String replacement) {

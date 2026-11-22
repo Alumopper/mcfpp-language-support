@@ -29,6 +29,15 @@ public final class McfppFileModels {
         });
     }
 
+    public static @NotNull McfppSemanticTokens.Analysis semanticAnalysis(@NotNull PsiFile file) {
+        return CachedValuesManager.getCachedValue(file, () -> {
+            var dependency = McfppNamespaceResolver.infer(file).dependency();
+            var value = McfppSemanticTokens.analyzeDetailed(activeSource(file));
+            return dependency == null ? CachedValueProvider.Result.create(value, file)
+                    : CachedValueProvider.Result.create(value, file, dependency);
+        });
+    }
+
     public static @NotNull McfppFileModel get(@NotNull PsiFile file) {
         return CachedValuesManager.getCachedValue(file, () -> {
             McfppNamespaceResolver.Inference inference = McfppNamespaceResolver.infer(file);

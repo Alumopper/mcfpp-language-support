@@ -50,6 +50,17 @@ private data class CachedProjectLibraries(
     val symbols: List<MCFPPSymbol>
 )
 
+private data class LibraryParameterKey(val readOnly: Boolean, val typeName: String, val hasDefault: Boolean)
+
+private data class LibrarySymbolKey(
+    val name: String,
+    val kind: SymbolKind,
+    val namespaceName: String?,
+    val containerName: String?,
+    val receiverType: String?,
+    val parameters: List<LibraryParameterKey>
+)
+
 class MCFPPProjectIndex {
     private data class MniSymbols(val generation: Long, val symbols: List<MCFPPSymbol>)
 
@@ -113,7 +124,7 @@ class MCFPPProjectIndex {
                         withDefaultNamespace(
                             MCFPPDocumentIndex.analyze(uri, normalizedFile.readText(), project.targetVersion),
                             projectNamespace
-                        )
+                        ).withoutParseTree()
                     }
                     fileAnalyses[uri] = analysis
                     nextFileCache[normalizedFile] = CachedWorkspaceAnalysis(
@@ -149,17 +160,11 @@ class MCFPPProjectIndex {
     }
 
     private fun mergedLibrarySymbols(): List<MCFPPSymbol> =
-        (diskLibrarySymbols + mniSnapshots.values.flatMap { it.symbols }).distinctBy {
-            listOf(
-                it.name,
-                it.kind,
-                it.namespaceName,
-                it.containerName,
-                it.receiverType,
-                it.parameters.joinToString(";") { parameter ->
-                    listOf(parameter.isReadOnly, parameter.typeName, parameter.hasDefault).joinToString(":")
-                }
-            ).joinToString("|")
+        (diskLibrarySymbols + mniSnapshots.values.flatMap { it.symbols }).distinctBy { symbol ->
+            LibrarySymbolKey(
+                symbol.name, symbol.kind, symbol.namespaceName, symbol.containerName, symbol.receiverType,
+                symbol.parameters.map { LibraryParameterKey(it.isReadOnly, it.typeName, it.hasDefault) }
+            )
         }
 
     fun snapshot(): MCFPPProjectSnapshot = snapshot
@@ -294,7 +299,7 @@ class MCFPPProjectIndex {
             val testApi = this@MCFPPProjectIndex.javaClass.classLoader.getResource("testing/assertions.mcfpp")
             if (testApi != null) {
                 val analysis = testApi.openStream().bufferedReader(Charsets.UTF_8).use {
-                    MCFPPDocumentIndex.analyze(testApi.toExternalForm(), it.readText(), project.targetVersion)
+                    MCFPPDocumentIndex.analyze(testApi.toExternalForm(), it.readText(), project.targetVersion).withoutParseTree()
                 }
                 addAll(analysis.topLevelSymbols.filter { it.kind == SymbolKind.Function }.map { it.copy(isExternal = true) })
             }

@@ -7,8 +7,6 @@ import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
-import com.intellij.psi.util.CachedValueProvider;
-import com.intellij.psi.util.CachedValuesManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -37,12 +35,7 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
         if (McfppFileModels.versionAnalysis(file).inactiveRanges().stream().anyMatch(range ->
                 range.start() <= element.getTextOffset() && element.getTextOffset() < range.end())) return;
         boolean lspActive = McfppLspState.isRunning(file.getProject());
-        McfppSemanticTokens.Analysis analysis = CachedValuesManager.getCachedValue(file, () -> {
-            var dependency = McfppNamespaceResolver.infer(file).dependency();
-            var value = McfppSemanticTokens.analyzeDetailed(McfppFileModels.activeSource(file));
-            return dependency == null ? CachedValueProvider.Result.create(value, file)
-                    : CachedValueProvider.Result.create(value, file, dependency);
-        });
+        McfppSemanticTokens.Analysis analysis = McfppFileModels.semanticAnalysis(file);
         if (identifier) {
             if (!lspActive && "ref".equals(element.getText())) {
                 holder.newAnnotation(HighlightSeverity.ERROR,

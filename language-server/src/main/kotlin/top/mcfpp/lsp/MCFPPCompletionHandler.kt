@@ -156,14 +156,14 @@ internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView)
         val line = analysis.line(position.line)
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
         val trimmed = prefix.trimEnd()
-        val beforeIdentifier = prefix.replace(Regex("[A-Za-z_][A-Za-z0-9_]*$"), "")
+        val beforeIdentifier = prefix.replace(IDENTIFIER_SUFFIX, "")
         if (top.mcfpp.language.CompletionScope.isTypeArgumentOrCast(beforeIdentifier)) {
             return CompletionContext.TYPE
         }
-        if (Regex("(?:\\bas\\b|\\)\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
+        if (CAST_TYPE_CONTEXT.containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
-        if (Regex("(?:\\b(?:var|const|external)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*:|[<(,]\\s*[A-Za-z_][A-Za-z0-9_]*\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$").containsMatchIn(trimmed)) {
+        if (DECLARED_TYPE_CONTEXT.containsMatchIn(trimmed)) {
             return CompletionContext.TYPE
         }
         return if (top.mcfpp.language.CompletionScope.isValuePosition(beforeIdentifier)) CompletionContext.VALUE
@@ -232,5 +232,11 @@ internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView)
         symbol.documentation?.takeIf { it.isNotBlank() }?.let {
             documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, it))
         }
+    }
+
+    private companion object {
+        private val IDENTIFIER_SUFFIX = Regex("[A-Za-z_][A-Za-z0-9_]*$")
+        private val CAST_TYPE_CONTEXT = Regex("(?:\\bas\\b|\\)\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$")
+        private val DECLARED_TYPE_CONTEXT = Regex("(?:\\b(?:var|const|external)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:|\\bfunc\\s+[A-Za-z_][A-Za-z0-9_]*\\s*(?:<[^>]*>\\s*)?\\([^)]*\\)\\s*:|[<(,]\\s*[A-Za-z_][A-Za-z0-9_]*\\s*:)\\s*[A-Za-z0-9_:.<>!?|&\\[\\]]*$")
     }
 }

@@ -55,7 +55,7 @@ public final class McfppUnusedImportInspection extends LocalInspectionTool {
                     }
                 }
                 // Interpolations have compiler-specific lookup rules; retain potential imports rather than fading them.
-                var embedded = McfppSemanticTokens.analyzeDetailed(source).embeddedRanges();
+                var embedded = McfppFileModels.semanticAnalysis(file).embeddedRanges();
                 for (var entry : imports) {
                     if (embedded.stream().anyMatch(range -> entry.value().exposes(source.substring(range.startOffset(), range.endOffset())))) {
                         used.add(entry.value());

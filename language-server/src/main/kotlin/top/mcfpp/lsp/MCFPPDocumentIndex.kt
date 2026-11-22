@@ -29,6 +29,18 @@ private data class PendingContainer(
     val kind: ContainerKind
 )
 
+private data class MergedSymbolKey(
+    val name: String,
+    val kind: SymbolKind,
+    val line: Int,
+    val character: Int,
+    val containerName: String?,
+    val receiverType: String?,
+    val parameters: List<MCFPPFunctionParameter>
+)
+
+private data class TopLevelSymbolKey(val name: String, val kind: SymbolKind, val line: Int, val character: Int)
+
 data class MCFPPImport(
     val namespace: String,
     val importedName: String,
@@ -164,6 +176,9 @@ data class MCFPPDocumentAnalysis(
 ) {
     private val lines: List<String> = text.split("\n")
     private val scopesById: Map<String, MCFPPScopeRegion> = scopeRegions.associateBy { it.id }
+
+    fun withoutParseTree(): MCFPPDocumentAnalysis =
+        if (compilationUnit == null) this else copy(compilationUnit = null)
 
     fun line(line: Int): String = lines.getOrElse(line) { "" }
 
@@ -330,6 +345,9 @@ object MCFPPDocumentIndex {
     private val variablePattern = Regex("^\\s*(?:var|const|external|import\\s+var)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^=;]+?))?(?:\\s*=.*)?;?$")
     private val memberFieldPattern = Regex("^\\s*(?:(?:public|protected|private)\\s+)?(?:entity\\s+)?(?:var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*([^={;]+?))?(?:\\s*(?:=|\\{|;|$))")
     private val enumMemberPattern = Regex("^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=|,|$)")
+    private val entityTemplatePattern = Regex("^\\s*(?:(?:final|abstract)\\s+)?entity\\b")
+    private val entityFunctionPattern = Regex("^\\s*entity\\b")
+    private val entityMemberPattern = Regex("^\\s*(?:(?:public|protected|private)\\s+)?entity\\b")
 
     fun analyze(uri: String, text: String, targetVersion: String = VersionPreprocessor.DEFAULT_VERSION): MCFPPDocumentAnalysis {
         val symbols = mutableListOf<MCFPPSymbol>()
@@ -410,7 +428,7 @@ object MCFPPDocumentIndex {
                     line.contains("enum") -> SymbolKind.Enum
                     else -> SymbolKind.Class
                 }
-                val entityTemplate = Regex("^\\s*(?:(?:final|abstract)\\s+)?entity\\b").containsMatchIn(line)
+                val entityTemplate = entityTemplatePattern.containsMatchIn(line)
                 val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, null, null, name, true, namespaceName)
                     .copy(isEntityTemplate = entityTemplate)
                 symbols += symbol
@@ -423,10 +441,9 @@ object MCFPPDocumentIndex {
             functionPattern.find(line)?.let { match ->
                 val receiver = match.groups[1]?.value?.trim().takeIf { !it.isNullOrBlank() }
                 val name = match.groups[2]?.value ?: return@let
-                val returnType = extractReturnType(line)
                 val kind = if (currentType != null || receiver != null) SymbolKind.Method else SymbolKind.Function
-                val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, returnType, currentType, returnType, currentType == null, namespaceName)
-                    .copy(receiverType = receiver, isEntityMember = Regex("^\\s*entity\\b").containsMatchIn(line))
+                val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, null, currentType, null, currentType == null, namespaceName)
+                    .copy(receiverType = receiver, isEntityMember = entityFunctionPattern.containsMatchIn(line))
                 symbols += symbol
                 if (symbol.topLevel) {
                     topLevelSymbols += symbol
@@ -460,7 +477,7 @@ object MCFPPDocumentIndex {
                     variables[name] = typeName
                     val kind = if (currentType != null && currentFunction == null) SymbolKind.Field else SymbolKind.Variable
                     val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, typeName, effectiveContainer, typeName, currentType == null, namespaceName)
-                        .copy(isEntityMember = Regex("^\\s*(?:(?:public|protected|private)\\s+)?entity\\b").containsMatchIn(line))
+                        .copy(isEntityMember = entityMemberPattern.containsMatchIn(line))
                     symbols += symbol
                     if (symbol.topLevel) {
                         topLevelSymbols += symbol
@@ -485,11 +502,25 @@ object MCFPPDocumentIndex {
             pendingContainer = updateContainerStack(line, containers, pendingContainer)
         }
 
-        val parserSemantic = MCFPPParserSemanticExtractor.extract(uri, normalizedText)
-        val parserDeclarationKeys = parserSemantic.symbols.mapTo(mutableSetOf(), ::semanticDeclarationKey)
-        val fallbackSymbols = symbols.filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
-        val mergedSymbols = (parserSemantic.symbols + fallbackSymbols)
-            .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character, it.containerName, it.receiverType, it.parameters).joinToString("|") }
+        val parserSemantic = MCFPPParserSemanticExtractor.extractNormalized(uri, normalizedText)
+        val parserErrorsByLine = parserSemantic.diagnostics.mapTo(mutableSetOf()) { it.range.start.line }
+        fun returnTypeFallback(symbol: MCFPPSymbol): MCFPPSymbol {
+            if (symbol.kind !in setOf(SymbolKind.Function, SymbolKind.Method) || symbol.typeName != null ||
+                symbol.range.start.line !in parserErrorsByLine) return symbol
+            val line = lines.getOrElse(symbol.range.start.line) { return symbol }
+            val returnType = extractReturnType(line) ?: return symbol
+            return symbol.copy(detail = returnType, typeName = returnType)
+        }
+        val parserSymbols = parserSemantic.symbols.map(::returnTypeFallback)
+        val parserSymbolsByDeclaration = parserSymbols.associateBy(::semanticDeclarationKey)
+        val parserDeclarationKeys = parserSymbolsByDeclaration.keys
+        val fallbackSymbols = symbols
+            .filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
+            .map(::returnTypeFallback)
+        fun useParserFallback(symbol: MCFPPSymbol): MCFPPSymbol =
+            parserSymbolsByDeclaration[semanticDeclarationKey(symbol)] ?: symbol
+        val mergedSymbols = (parserSymbols + fallbackSymbols)
+            .distinctBy(::mergedSymbolKey)
         val mergedVariables = linkedMapOf<String, String?>().apply {
             putAll(variables)
             parserSemantic.variables.forEach { (name, typeName) ->
@@ -499,16 +530,16 @@ object MCFPPDocumentIndex {
         val mergedTypeMembers = linkedMapOf<String, List<MCFPPSymbol>>()
         (typeMembers.keys + parserSemantic.typeMembers.keys).forEach { owner ->
             mergedTypeMembers[owner] = (
-                parserSemantic.typeMembers[owner].orEmpty() +
+                parserSemantic.typeMembers[owner].orEmpty().map(::useParserFallback) +
                     typeMembers[owner].orEmpty().filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
                 )
-                .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character, it.containerName, it.receiverType, it.parameters).joinToString("|") }
+                .distinctBy(::mergedSymbolKey)
         }
         val mergedTopLevelSymbols = (
-            parserSemantic.topLevelSymbols +
+            parserSemantic.topLevelSymbols.map(::useParserFallback) +
                 topLevelSymbols.filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
             )
-            .distinctBy { listOf(it.name, it.kind, it.range.start.line, it.range.start.character).joinToString("|") }
+            .distinctBy { TopLevelSymbolKey(it.name, it.kind, it.range.start.line, it.range.start.character) }
         return MCFPPDocumentAnalysis(
             uri = uri,
             text = originalText,
@@ -539,6 +570,11 @@ object MCFPPDocumentIndex {
         symbol.containerName.orEmpty(),
         symbol.receiverType.orEmpty()
     ).joinToString("|")
+
+    private fun mergedSymbolKey(symbol: MCFPPSymbol) = MergedSymbolKey(
+        symbol.name, symbol.kind, symbol.range.start.line, symbol.range.start.character,
+        symbol.containerName, symbol.receiverType, symbol.parameters
+    )
 
     private fun offsetToPosition(text: String, offset: Int): Position {
         val line = text.take(offset).count { it == '\n' }

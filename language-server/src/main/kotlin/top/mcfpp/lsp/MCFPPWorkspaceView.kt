@@ -13,12 +13,47 @@ internal class MCFPPWorkspaceView(
     fun namespaceForUri(uri: String): String? = projectIndex.namespaceForUri(uri)
     class SymbolCaches {
         @Volatile var workspace: List<MCFPPSymbol>? = null
+        @Volatile private var macroSignatures: Set<String>? = null
+        @Volatile private var enumMemberNames: Set<String>? = null
         private val documents = ConcurrentHashMap<String, DocumentCaches>()
 
         fun forDocument(analysis: MCFPPDocumentAnalysis): DocumentCaches =
             documents.compute(analysis.uri) { _, cached ->
                 cached?.takeIf { it.analysis === analysis } ?: DocumentCaches(analysis)
             }!!
+
+        fun evictDocument(uri: String) {
+            documents.remove(uri)
+        }
+
+        fun isMacroSignature(symbol: MCFPPSymbol): Boolean = macroSignatures().contains(macroSignatureKey(symbol))
+
+        fun hasEnumMember(name: String): Boolean = name in enumMemberNames()
+
+        private fun macroSignatures(): Set<String> {
+            macroSignatures?.let { return it }
+            return synchronized(this) {
+                macroSignatures ?: workspace.orEmpty().asSequence().filter { it.isMacro }
+                    .map(::macroSignatureKey).toSet().also { macroSignatures = it }
+            }
+        }
+
+        private fun enumMemberNames(): Set<String> {
+            enumMemberNames?.let { return it }
+            return synchronized(this) {
+                enumMemberNames ?: workspace.orEmpty().asSequence().filter { it.kind == SymbolKind.EnumMember }
+                    .map { it.name }.toSet().also { enumMemberNames = it }
+            }
+        }
+
+        private fun macroSignatureKey(symbol: MCFPPSymbol): String = buildString {
+            fun appendPart(value: String) { append(value.length).append(':').append(value) }
+            appendPart(symbol.name)
+            val namespace = symbol.namespaceName
+            if (namespace == null) append("-1:") else appendPart(namespace)
+            append(symbol.parameters.size).append(':')
+            symbol.parameters.forEach { appendPart(it.typeName) }
+        }
     }
 
     class DocumentCaches(val analysis: MCFPPDocumentAnalysis) {
@@ -67,6 +102,26 @@ internal class MCFPPWorkspaceView(
 
     fun invalidateWorkspaceSymbolCache() {
         symbolCaches = SymbolCaches()
+    }
+
+    fun evictDocumentSymbolCache(uri: String) {
+        symbolCaches.evictDocument(uri)
+    }
+
+    fun isMacroSignature(symbol: MCFPPSymbol): Boolean {
+        while (true) {
+            val caches = symbolCaches
+            cachedWorkspaceSymbols()
+            if (caches === symbolCaches) return caches.isMacroSignature(symbol)
+        }
+    }
+
+    fun hasEnumMember(name: String): Boolean {
+        while (true) {
+            val caches = symbolCaches
+            cachedWorkspaceSymbols()
+            if (caches === symbolCaches) return caches.hasEnumMember(name)
+        }
     }
 
     fun visibleGlobalSymbolsForDocument(analysis: MCFPPDocumentAnalysis): List<MCFPPSymbol> {
@@ -132,7 +187,7 @@ internal class MCFPPWorkspaceView(
                     { it.range.start.line },
                     { it.range.start.character }
                 )
-            ) ?: if (workspaceSymbols().any { it.kind == SymbolKind.EnumMember && it.name == word })
+            ) ?: if (hasEnumMember(word))
                 contextualEnumMembers(analysis, position).firstOrNull { it.name == word } else null
     }
 
@@ -221,7 +276,7 @@ internal class MCFPPWorkspaceView(
         val prefix = line.substring(0, position.character.coerceIn(0, line.length))
         val match = NAMESPACE_QUALIFIER_AT_CURSOR.find(prefix) ?: return null
         val beforeQualifier = prefix.substring(0, match.range.first).trimEnd()
-        if (Regex("\\b(?:var|const|external)\\s*$").containsMatchIn(beforeQualifier) ||
+        if (VARIABLE_PREFIX_AT_CURSOR.containsMatchIn(beforeQualifier) ||
             beforeQualifier.lastOrNull() in setOf('(', '<', ',')) {
             return null
         }
@@ -268,6 +323,7 @@ internal class MCFPPWorkspaceView(
     }
 
     private companion object {
-        val NAMESPACE_QUALIFIER_AT_CURSOR = Regex("([A-Za-z_][A-Za-z0-9_.]*)\\s*:\\s*[A-Za-z_0-9]*$")
+        private val NAMESPACE_QUALIFIER_AT_CURSOR = Regex("([A-Za-z_][A-Za-z0-9_.]*)\\s*:\\s*[A-Za-z_0-9]*$")
+        private val VARIABLE_PREFIX_AT_CURSOR = Regex("\\b(?:var|const|external)\\s*$")
     }
 }
