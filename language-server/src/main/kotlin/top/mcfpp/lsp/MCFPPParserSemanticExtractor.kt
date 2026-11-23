@@ -132,6 +132,7 @@ object MCFPPParserSemanticExtractor {
         lexer.removeErrorListeners()
         lexer.addErrorListener(errorListener)
         val parser = mcfppParser(CommonTokenStream(lexer)).apply {
+            enableEditorRecovery()
             removeErrorListeners()
             addErrorListener(errorListener)
         }
@@ -686,7 +687,7 @@ object MCFPPParserSemanticExtractor {
                 containerName = currentFunction ?: currentType,
                 accessModifier = accessModifier(ctx),
                 initializer = ctx.expression()?.sourceText(),
-                initializerStart = ctx.expression()?.let { contextRange(it).start },
+                initializerStart = ctx.expression()?.let { contextRange(it).start }, isRuntimeValue = ctx.fieldModifier()?.EXTERNAL() != null,
                 functionValue = functionValue(ctx.type(), ctx.expression())
             )
             if (currentType != null && currentFunction == null) {
@@ -901,7 +902,7 @@ object MCFPPParserSemanticExtractor {
             isEntityMember: Boolean = false,
             isDataTemplate: Boolean = false,
             isAbstract: Boolean = false,
-            isNative: Boolean = false
+            isNative: Boolean = false, isRuntimeValue: Boolean = false
         ): MCFPPSymbol {
             val symbol = MCFPPSymbol(
                 uri = uri,
@@ -934,7 +935,7 @@ object MCFPPParserSemanticExtractor {
                 isEntityMember = isEntityMember,
                 isDataTemplate = isDataTemplate,
                 isAbstract = isAbstract,
-                isNative = isNative
+                isNative = isNative, isRuntimeValue = isRuntimeValue
             )
             symbols += symbol
             if (topLevel) {
@@ -1010,8 +1011,7 @@ object MCFPPParserSemanticExtractor {
             val type = MCFPPDocumentIndex.referenceFactoryType(receiver) ?: symbols.lastOrNull {
                 it.name == receiver && (it.topLevel || it.enclosingFunctionScopeId in scopes)
             }?.typeName ?: return null
-            return if (type.startsWith("NBTRef<") && type.endsWith('>')) type.substring(7, type.length - 1)
-                else if (type == "ScoreRef") "int" else null
+            return MCFPPValueMembers.callbackInput(type, "tryRead")
         }
 
         private fun contextParameters(ctx: mcfppParser.ContextParametersContext?): List<MCFPPFunctionParameter> =

@@ -5,13 +5,15 @@ import org.eclipse.lsp4j.TextDocumentPositionParams
 
 internal fun MCFPPWorkspaceView.resolveSymbolAt(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis): MCFPPSymbol? {
     templateFieldAt(analysis, params.position)?.let { return it }
-    analysis.referenceOccurrencesByName[analysis.wordAt(params.position)].orEmpty()
-        .firstOrNull { it.isNamedArgument && containsPosition(it.range, params.position) }
+    val word = analysis.wordAt(params.position) ?: return null
+    val references = analysis.referenceOccurrencesByName[word].orEmpty()
+    references.firstOrNull { it.isNamedArgument && containsPosition(it.range, params.position) }
         ?.let { return resolveNamedArgument(analysis, it) }
     val receiver = analysis.receiverBefore(params.position)
-    val word = analysis.wordAt(params.position) ?: return null
     resolveQualifiedGlobalSymbol(analysis, word, params.position)?.let { return it }
     if (receiver != null) {
+        references.firstOrNull { it.isCall && containsPosition(it.range, params.position) }
+            ?.let { calls.resolveCallTarget(analysis, it) }?.let { return it }
         val typeName = calls.resolveReceiverTypeAt(analysis, receiver, params.position)
         if (typeName != null) {
             return receiverMembers(analysis, receiver, typeName, params.position).firstOrNull { it.name == word }

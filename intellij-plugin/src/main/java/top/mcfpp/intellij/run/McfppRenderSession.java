@@ -54,12 +54,7 @@ final class McfppRenderSession implements AutoCloseable {
             for(var hook:selected.getAsJsonArray("before")) sequence.add(hook.getAsString());
             sequence.add(selected.get("function").getAsString());
         } else {
-            var functions=metadata.getAsJsonObject("functions");
-            var matches=functions.entrySet().stream().filter(entry -> entry.getKey().equals(target) ||
-                (entry.getKey().substring(0,entry.getKey().indexOf(':'))+":"+entry.getValue().getAsJsonObject().get("name").getAsString()).equals(target)).toList();
-            if(matches.size()!=1 || !matches.getFirst().getValue().getAsJsonObject().get("entry").getAsBoolean())
-                throw new IOException("Select a top-level function without parameters: "+target);
-            sequence.add(matches.getFirst().getKey());
+            sequence.add(resolveEntry(metadata,target));
         }
         Path source=Path.of(metadata.get("pack").getAsString());
         if(!Files.isRegularFile(source.resolve("pack.mcmeta"))) throw new IOException("Built render datapack is missing: "+source);
@@ -91,6 +86,18 @@ final class McfppRenderSession implements AutoCloseable {
             try { workspace.close(); } catch(IOException cleanup) { failure.addSuppressed(cleanup); }
             throw failure;
         }
+    }
+
+    static String resolveEntry(JsonObject metadata,String target) throws IOException {
+        var functions=metadata.getAsJsonObject("functions");
+        var matches=functions.entrySet().stream().filter(entry -> {
+            String name=entry.getValue().getAsJsonObject().get("name").getAsString();
+            return target.isBlank() ? name.equals("main") : entry.getKey().equals(target) ||
+                (entry.getKey().substring(0,entry.getKey().indexOf(':'))+":"+name).equals(target);
+        }).toList();
+        if(matches.size()!=1 || !matches.getFirst().getValue().getAsJsonObject().get("entry").getAsBoolean())
+            throw new IOException("Select a top-level function without parameters: "+(target.isBlank() ? "main" : target));
+        return matches.getFirst().getKey();
     }
 
     static JsonObject selectedTest(Path output,String target) throws IOException {

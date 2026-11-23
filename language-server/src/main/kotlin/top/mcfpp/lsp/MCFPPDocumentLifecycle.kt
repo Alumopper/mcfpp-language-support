@@ -197,11 +197,13 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
             document.targetVersion = version
             CompletableFuture.supplyAsync({
                 requireCurrent(uri, document)
-                val analysis = MCFPPDocumentIndex.analyze(uri, document.text, version)
+                MCFPPDocumentIndex.analyze(uri, document.text, version)
+            }, editorExecutor).thenCompose { analysis ->
                 val surfaceChanged = synchronized(documents) {
                     requireCurrent(uri, document)
                     if (document.targetVersion != version) {
-                        throw ResponseErrorException(ResponseError(ResponseErrorCode.ContentModified, "Target version changed during analysis", null))
+                        // An index refresh changed the target for this same document snapshot.
+                        return@thenCompose parseDocument(uri, document)
                     }
                     val previous = analyses.put(uri, analysis)
                     val surfaceChanged = previous == null || semanticSurface(previous) != semanticSurface(analysis)
@@ -211,8 +213,8 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                     surfaceChanged
                 }
                 if (surfaceChanged) scheduleDependentDiagnosticsRefresh(uri)
-                analysis
-            }, editorExecutor).also { document.parsed = it }
+                CompletableFuture.completedFuture(analysis)
+            }.also { document.parsed = it }
         }
 
     private fun scheduleDocumentAnalysis(uri: String, document: OpenDocument, delayMillis: Long) {

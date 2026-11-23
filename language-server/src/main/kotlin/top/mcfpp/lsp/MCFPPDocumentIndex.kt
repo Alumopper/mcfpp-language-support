@@ -125,7 +125,10 @@ data class MCFPPSymbol(
     val isAbstract: Boolean = false,
     val isNative: Boolean = false,
     val isMacro: Boolean = false,
-    val initializerStart: Position? = null
+    val initializerStart: Position? = null,
+    val isRuntimeValue: Boolean = false,
+    val requiresConstantReceiver: Boolean = false,
+    val inferTypesFromArguments: Map<String, Int> = emptyMap(),
 ) {
     val selectionRange: Range = range
 
@@ -476,7 +479,8 @@ object MCFPPDocumentIndex {
                     val typeName = match.groups[2]?.value?.trim()?.takeIf { it.isNotBlank() }
                     variables[name] = typeName
                     val kind = if (currentType != null && currentFunction == null) SymbolKind.Field else SymbolKind.Variable
-                    val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, typeName, effectiveContainer, typeName, currentType == null, namespaceName)
+                    val symbol = createSymbol(uri, lineIndex, normalizedText, line, name, kind, typeName, effectiveContainer, typeName,
+                        currentType == null && currentFunction == null, namespaceName)
                         .copy(isEntityMember = entityMemberPattern.containsMatchIn(line))
                     symbols += symbol
                     if (symbol.topLevel) {
@@ -516,6 +520,14 @@ object MCFPPDocumentIndex {
         val parserDeclarationKeys = parserSymbolsByDeclaration.keys
         val fallbackSymbols = symbols
             .filterNot { semanticDeclarationKey(it) in parserDeclarationKeys }
+            .mapNotNull { symbol ->
+                if (symbol.kind != SymbolKind.Variable || symbol.topLevel) return@mapNotNull symbol
+                val scope = parserSemantic.scopeRegions
+                    .filter { it.kind == MCFPPScopeKind.BLOCK && containsPosition(it.range, symbol.range.start) }
+                    .maxWithOrNull(compareBy({ it.range.start.line }, { it.range.start.character }))
+                    ?: return@mapNotNull null
+                symbol.copy(enclosingFunctionScopeId = scope.id)
+            }
             .map(::returnTypeFallback)
         fun useParserFallback(symbol: MCFPPSymbol): MCFPPSymbol =
             parserSymbolsByDeclaration[semanticDeclarationKey(symbol)] ?: symbol

@@ -10,7 +10,8 @@ public final class McfppRunConfigurations {
     private McfppRunConfigurations() {}
     public static RunnerAndConfigurationSettings get(Project project,McfppTask task) {
         var manager=RunManager.getInstance(project);
-        for(var entry:manager.getAllSettings()) if(entry.getConfiguration() instanceof McfppRunConfiguration c && c.task==task) return entry;
+        for(var entry:manager.getAllSettings()) if(entry.getConfiguration() instanceof McfppRunConfiguration c && c.task==task &&
+            (task!=McfppTask.RUN || c.runFunction.isBlank())) return entry;
         var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
         var settings=manager.createConfiguration("MCFPP "+task.title,type);
         var configuration=(McfppRunConfiguration)settings.getConfiguration();
@@ -33,6 +34,9 @@ public final class McfppRunConfigurations {
         }
         if(!properties.getBoolean("mcfpp.irConfigurationCreated",false)) {
             get(project,McfppTask.DUMP_IR); properties.setValue("mcfpp.irConfigurationCreated",true);
+        }
+        if(!properties.getBoolean("mcfpp.headlessRunConfigurationCreated",false)) {
+            get(project,McfppTask.RUN); properties.setValue("mcfpp.headlessRunConfigurationCreated",true);
         }
     }
     public static void run(Project project,McfppTask task) {
@@ -73,6 +77,23 @@ public final class McfppRunConfigurations {
         var configuration=(McfppRunConfiguration)settings.getConfiguration();
         configuration.task=McfppTask.BUILD; configuration.projectPath=directory.toString();
         configuration.render=true; configuration.renderFunction=id;
+        manager.setTemporaryConfiguration(settings);
+        ExecutionUtil.runConfiguration(settings,DefaultRunExecutor.getRunExecutorInstance());
+    }
+    public static void runFunction(Project project,Path directory,String id) {
+        com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+        var manager=RunManager.getInstance(project);
+        for(var entry:manager.getAllSettings()) {
+            if(entry.getConfiguration() instanceof McfppRunConfiguration c && c.task==McfppTask.RUN &&
+                c.directory().equals(directory.toAbsolutePath().normalize()) && c.runFunction.equals(id)) {
+                ExecutionUtil.runConfiguration(entry,DefaultRunExecutor.getRunExecutorInstance());
+                return;
+            }
+        }
+        var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
+        var settings=manager.createConfiguration("Run "+id,type);
+        var configuration=(McfppRunConfiguration)settings.getConfiguration();
+        configuration.task=McfppTask.RUN; configuration.projectPath=directory.toString(); configuration.runFunction=id;
         manager.setTemporaryConfiguration(settings);
         ExecutionUtil.runConfiguration(settings,DefaultRunExecutor.getRunExecutorInstance());
     }

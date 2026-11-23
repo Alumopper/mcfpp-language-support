@@ -5,6 +5,41 @@ import org.jdom.Element;
 import javax.swing.*;
 
 public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
+    public void testHeadlessConsoleOpensOnProgramOutputAndKeepsCompilationAvailable() {
+        var factory=com.intellij.execution.filters.TextConsoleBuilderFactory.getInstance();
+        var view=new McfppExecutionConsole(factory.createBuilder(getProject()).getConsole(),
+            factory.createBuilder(getProject()).getConsole(),false,true);
+        try {
+            var tabs=(JTabbedPane)((JPanel)view.getComponent()).getComponent(0);
+            assertEquals("Program Output",tabs.getTitleAt(tabs.getSelectedIndex()));
+            view.showCompilation();
+            assertEquals("Compilation",tabs.getTitleAt(tabs.getSelectedIndex()));
+            view.showRuntime();
+            assertEquals("Program Output",tabs.getTitleAt(tabs.getSelectedIndex()));
+        } finally { com.intellij.openapi.util.Disposer.dispose(view); }
+    }
+
+    public void testHeadlessRunPersistsItsLevelAndRebuildsTheNormalPack() throws Exception {
+        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.RUN).getConfiguration();
+        configuration.projectPath=java.nio.file.Path.of("../../MCFPP/examples/display-animation").toAbsolutePath().normalize().toString();
+        configuration.runFunction="demo:main";
+        configuration.arguments="-O0 --reuse-build";
+        configuration.optimizationLevel=2;
+        var state=new Element("configuration");
+        configuration.writeExternal(state);
+        var restored=configuration.clone();
+        restored.optimizationLevel=null;
+        restored.runFunction="";
+        restored.readExternal(state);
+        assertEquals(Integer.valueOf(2),restored.optimizationLevel);
+        assertEquals("demo:main",restored.runFunction);
+        var args=restored.commandLine().getParametersList().getList();
+        assertTrue(args.contains("--optimization-level=2"));
+        assertTrue(args.contains("--run-info"));
+        assertTrue(args.contains("--no-reuse-build"));
+        assertFalse(args.contains("-O0") || args.contains("--reuse-build") || args.contains("--render-info"));
+    }
+
     public void testRenderConfigurationPersistsAndBuildEnablesMetadata() throws Exception {
         var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.BUILD).getConfiguration();
         configuration.render=true; configuration.renderFunction="demo:main";
@@ -24,7 +59,7 @@ public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
         var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.BUILD).getConfiguration();
         var service=getProject().getService(top.mcfpp.intellij.project.McfppProjectService.class);
         service.acquire();
-        var handler=new McfppRenderProcessHandler(configuration,service);
+        var handler=new McfppExecutionProcessHandler(configuration,service);
         var compiler=new StringBuilder(); var dsb=new StringBuilder();
         handler.addProcessListener(new com.intellij.execution.process.ProcessAdapter() {
             @Override public void onTextAvailable(com.intellij.execution.process.ProcessEvent event,com.intellij.openapi.util.Key type) { compiler.append(event.getText()); }

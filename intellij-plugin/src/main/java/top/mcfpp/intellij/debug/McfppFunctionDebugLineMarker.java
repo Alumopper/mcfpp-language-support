@@ -21,12 +21,15 @@ public final class McfppFunctionDebugLineMarker extends RunLineMarkerContributor
         var symbol = McfppFileModels.get(file).symbols().stream().filter(s -> s.kind() == McfppSymbolKind.FUNCTION && s.owner() == null && s.nameOffset() == element.getTextOffset()).findFirst().orElse(null);
         if (symbol == null || symbol.bodyStart() < 0 || !symbol.signature().matches("(?s).*\\bfunc\\s+" + java.util.regex.Pattern.quote(symbol.name()) + "\\s*\\(\\s*\\).*")) return null;
         String id = symbol.qualifiedName();
+        var run = new DumbAwareAction("Run " + id) {
+            @Override public void actionPerformed(@NotNull AnActionEvent event) { McfppRunConfigurations.runFunction(file.getProject(), config.getParent(), id); }
+        };
         var action = new DumbAwareAction("Debug " + id) {
             @Override public void actionPerformed(@NotNull AnActionEvent event) { McfppRunConfigurations.debugFunction(file.getProject(), config.getParent(), id); }
         };
         var render = new DumbAwareAction("Run (Render) " + id) {
             @Override public void actionPerformed(@NotNull AnActionEvent event) { McfppRunConfigurations.renderFunction(file.getProject(), config.getParent(), id); }
         };
-        return new Info(AllIcons.Actions.StartDebugger, new AnAction[]{action, render}, e -> "Debug or render MCFPP function " + id);
+        return new Info(AllIcons.Actions.Execute, new AnAction[]{run, action, render}, e -> "Run, debug or render MCFPP function " + id);
     }
 }

@@ -109,9 +109,10 @@ public final class McfppProjectService implements Disposable {
         }.queue();
     }
     public void refresh() {
-        if(project.isDisposed()) return;
-        Path root=root();
-        if(root==null) return;
+        refresh(root());
+    }
+    public void refresh(Path root) {
+        if(project.isDisposed() || root==null) return;
         VirtualFile directory=LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root);
         if(directory!=null) directory.refresh(true,true);
     }

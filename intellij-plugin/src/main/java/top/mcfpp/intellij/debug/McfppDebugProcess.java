@@ -107,6 +107,7 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
                 launch.put("dsbJava", McfppToolchain.dsbJavaExecutable(getSession().getProject()));
                 launch.put("stopOnEntry", configuration.debugStopOnEntry);
                 launch.put("offline", configuration.offline); launch.put("locked", configuration.locked);
+                if (configuration.optimizationLevel != null) launch.put("optimizationLevel", configuration.optimizationLevel);
                 if (configuration.task == McfppTask.TEST) launch.put("test", selectedTest());
                 else launch.put("function", configuration.debugFunction);
                 remote.initialize(args).thenCompose(ignored -> remote.launch(launch)).exceptionally(error -> { fail(error); return null; });

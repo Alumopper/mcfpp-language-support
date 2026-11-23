@@ -108,18 +108,10 @@ internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView)
         position: Position
     ): List<CompletionItem> {
         val receiverType = workspace.calls.resolveReceiverTypeAt(analysis, receiver, position) ?: return emptyList()
-        val builtins = if (MCFPPDocumentIndex.isReferenceType(receiverType)) listOf(
-            CompletionItem("tryRead").apply {
-                kind = CompletionItemKind.Method
-                detail = "tryRead { value -> ... }: bool; synchronous value snapshot"
-            },
-            CompletionItem("set").apply {
-                kind = CompletionItemKind.Method
-                detail = "set(value): void; writes the referenced target"
-            }
-        ) else emptyList()
-        return builtins + workspace.receiverMembers(analysis, receiver, receiverType, position)
-            .filter { it.kind != SymbolKind.Constructor }
+        val receiverSymbol = workspace.resolveLocalSymbol(analysis, receiver, position)
+        val runtime = receiverSymbol?.let { it.isRuntimeValue || it.isParameter && !it.isReadOnly } == true
+        return workspace.receiverMembers(analysis, receiver, receiverType, position)
+            .filter { it.kind != SymbolKind.Constructor && !(runtime && it.requiresConstantReceiver) }
             .map { symbolCompletion(it) }
     }
 

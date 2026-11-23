@@ -382,7 +382,15 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
             argumentPositions = occurrence.readOnlyArgumentRanges.map { it.start }
         ).takeIf { it.arguments.isNotEmpty() }
         val readOnlyExpressions = readOnlyContext?.parsedArguments(analysis).orEmpty()
-        return candidates.maxByOrNull { candidate ->
+        return candidates.map { candidate ->
+            val inferred = candidate.inferTypesFromArguments.mapValues { (_, index) ->
+                occurrence.normalArguments.getOrNull(index)?.let { argument ->
+                    inferArgumentType(analysis, argument, occurrence.normalArgumentRanges.getOrNull(index)?.start
+                        ?: occurrence.range.start, normalExpressions.getOrNull(index))
+                } ?: "any"
+            }
+            MCFPPValueMembers.substitute(candidate, inferred)
+        }.maxByOrNull { candidate ->
             var score = signatureMatchScore(candidate, normalContext, analysis, occurrence.range.start, normalExpressions)
             if (readOnlyContext != null) {
                 score += signatureMatchScore(

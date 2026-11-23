@@ -4,9 +4,6 @@ import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.SymbolKind
 
 internal fun MCFPPWorkspaceView.resolveReceiverType(analysis: MCFPPDocumentAnalysis, receiver: String): String? {
-    analysis.variables[receiver]?.let {
-        return resolveImportedTypeName(analysis, it)
-    }
     resolveGlobalSymbol(analysis, receiver, Position(0, 0))
         ?.takeIf { it.kind in TYPE_SYMBOL_KINDS }
         ?.let { return it.name }
