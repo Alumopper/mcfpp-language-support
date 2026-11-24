@@ -21,7 +21,7 @@ public final class McfppWorkflowIntegrationTest extends BasePlatformTestCase {
     public void testGeneratedTasksPreserveUserSettingsAndAddMniTestOnce() {
         McfppRunConfigurations.initialize(getProject(),false);
         var manager=RunManager.getInstance(getProject());
-        assertEquals(8,manager.getAllSettings().stream().filter(s -> s.getConfiguration() instanceof McfppRunConfiguration).count());
+        assertEquals(McfppTask.values().length,manager.getAllSettings().stream().filter(s -> s.getConfiguration() instanceof McfppRunConfiguration).count());
         var settings=McfppRunConfigurations.get(getProject(),McfppTask.BUILD);
         assertSame(settings,manager.getSelectedConfiguration());
         var build=(McfppRunConfiguration)settings.getConfiguration();
@@ -30,7 +30,7 @@ public final class McfppWorkflowIntegrationTest extends BasePlatformTestCase {
         build.deployAfterBuild=true; build.deploymentDirectory="D:/Minecraft/存档/datapacks";
         McfppRunConfigurations.initialize(getProject(),true);
         McfppRunConfigurations.initialize(getProject(),true);
-        assertEquals(8,manager.getAllSettings().stream().filter(s -> s.getConfiguration() instanceof McfppRunConfiguration).count());
+        assertEquals(McfppTask.values().length,manager.getAllSettings().stream().filter(s -> s.getConfiguration() instanceof McfppRunConfiguration).count());
         assertEquals("-level=INFO --dump-ir",((McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.DUMP_IR).getConfiguration()).arguments);
         assertEquals("--output \"custom output\"",build.arguments);
         var state=new Element("configuration"); build.writeExternal(state);
