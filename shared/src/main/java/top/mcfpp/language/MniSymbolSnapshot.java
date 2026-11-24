@@ -8,11 +8,14 @@ public final class MniSymbolSnapshot {
     public static final class Symbol {
         public String namespace,name,typeName,detail,uri,documentation;
         public int line,character,endLine,endCharacter;
+        public String declarationUri;
+        public int declarationLine, declarationCharacter;
         public boolean macro;
         public List<Parameter> parameters=List.of();
     }
     public static final class Parameter {
         public String name,typeName,mode;
+        public List<Parameter> macroCallbackParameters = List.of();
     }
 }
 

@@ -54,9 +54,17 @@ data class MCFPPFunctionParameter(
     val typeName: String,
     val hasDefault: Boolean = false,
     val defaultValue: String? = null,
-    val isReadOnly: Boolean = false
+    val isReadOnly: Boolean = false,
+    val macroMode: top.mcfpp.library.model.MacroParameterMode? = null,
+    val macroCallbackParameters: List<MCFPPFunctionParameter> = emptyList(),
 ) {
     fun label(): String = buildString {
+        when (macroMode) {
+            top.mcfpp.library.model.MacroParameterMode.REF -> append("ref ")
+            top.mcfpp.library.model.MacroParameterMode.CONST -> append("const ")
+            top.mcfpp.library.model.MacroParameterMode.INLINE -> append("inline ")
+            else -> Unit
+        }
         if (isReadOnly && name != null && typeName.equals("type", ignoreCase = true)) {
             append(name)
         } else {
@@ -129,6 +137,8 @@ data class MCFPPSymbol(
     val isRuntimeValue: Boolean = false,
     val requiresConstantReceiver: Boolean = false,
     val inferTypesFromArguments: Map<String, Int> = emptyMap(),
+    val nativeImplementation: Location? = null,
+    val typeParameters: List<String> = emptyList(),
 ) {
     val selectionRange: Range = range
 

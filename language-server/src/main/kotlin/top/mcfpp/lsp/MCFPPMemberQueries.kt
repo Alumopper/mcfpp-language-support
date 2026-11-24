@@ -59,9 +59,13 @@ internal fun MCFPPWorkspaceView.memberSymbolsForType(
     val cacheKey = receiverType
     val memberSymbolsCache = symbolCaches.forDocument(analysis).members
     memberSymbolsCache[cacheKey]?.let { return it }
-    val intrinsic = MCFPPValueMembers.members(receiverType)
+    val intrinsicReceiver = if (normalizedReceiverType == "GameRule" && ':' !in receiverType.substringBefore('<')) {
+        visibleGlobalSymbolsForDocument(analysis).firstOrNull { it.name == "GameRule" && it.kind == SymbolKind.Class }
+            ?.namespaceName?.let { "$it:$receiverType" } ?: receiverType
+    } else receiverType
+    val intrinsic = MCFPPValueMembers.members(intrinsicReceiver)
     templateSchema(analysis).members(receiverType)?.let { declared ->
-        val members = declared + intrinsic
+        val members = mergeMemberMetadata(declared, intrinsic)
         memberSymbolsCache[cacheKey] = members
         return members
     }
@@ -112,8 +116,14 @@ internal fun MCFPPWorkspaceView.memberSymbolsForType(
         }
         top.mcfpp.language.EntityBuiltins.parent(currentType)?.let(pending::addLast)
     }
-    return (members.values + intrinsic).distinctBy { it.name to parameterSignatureKey(it) }.also { memberSymbolsCache[cacheKey] = it }
+    return mergeMemberMetadata(members.values, intrinsic).also { memberSymbolsCache[cacheKey] = it }
 }
+
+private fun mergeMemberMetadata(declared: Collection<MCFPPSymbol>, intrinsic: List<MCFPPSymbol>): List<MCFPPSymbol> =
+    (declared.filterNot { candidate -> candidate.isSynthetic && intrinsic.any {
+        it.name == candidate.name && parameterSignatureKey(it).filterNot(Char::isWhitespace) ==
+            parameterSignatureKey(candidate).filterNot(Char::isWhitespace)
+    } } + intrinsic).distinctBy { it.name to parameterSignatureKey(it).filterNot(Char::isWhitespace) }
 
 /**
  * Members of `EntityRef<T>`: the entity members declared on the template ancestry

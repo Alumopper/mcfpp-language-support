@@ -4,6 +4,28 @@ import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.SymbolKind
 import java.util.concurrent.ConcurrentHashMap
 
+private data class MacroSignatureKey(
+    val namespace: String?,
+    val name: String,
+    val receiver: String?,
+    val parameters: List<String>,
+)
+
+private fun macroSignatureKey(symbol: MCFPPSymbol) = MacroSignatureKey(
+    symbol.namespaceName, symbol.name, symbol.receiverType,
+    symbol.parameters.map { it.typeName.filterNot(Char::isWhitespace) },
+)
+
+private fun MCFPPSymbol.withMacroMetadata(macro: MCFPPSymbol) = copy(
+    isMacro = true,
+    nativeImplementation = macro.nativeImplementation ?: nativeImplementation,
+    documentation = documentation?.takeUnless(String::isBlank) ?: macro.documentation,
+    parameters = if (parameters.size == macro.parameters.size) parameters.zip(macro.parameters).map { (source, metadata) ->
+        source.copy(macroMode = metadata.macroMode ?: source.macroMode,
+            macroCallbackParameters = metadata.macroCallbackParameters.ifEmpty { source.macroCallbackParameters })
+    } else parameters,
+)
+
 internal class MCFPPWorkspaceView(
     private val projectIndex: MCFPPProjectIndex,
     private val openAnalyses: () -> Map<String, MCFPPDocumentAnalysis>
@@ -13,7 +35,7 @@ internal class MCFPPWorkspaceView(
     fun namespaceForUri(uri: String): String? = projectIndex.namespaceForUri(uri)
     class SymbolCaches {
         @Volatile var workspace: List<MCFPPSymbol>? = null
-        @Volatile private var macroSignatures: Set<String>? = null
+        @Volatile private var macroSignatures: Map<MacroSignatureKey, MCFPPSymbol>? = null
         @Volatile private var enumMemberNames: Set<String>? = null
         private val documents = ConcurrentHashMap<String, DocumentCaches>()
 
@@ -28,13 +50,15 @@ internal class MCFPPWorkspaceView(
 
         fun isMacroSignature(symbol: MCFPPSymbol): Boolean = macroSignatures().contains(macroSignatureKey(symbol))
 
+        fun macro(symbol: MCFPPSymbol): MCFPPSymbol? = macroSignatures()[macroSignatureKey(symbol)]
+
         fun hasEnumMember(name: String): Boolean = name in enumMemberNames()
 
-        private fun macroSignatures(): Set<String> {
+        private fun macroSignatures(): Map<MacroSignatureKey, MCFPPSymbol> {
             macroSignatures?.let { return it }
             return synchronized(this) {
                 macroSignatures ?: workspace.orEmpty().asSequence().filter { it.isMacro }
-                    .map(::macroSignatureKey).toSet().also { macroSignatures = it }
+                    .associateBy(::macroSignatureKey).also { macroSignatures = it }
             }
         }
 
@@ -46,14 +70,6 @@ internal class MCFPPWorkspaceView(
             }
         }
 
-        private fun macroSignatureKey(symbol: MCFPPSymbol): String = buildString {
-            fun appendPart(value: String) { append(value.length).append(':').append(value) }
-            appendPart(symbol.name)
-            val namespace = symbol.namespaceName
-            if (namespace == null) append("-1:") else appendPart(namespace)
-            append(symbol.parameters.size).append(':')
-            symbol.parameters.forEach { appendPart(it.typeName) }
-        }
     }
 
     class DocumentCaches(val analysis: MCFPPDocumentAnalysis) {
@@ -91,12 +107,18 @@ internal class MCFPPWorkspaceView(
         val caches = symbolCaches
         caches.workspace?.let { return it }
         return synchronized(caches) {
-            caches.workspace ?: allAnalyses().values
-                .flatMap { analysis -> analysis.topLevelSymbols + analysis.typeMembers.values.flatten() }
-                .plus(projectIndex.snapshot().librarySymbols)
-                .distinctBy(::symbolIdentityKey)
-                .sortedBy { it.name }
-                .also { caches.workspace = it }
+            caches.workspace ?: run {
+                val librarySymbols = projectIndex.snapshot().librarySymbols
+                val macros = librarySymbols.filter { it.isMacro }.associateBy(::macroSignatureKey)
+                allAnalyses().values
+                    .flatMap { analysis -> analysis.topLevelSymbols + analysis.typeMembers.values.flatten() }
+                    .map { symbol ->
+                        if (symbol.isNative && !symbol.isMacro)
+                            macros[macroSignatureKey(symbol)]?.let(symbol::withMacroMetadata) ?: symbol
+                        else symbol
+                    }.plus(librarySymbols).distinctBy(::symbolIdentityKey).sortedBy { it.name }
+                    .also { caches.workspace = it }
+            }
         }
     }
 
@@ -113,6 +135,17 @@ internal class MCFPPWorkspaceView(
             val caches = symbolCaches
             cachedWorkspaceSymbols()
             if (caches === symbolCaches) return caches.isMacroSignature(symbol)
+        }
+    }
+
+    fun withNativeMetadata(symbol: MCFPPSymbol): MCFPPSymbol {
+        if (!symbol.isNative || symbol.isMacro) return symbol
+        while (true) {
+            val caches = symbolCaches
+            cachedWorkspaceSymbols()
+            if (caches !== symbolCaches) continue
+            val macro = caches.macro(symbol) ?: return symbol
+            return symbol.withMacroMetadata(macro)
         }
     }
 
@@ -177,7 +210,7 @@ internal class MCFPPWorkspaceView(
             .filter {
                 when {
                     it.enclosingFunctionScopeId != null -> analysis.isScopeVisible(it.enclosingFunctionScopeId, position)
-                    it.enclosingTypeScopeId != null -> it.enclosingTypeScopeId == currentTypeScopeId || it.kind in setOf(SymbolKind.Field, SymbolKind.Method, SymbolKind.Constructor)
+                    it.enclosingTypeScopeId != null -> it.enclosingTypeScopeId == currentTypeScopeId
                     else -> true
                 }
             }

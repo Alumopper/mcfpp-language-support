@@ -159,13 +159,27 @@ class MCFPPProjectIndex {
         }
     }
 
-    private fun mergedLibrarySymbols(): List<MCFPPSymbol> =
-        (diskLibrarySymbols + mniSnapshots.values.flatMap { it.symbols }).distinctBy { symbol ->
+    private fun mergedLibrarySymbols(): List<MCFPPSymbol> {
+        fun key(symbol: MCFPPSymbol) =
             LibrarySymbolKey(
                 symbol.name, symbol.kind, symbol.namespaceName, symbol.containerName, symbol.receiverType,
-                symbol.parameters.map { LibraryParameterKey(it.isReadOnly, it.typeName, it.hasDefault) }
+                symbol.parameters.map { LibraryParameterKey(it.isReadOnly, it.typeName.filterNot(Char::isWhitespace), it.hasDefault) }
+            )
+        val live = mniSnapshots.values.flatMap { it.symbols }.associateBy(::key)
+        val merged = diskLibrarySymbols.associateBy(::key).toMutableMap()
+        for ((identity, source) in live) {
+            val library = merged[identity]
+            merged[identity] = if (library == null) source else source.copy(
+                documentation = source.documentation?.takeUnless(String::isBlank) ?: library.documentation,
+                nativeImplementation = source.nativeImplementation ?: library.nativeImplementation,
+                parameters = if (source.parameters.size == library.parameters.size) source.parameters.zip(library.parameters)
+                    .map { (actual, compiled) -> actual.copy(macroMode = actual.macroMode ?: compiled.macroMode,
+                        macroCallbackParameters = actual.macroCallbackParameters.ifEmpty { compiled.macroCallbackParameters }) }
+                    else source.parameters,
             )
         }
+        return merged.values.toList()
+    }
 
     fun snapshot(): MCFPPProjectSnapshot = snapshot
 
@@ -303,7 +317,9 @@ class MCFPPProjectIndex {
                 }
                 addAll(analysis.topLevelSymbols.filter { it.kind == SymbolKind.Function }.map { it.copy(isExternal = true) })
             }
-            addAll(MCFPPContextBuiltins.symbols())
+            val contextEntries = MCFPPValueMembers.globals()
+            addAll(MCFPPContextBuiltins.symbols().filter { symbol -> contextEntries.none { it.name == symbol.name && symbol.topLevel } })
+            addAll(contextEntries)
             if (!project.ignoreStdLib) {
                 addAll(MCFPPEntityBuiltins.symbols(project.configFile?.toUri()?.toString() ?: project.root.toUri().toString()))
                 addAll(MCFPPNbtBuiltins.symbols(project.configFile?.toUri()?.toString() ?: project.root.toUri().toString()))
@@ -324,7 +340,8 @@ class MCFPPProjectIndex {
                         }
                         else -> null
                     }
-                    if (bytes != null) addAll(librarySymbols(bytes, file.toUri().toString(), false))
+                    if (bytes != null) addAll(librarySymbols(bytes, file.toUri().toString(), false,
+                        MCFPPSourceJarResolver(file, project.jars, project.root)))
                 }
             }
         }
@@ -381,11 +398,15 @@ class MCFPPProjectIndex {
                             Files.walk(path).use { paths ->
                                 paths.filter { it.isRegularFile() && it.extension.equals("mclib", ignoreCase = true) }
                                     .sorted()
-                                    .forEach { add(fileFingerprint(it)) }
+                                    .forEach {
+                                        add(fileFingerprint(it))
+                                        add(fileFingerprint(MCFPPSourceJarResolver.adjacentSources(it)))
+                                    }
                             }
                         }
                     } else {
                         add(fileFingerprint(path))
+                        add(fileFingerprint(MCFPPSourceJarResolver.adjacentSources(path)))
                     }
                 }
         }.joinToString("|")
@@ -404,7 +425,7 @@ class MCFPPProjectIndex {
 
     private fun readStdlibIndexBytes(targetVersion: String): ByteArray? {
         val loader = this@MCFPPProjectIndex.javaClass.classLoader
-        val resource = loader.getResource("datapack/targets//bin.mclib")
+        val resource = loader.getResource("datapack/targets/$targetVersion/bin.mclib")
             ?: loader.getResource("datapack/bin.mclib")
         if (resource != null) {
             return resource.openStream().use { it.readBytes() }
@@ -414,7 +435,7 @@ class MCFPPProjectIndex {
         if (!jarPath.isRegularFile()) return null
         return runCatching {
             ZipFile(jarPath.toFile()).use { zip ->
-                val entry = zip.getEntry("datapack/targets//bin.mclib")
+                val entry = zip.getEntry("datapack/targets/$targetVersion/bin.mclib")
                     ?: zip.getEntry("datapack/bin.mclib")
                 entry?.let { zip.getInputStream(it).use { stream -> stream.readBytes() } }
             }

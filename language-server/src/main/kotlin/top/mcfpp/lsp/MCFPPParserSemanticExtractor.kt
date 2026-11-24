@@ -280,7 +280,7 @@ object MCFPPParserSemanticExtractor {
                 null
             }
             val readOnlyArguments = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
-            val normalArguments = functionCall?.arguments()?.normalArgs().argumentExpressions()
+            val normalArguments = functionCall.callArgumentNodes()
             referencesByName.getOrPut(token.text) { mutableListOf() }.add(range)
             referenceOccurrencesByName.getOrPut(token.text) { mutableListOf() }.add(
                 MCFPPReferenceOccurrence(
@@ -404,9 +404,8 @@ object MCFPPParserSemanticExtractor {
                     isSynthetic = true
                 )
                 typeMembers.getOrPut(name) { mutableListOf() }.add(delegatedValue)
-            }
-        }
-
+    }
+}
         private fun recordEntitySummon(owner: String, token: Token, ownerCtx: ParserRuleContext) {
             for (parameters in listOf(
                 emptyList(),
@@ -685,7 +684,7 @@ object MCFPPParserSemanticExtractor {
                 receiverType = null,
                 topLevel = currentType == null && currentFunction == null && currentBlockScopeId() == null,
                 containerName = currentFunction ?: currentType,
-                accessModifier = accessModifier(ctx),
+                accessModifier = accessModifier(ctx), isReadOnly = ctx.fieldModifier()?.CONST() != null,
                 initializer = ctx.expression()?.sourceText(),
                 initializerStart = ctx.expression()?.let { contextRange(it).start }, isRuntimeValue = ctx.fieldModifier()?.EXTERNAL() != null,
                 functionValue = functionValue(ctx.type(), ctx.expression())
@@ -1011,7 +1010,7 @@ object MCFPPParserSemanticExtractor {
             val type = MCFPPDocumentIndex.referenceFactoryType(receiver) ?: symbols.lastOrNull {
                 it.name == receiver && (it.topLevel || it.enclosingFunctionScopeId in scopes)
             }?.typeName ?: return null
-            return MCFPPValueMembers.callbackInput(type, "tryRead")
+            return MCFPPValueMembers.callbackInput(type, "tryRead", 0)?.singleOrNull()
         }
 
         private fun contextParameters(ctx: mcfppParser.ContextParametersContext?): List<MCFPPFunctionParameter> =

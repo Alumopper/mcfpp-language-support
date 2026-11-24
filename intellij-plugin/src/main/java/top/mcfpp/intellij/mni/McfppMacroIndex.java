@@ -8,6 +8,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiModifier;
@@ -37,9 +38,16 @@ import java.util.regex.Pattern;
 public final class McfppMacroIndex {
     public static final String ANNOTATION = "top.mcfpp.annotations.MNIMacro";
     private static final Key<CachedValue<List<Macro>>> CACHE = Key.create("mcfpp.macro.index");
+    private static final Pattern NAMESPACE_QUALIFIER = Pattern.compile("([\\w.]+)\\s*:\\s*$");
 
     public record Macro(String namespace, String name, String returnType,
-                        List<MniSymbolSnapshot.Parameter> parameters, PsiMethod method) {
+                        List<MniSymbolSnapshot.Parameter> parameters, PsiMethod method,
+                        VirtualFile declarationFile, int declarationOffset, int declarationLine, int declarationCharacter) {
+        PsiElement declaration() {
+            var file = PsiManager.getInstance(method.getProject()).findFile(declarationFile);
+            return file == null ? null : file.findElementAt(declarationOffset);
+        }
+
         public String signature() {
             return "func " + name + "(" + parameters.stream()
                     .map(p -> p.name + ": " + p.typeName)
@@ -90,13 +98,17 @@ public final class McfppMacroIndex {
                     parameter.typeName = signature.normalTypes().get(index);
                     parameter.mode = index < annotation.parameterModes().size()
                             ? annotation.parameterModes().get(index) : "VALUE";
+                    parameter.macroCallbackParameters = MniJavaAnnotation.callbackParameters(method, index);
                     parameters.add(parameter);
                 }
                 String identity = namespace + ":" + signature.name() + parameters.stream()
                         .map(p -> p.typeName).toList();
                 if (seen.add(identity)) {
+                    var document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(file);
+                    int line = document == null ? 0 : document.getLineNumber(signature.nameOffset());
+                    int column = document == null ? 0 : signature.nameOffset() - document.getLineStartOffset(line);
                     result.add(new Macro(namespace, signature.name(), signature.returnType(),
-                            List.copyOf(parameters), method));
+                            List.copyOf(parameters), method, virtual, signature.nameOffset(), line, column));
                 }
             }
         }
@@ -105,12 +117,16 @@ public final class McfppMacroIndex {
 
     private static PsiMethod matchingMethod(PsiClass owner, MniJavaTargetParser.Target target,
                                              MniFunctionSignature signature) {
+        PsiMethod match = null;
         for (PsiMethod method : owner.findMethodsByName(target.memberName(), false)) {
             if (!method.hasModifierProperty(PsiModifier.PUBLIC) ||
                     !method.hasModifierProperty(PsiModifier.STATIC)) continue;
-            if (MniJavaAnnotation.from(method).filter(signature::parametersMatch).isPresent()) return method;
+            if (MniJavaAnnotation.from(method).filter(MniJavaAnnotation::macro)
+                    .filter(signature::parametersMatch).filter(a -> a.returnType().equals(signature.returnType())).isEmpty()) continue;
+            if (match != null) return null;
+            match = method;
         }
-        return null;
+        return match;
     }
 
     public static List<Macro> visible(PsiFile file, String name) {
@@ -124,7 +140,7 @@ public final class McfppMacroIndex {
     }
 
     public static String qualifier(PsiFile file, int offset) {
-        var match = Pattern.compile("([\\w.]+)\\s*:\\s*$")
+        var match = NAMESPACE_QUALIFIER
                 .matcher(file.getText().substring(0, Math.min(offset, file.getTextLength())));
         return match.find() ? match.group(1) : null;
     }
@@ -163,16 +179,20 @@ public final class McfppMacroIndex {
             symbol.typeName = macro.returnType();
             symbol.detail = macro.signature();
             symbol.parameters = macro.parameters();
-            var file = macro.method().getContainingFile();
-            symbol.uri = Path.of(file.getVirtualFile().getPath()).toUri().toString();
-            var document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(file);
-            var identifier = macro.method().getNameIdentifier();
-            if (document != null && identifier != null) {
-                int offset = identifier.getTextOffset();
+            symbol.declarationUri = Path.of(macro.declarationFile().getPath()).toUri().toString();
+            symbol.declarationLine = macro.declarationLine();
+            symbol.declarationCharacter = macro.declarationCharacter();
+            var implementation = macro.method().getNavigationElement();
+            var file = implementation.getContainingFile();
+            var virtual = file == null ? null : file.getVirtualFile();
+            var document = file == null ? null : com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(file);
+            if (document != null && virtual != null && !"class".equals(virtual.getExtension())) {
+                symbol.uri = virtual.isInLocalFileSystem() ? Path.of(virtual.getPath()).toUri().toString() : virtual.getUrl();
+                int offset = implementation.getTextOffset();
                 symbol.line = document.getLineNumber(offset);
                 symbol.character = offset - document.getLineStartOffset(symbol.line);
                 symbol.endLine = symbol.line;
-                symbol.endCharacter = symbol.character + identifier.getTextLength();
+                symbol.endCharacter = symbol.character + macro.method().getName().length();
             }
             var doc = macro.method().getDocComment();
             if (doc != null) symbol.documentation = doc.getText();

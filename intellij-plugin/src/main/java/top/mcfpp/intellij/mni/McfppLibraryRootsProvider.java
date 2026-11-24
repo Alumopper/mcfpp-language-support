@@ -4,6 +4,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.AdditionalLibraryRootsProvider;
 import com.intellij.openapi.roots.SyntheticLibrary;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.JarFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.navigation.ItemPresentation;
@@ -72,6 +73,11 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
                 .toList();
     }
 
+    public static @NotNull List<Path> localCompilerSourcePaths(@NotNull Project project) {
+        return discoverSourceRoots(project.getBasePath(), System.getProperty(SOURCES_PROPERTY),
+                System.getenv(HOME_ENVIRONMENT)).stream().filter(path -> !isMcfppSourceRoot(path)).toList();
+    }
+
     /** MCFPP-only roots used by the direct source fallback while IDEA's file indexes are unavailable or stale. */
     public static @NotNull List<VirtualFile> mcfppSourceRoots(@NotNull Project project) {
         List<Path> discovered = discoverSourceRoots(
@@ -125,7 +131,9 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
             addSourceRoot(roots, javaSources);
             addSourceRoot(roots, kotlinSources);
             addSourceRoot(roots, mcfppSources);
-            if (!conventionalLayout) addSourceRoot(roots, candidate);
+            if (Files.isRegularFile(candidate) && candidate.getFileName().toString().endsWith("-sources.jar")) {
+                roots.add(candidate);
+            } else if (!conventionalLayout) addSourceRoot(roots, candidate);
         } catch (RuntimeException ignored) {
             // An invalid optional override must not prevent the project from opening.
         }
@@ -195,6 +203,9 @@ public final class McfppLibraryRootsProvider extends AdditionalLibraryRootsProvi
             // This provider is queried during early IDE startup. A synchronous refresh here can initialize the
             // event queue from a background thread; source changes are picked up through getRootsToWatch().
             VirtualFile root = fileSystem.findFileByNioFile(path);
+            if (root != null && !root.isDirectory() && path.getFileName().toString().endsWith("-sources.jar")) {
+                root = JarFileSystem.getInstance().getJarRootForLocalFile(root);
+            }
             if (root != null && root.isDirectory()) roots.add(root);
         }
         return List.copyOf(roots);

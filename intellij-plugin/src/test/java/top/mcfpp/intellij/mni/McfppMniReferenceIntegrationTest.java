@@ -215,6 +215,26 @@ public final class McfppMniReferenceIntegrationTest extends McfppJavaFixtureTest
         });
     }
 
+    public void testKotlinSourceFallbackFindsMultilineBoundMethod() {
+        var provider = myFixture.addFileToProject("src/main/kotlin/example/mni/KotlinBridge.kt", """
+                package example.mni
+                object KotlinBridge {
+                    @JvmStatic
+                    fun
+                    invoke() {}
+                }
+                """);
+        myFixture.configureByText(McfppFileType.INSTANCE, "func run() = example.mni.KotlinBridge.inv<caret>oke");
+        DumbModeTestUtils.runInDumbModeSynchronously(getProject(), () -> {
+            var binding = myFixture.getFile().findElementAt(myFixture.getCaretOffset());
+            var targets = new McfppMniGotoDeclarationHandler().getGotoDeclarationTargets(binding, myFixture.getCaretOffset(), myFixture.getEditor());
+            assertNotNull(targets);
+            assertEquals(1, targets.length);
+            assertEquals(provider.getVirtualFile(), targets[0].getContainingFile().getVirtualFile());
+            assertEquals("invoke", targets[0].getText());
+        });
+    }
+
     public void testFromTypeDeclarationNameNavigatesToBoundJavaClass() {
         PsiClass base = myFixture.addClass("""
                 package example.mni;

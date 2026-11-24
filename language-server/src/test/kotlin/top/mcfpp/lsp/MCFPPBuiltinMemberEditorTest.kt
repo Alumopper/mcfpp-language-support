@@ -11,6 +11,7 @@ class MCFPPBuiltinMemberEditorTest {
     private val source = """
         func main() {
             var values = [1, 2]
+            values.add(3)
             print(values.fold(0) { sum, value -> sum + value })
             var label = " MCFPP ".trim().lowercase()
             var ref = nbtStorageRef<list<int>>("test:values", "source")
@@ -29,7 +30,7 @@ class MCFPPBuiltinMemberEditorTest {
                 .left.mapTo(hashSetOf()) { it.label }
         }
         val dot = source.substringBefore("    ref.tryRead") + "    ref.\n}"
-        assertEquals(setOf("tryRead", "set"), check(dot, "ref.", 2))
+        assertEquals(setOf("tryRead", "set", "let", "also"), check(dot, "ref.", 2))
         for ((index, expression) in listOf("print(", "print(in)", "print(inp)").withIndex()) {
             val text = source.replace("print(input)", expression)
             assertTrue("input" in check(text, expression.removeSuffix(")"), index + 3), text)
@@ -40,12 +41,14 @@ class MCFPPBuiltinMemberEditorTest {
 
     @Test fun builtinsExposeDocumentationDeclarationsAndRuntimeRestrictions() = withServer { server, document ->
         val service = server.textDocumentService
-        for (name in listOf("fold", "trim", "lowercase", "tryRead")) {
+        for (name in listOf("add", "fold", "trim", "lowercase", "tryRead")) {
             val at = position(source, ".$name")
             val hover = service.hover(HoverParams(document, at)).get(10, TimeUnit.SECONDS)
             assertTrue("\n---\n" in hover.contents.right.value, hover.toString())
             if (name == "fold") assertContains(hover.contents.right.value, "fold(initial: int, operation: (int, int) -> int): int")
+            if (name == "add") assertContains(hover.contents.right.value, "add(int)")
             val location = service.definition(DefinitionParams(document, at)).get(10, TimeUnit.SECONDS).left.single()
+            assertTrue(location.uri.endsWith(".kt"), location.toString())
             val line = Files.readAllLines(Path.of(URI.create(location.uri)))[location.range.start.line]
             assertEquals(name, line.substring(location.range.start.character, location.range.end.character))
         }
@@ -56,6 +59,81 @@ class MCFPPBuiltinMemberEditorTest {
             .get(10, TimeUnit.SECONDS).left.map { it.label }
         assertContains(members, "length")
         assertFalse("trim" in members || "lowercase" in members)
+        val receivers = """
+            external input: string
+            data Holder { var title: string }
+            func readText(): string { return "runtime" }
+            func show(holder: Holder) {
+                print(input.length())
+                print(holder.title.length())
+                print(readText().length())
+                const label = "closed"
+                print(label.trim())
+            }
+        """.trimIndent()
+        service.didChange(DidChangeTextDocumentParams(VersionedTextDocumentIdentifier(document.uri, 3),
+            listOf(TextDocumentContentChangeEvent(receivers))))
+        for (receiver in listOf("input.", "holder.title.", "readText().", "label.")) {
+            val labels = service.completion(CompletionParams(document, position(receivers, receiver)))
+                .get(10, TimeUnit.SECONDS).left.map { it.label }
+            assertContains(labels, "length", receiver)
+            assertEquals(receiver == "label.", "trim" in labels, receiver)
+        }
+    }
+
+    @Test fun genericCallbacksBindReceiverAndMethodTypes() = withServer { server, document ->
+        val text = """
+            func main(values: list<int>) {
+                var flags = values.mapIndexed({ index, value -> value > index })
+                var total = values.fold(0.0, { accumulator, value -> accumulator + value })
+            }
+        """.trimIndent()
+        val service = server.textDocumentService
+        service.didChange(DidChangeTextDocumentParams(VersionedTextDocumentIdentifier(document.uri, 2),
+            listOf(TextDocumentContentChangeEvent(text))))
+        val mapping = service.hover(HoverParams(document, position(text, ".mapIndexed"))).get(10, TimeUnit.SECONDS)
+        assertContains(mapping.contents.right.value, "callback: (int, int) -> bool): list<bool>")
+        val folding = service.hover(HoverParams(document, position(text, ".fold"))).get(10, TimeUnit.SECONDS)
+        assertContains(folding.contents.right.value, "fold(initial: float, operation: (float, int) -> float): float")
+    }
+
+    @Test fun matchingSourceJarResolvesExactJvmOverload() {
+        val root = Files.createTempDirectory("mcfpp-source-jar-test")
+        try {
+            val source = """
+                package sample;
+                public final class Provider {
+                    public static void expand(int n) { System.out.println(n); }
+                    public static void
+                    expand(
+                        String value
+                    ) {
+                        System.out.println(value);
+                    }
+                }
+            """.trimIndent()
+            val sourceFile = root.resolve("Provider.java")
+            Files.writeString(sourceFile, source)
+            assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-g", "-d", root.toString(), sourceFile.toString()))
+            fun archive(file: Path, name: String, data: ByteArray) {
+                java.util.zip.ZipOutputStream(Files.newOutputStream(file)).use { zip ->
+                    zip.putNextEntry(java.util.zip.ZipEntry(name))
+                    zip.write(data)
+                    zip.closeEntry()
+                }
+            }
+            val binary = root.resolve("example-2.1.jar")
+            archive(binary, "sample/Provider.class", Files.readAllBytes(root.resolve("sample/Provider.class")))
+            archive(root.resolve("example-2.0-sources.jar"), "sample/Provider.java", source.toByteArray())
+            val binding = top.mcfpp.library.model.NativeBinding(null, "sample.Provider", "expand", listOf("java.lang.String"), "void")
+            assertNull(MCFPPSourceJarResolver(binary, emptyList()).implementation(binding))
+            archive(root.resolve("example-2.1-sources.jar"), "sample/Provider.java", source.toByteArray())
+            val location = assertNotNull(MCFPPSourceJarResolver(binary, emptyList()).implementation(binding))
+            assertEquals(Position(4, 4), location.range.start)
+            assertTrue(location.uri.endsWith("/sample/Provider.java"))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
     }
 
     private fun position(text: String, marker: String): Position =

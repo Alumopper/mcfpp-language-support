@@ -12,6 +12,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
+import top.mcfpp.language.MniSymbolSnapshot;
 
 /**
  * Compiler-facing values from {@code @MNIFunction} and {@code @MNIMacro}, read without
@@ -30,6 +32,7 @@ record MniJavaAnnotation(
     /** Retained for callers that validate native-function bindings. */
     static final String QUALIFIED_NAME = FUNCTION_QUALIFIED_NAME;
     private static final String API = "top.mcfpp.mni.api.";
+    private static final Pattern CALLBACK_MODE = Pattern.compile("^(ref|const|value|inline)\\s+(.+)$", Pattern.DOTALL);
 
     MniJavaAnnotation {
         readOnlyTypes = List.copyOf(readOnlyTypes);
@@ -42,8 +45,8 @@ record MniJavaAnnotation(
         if (macro != null) return macro(method, macro);
         PsiAnnotation annotation = method.getAnnotation(FUNCTION_QUALIFIED_NAME);
         if (annotation == null) return Optional.empty();
-        Optional<List<String>> readOnly = stringArray(annotation, "readOnlyParams");
-        Optional<List<String>> normal = stringArray(annotation, "normalParams");
+        Optional<List<String>> readOnly = stringArray(annotation, "readOnlyParams").map(MniJavaAnnotation::nativeTypes);
+        Optional<List<String>> normal = stringArray(annotation, "normalParams").map(MniJavaAnnotation::nativeTypes);
         if (readOnly.isEmpty() || normal.isEmpty()) return Optional.empty();
         String result = string(annotation, "returnType").orElse("void");
         return Optional.of(new MniJavaAnnotation(readOnly.get(), normal.get(), List.of(), result, false));
@@ -54,7 +57,8 @@ record MniJavaAnnotation(
     }
 
     private static Optional<MniJavaAnnotation> macro(@NotNull PsiMethod method, @NotNull PsiAnnotation annotation) {
-        Optional<List<String>> normal = stringArray(annotation, "normalParams");
+        Optional<List<String>> normal = stringArray(annotation, "normalParams")
+                .map(types -> types.stream().map(MniJavaAnnotation::callbackType).toList());
         if (normal.isEmpty()) return Optional.empty();
         PsiParameter[] parameters = method.getParameterList().getParameters();
         if (parameters.length == 0 || !parameters[0].getType().getCanonicalText()
@@ -65,6 +69,54 @@ record MniJavaAnnotation(
         }
         String result = string(annotation, "returnType").orElse("void");
         return Optional.of(new MniJavaAnnotation(List.of(), normal.get(), modes, result, true));
+    }
+
+    private static List<String> nativeTypes(List<String> types) {
+        return types.stream().map(MniJavaAnnotation::annotationType).toList();
+    }
+
+    static List<MniSymbolSnapshot.Parameter> callbackParameters(PsiMethod method, int parameterIndex) {
+        PsiAnnotation annotation = method.getAnnotation(MACRO_QUALIFIED_NAME);
+        if (annotation == null) return List.of();
+        var types = stringArray(annotation, "normalParams").orElse(List.of());
+        return parameterIndex < types.size() ? callbackParameters(types.get(parameterIndex)) : List.of();
+    }
+
+    private static List<MniSymbolSnapshot.Parameter> callbackParameters(String type) {
+        type = type.strip();
+        int end = callbackEnd(type);
+        if (end < 0) return List.of();
+        List<MniSymbolSnapshot.Parameter> parameters = new ArrayList<>();
+        for (String input : MniFunctionSignature.splitTopLevel(type.substring(1, end))) {
+            var parameter = new MniSymbolSnapshot.Parameter();
+            var matcher = CALLBACK_MODE.matcher(input.strip());
+            boolean hasMode = matcher.matches();
+            parameter.mode = hasMode ? matcher.group(1).toUpperCase(java.util.Locale.ROOT) : "VALUE";
+            String source = hasMode ? matcher.group(2) : input;
+            parameter.typeName = callbackType(source);
+            parameter.macroCallbackParameters = callbackParameters(source);
+            parameters.add(parameter);
+        }
+        return List.copyOf(parameters);
+    }
+
+    private static int callbackEnd(String type) {
+        if (!type.startsWith("(")) return -1;
+        int depth = 0;
+        for (int index = 0; index < type.length(); index++) {
+            char c = type.charAt(index);
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return type.substring(index + 1).stripLeading().startsWith("->") ? index : -1;
+        }
+        return -1;
+    }
+
+    private static String callbackType(String type) {
+        type = type.strip();
+        int end = callbackEnd(type);
+        if (end < 0) return MniFunctionSignature.normalizeType(type);
+        return "(" + callbackParameters(type).stream().map(p -> p.typeName)
+                .collect(java.util.stream.Collectors.joining(",")) + ")->" + callbackType(type.substring(end + 1).stripLeading().substring(2));
     }
 
     String parametersText() {
@@ -93,12 +145,12 @@ record MniJavaAnnotation(
             for (PsiAnnotationMemberValue initializer : array.getInitializers()) {
                 Optional<String> constant = stringConstant(initializer);
                 if (constant.isEmpty()) return Optional.empty();
-                values.add(annotationType(constant.get()));
+                values.add(constant.get());
             }
         } else {
             Optional<String> constant = stringConstant(value);
             if (constant.isEmpty()) return Optional.empty();
-            values.add(annotationType(constant.get()));
+            values.add(constant.get());
         }
         return Optional.of(List.copyOf(values));
     }

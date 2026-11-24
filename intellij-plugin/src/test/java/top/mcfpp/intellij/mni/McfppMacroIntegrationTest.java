@@ -29,8 +29,12 @@ public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
         int offset = source.getText().indexOf("answer()");
         var identifier = source.findElementAt(offset);
         assertNotNull(identifier);
-        assertTrue(java.util.Arrays.stream(identifier.getReferences())
-                .anyMatch(r -> r.resolve() == provider.findMethodsByName("answer", false)[0]));
+        var declaredName = declaration.findElementAt(declaration.getText().indexOf("answer()"));
+        assertTrue(java.util.Arrays.stream(identifier.getReferences()).anyMatch(r -> r.resolve() == declaredName));
+        assertEquals(java.util.List.of(provider.findMethodsByName("answer", false)[0]),
+                McfppMniLineMarkerProvider.findJavaTargets(declaredName));
+        assertEquals(java.util.List.of(provider.findMethodsByName("answer", false)[0]),
+                com.intellij.psi.search.searches.DefinitionsScopedSearch.search(declaredName).findAll().stream().toList());
 
         var snapshot = McfppMacroIndex.snapshot(getProject());
         assertEquals("int", snapshot.symbols.getFirst().typeName);
@@ -44,7 +48,7 @@ public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
         for (String call : java.util.List.of("result()", "answer()")) {
             var usage = consumer.findElementAt(consumer.getText().indexOf(call));
             assertTrue(java.util.Arrays.stream(usage.getReferences())
-                    .anyMatch(r -> r.resolve() == provider.findMethodsByName("answer", false)[0]));
+                    .anyMatch(r -> r.resolve() == declaredName));
         }
         assertEquals("result", McfppMacroIndex.visibleName(consumer, McfppMacroIndex.all(getProject()).getFirst(),
                 consumer.getText().indexOf("result()")));
@@ -55,5 +59,24 @@ public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
         assertFalse(McfppMacroCompletionContributor.provides(member, member.getText().indexOf("answer()"),
                 "answer", "answer(): int"));
         assertNotNull(declaration);
+    }
+
+    public void testCallbackParameterModesSurviveInLiveSnapshot() {
+        myFixture.addClass("package top.mcfpp.annotations; public @interface MNIMacro { String[] normalParams(); String returnType() default \"void\"; }");
+        myFixture.addClass("package top.mcfpp.mni.api; public class MacroContext {}");
+        myFixture.addClass("package top.mcfpp.mni.api; public interface InlineFn<T> {}");
+        myFixture.addClass("""
+                package example.mni;
+                public class Example {
+                    @top.mcfpp.annotations.MNIMacro(normalParams={"(const int, ref int) -> void"})
+                    public static void invoke(top.mcfpp.mni.api.MacroContext ctx, top.mcfpp.mni.api.InlineFn<Object> fn) {}
+                }
+                """);
+        myFixture.configureByText(top.mcfpp.intellij.lang.McfppFileType.INSTANCE,
+                "func expand(callback: (int, int) -> void) = example.mni.Example.invoke");
+        var snapshot = McfppMacroIndex.snapshot(getProject());
+        var callback = snapshot.symbols.getFirst().parameters.getFirst();
+        assertEquals("INLINE", callback.mode);
+        assertEquals(java.util.List.of("CONST", "REF"), callback.macroCallbackParameters.stream().map(p -> p.mode).toList());
     }
 }

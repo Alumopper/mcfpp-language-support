@@ -73,9 +73,9 @@ class MCFPPCompositionEditorTest {
         """.trimIndent()
         check(source) { service, uri, diagnostics ->
             assertTrue(diagnostics.none { it.severity == DiagnosticSeverity.Error }, diagnostics.joinToString("\n") { it.message })
-            assertEquals(setOf("common", "left", "right"), complete(service, uri, source, "both."))
-            assertEquals(setOf("common"), complete(service, uri, source, "either."))
-            assertEquals(setOf("x", "y"), complete(service, uri, source, "shape."))
+            assertEquals(setOf("common", "left", "right", "let", "also"), complete(service, uri, source, "both."))
+            assertEquals(setOf("common", "let", "also"), complete(service, uri, source, "either."))
+            assertEquals(setOf("x", "y", "let", "also"), complete(service, uri, source, "shape."))
         }
     }
     @Test fun `optional operations retain member types through assertions and fallbacks`() {
@@ -89,7 +89,7 @@ class MCFPPCompositionEditorTest {
         """.trimIndent()
         check(source) { service, uri, diagnostics ->
             assertTrue(diagnostics.none { it.severity == DiagnosticSeverity.Error }, diagnostics.joinToString("\n") { it.message })
-            assertEquals(setOf("value"), complete(service, uri, source, "h.child?."))
+            assertEquals(setOf("value", "let", "also"), complete(service, uri, source, "h.child?."))
         }
     }
     @Test fun `literal contracts allow extra fields require initialized fields and accept shorthand`() {
@@ -120,6 +120,9 @@ class MCFPPCompositionEditorTest {
             symbols = listOf(top.mcfpp.language.MniSymbolSnapshot.Symbol().apply {
                 namespace = "shading"; name = "expand"; typeName = "int"; macro = true
                 uri = root.resolve("Provider.kt").toUri().toString(); endCharacter = 6
+                declarationUri = root.resolve("main.mcfpp").toUri().toString()
+                declarationLine = 1
+                declarationCharacter = 5
             })
         }
         check(source, snapshot) { service, uri, _ ->
@@ -134,6 +137,13 @@ class MCFPPCompositionEditorTest {
             assertEquals(listOf("macro", "macro"), classifications.filter { it.first == "expand" }.map { it.second })
             assertEquals(listOf("mniFunction", "mniFunction"), classifications.filter { it.first == "nativeValue" }.map { it.second })
             assertEquals(listOf("function", "function"), classifications.filter { it.first == "ordinary" }.map { it.second })
+            val document = TextDocumentIdentifier(uri)
+            val usage = position(source, "func main() { exp")
+            val definition = service.definition(DefinitionParams(document, usage)).get().left.single()
+            assertEquals(uri, definition.uri)
+            assertEquals(Position(1, 5), definition.range.start)
+            val implementation = service.implementation(ImplementationParams(document, usage)).get().left.single()
+            assertEquals(root.resolve("Provider.kt").toUri().toString(), implementation.uri)
         }
     }
 
@@ -143,6 +153,42 @@ class MCFPPCompositionEditorTest {
             assertTrue(diagnostics.none { it.severity == DiagnosticSeverity.Error }, diagnostics.joinToString("\n") { "${it.range}: ${it.message}" })
             assertTrue(complete(service, uri, source, "point.").containsAll(setOf("x", "y")))
             assertTrue(complete(service, uri, source, "marker.").containsAll(setOf("x", "y", "label")))
+        }
+    }
+
+    @Test fun `macro modes are checked on source calls and callback formals`() {
+        val source = """
+            namespace modes
+            func expand(number: int, output: int, callback: (int, int) -> void) = example.Provider.expand
+            func ordinary(a: int, b: int) {}
+            func main(runtime: int) {
+                expand(runtime, runtime, ordinary)
+                expand(1, runtime, { constant, writable -> constant = 2; writable = 3 })
+            }
+        """.trimIndent()
+        fun parameter(name: String, type: String, declaredMode: String) =
+            top.mcfpp.language.MniSymbolSnapshot.Parameter().apply {
+                this.name = name; typeName = type; mode = declaredMode
+            }
+        val snapshot = top.mcfpp.language.MniSymbolSnapshot().apply {
+            projectUri = root.toUri().toString()
+            symbols = listOf(top.mcfpp.language.MniSymbolSnapshot.Symbol().apply {
+                namespace = "modes"; name = "expand"; typeName = "void"; macro = true
+                declarationUri = root.resolve("main.mcfpp").toUri().toString()
+                declarationLine = 1; declarationCharacter = 5
+                parameters = listOf(parameter("number", "int", "CONST"), parameter("output", "int", "REF"),
+                    parameter("callback", "(int, int) -> void", "INLINE").apply {
+                        macroCallbackParameters = listOf(parameter("a", "int", "CONST"), parameter("b", "int", "REF"))
+                    })
+            })
+        }
+        check(source, snapshot) { _, _, diagnostics ->
+            val messages = diagnostics.map { it.message }
+            assertTrue(messages.any { "requires a compile-time constant" in it }, messages.toString())
+            assertEquals(2, messages.count { "compiler-issued REF location" in it }, messages.toString())
+            assertTrue(messages.any { "requires a direct inline lambda" in it }, messages.toString())
+            assertEquals(listOf("Cannot assign to const callback parameter `constant`"),
+                messages.filter { "Cannot assign to const callback parameter" in it })
         }
     }
 }

@@ -90,7 +90,7 @@ internal class MCFPPTemplateLiterals(
             val result = mutableListOf<String>()
             for ((index, char) in text.withIndex()) {
                 if (char == '<' || char == '(' || char == '[' || char == '{') depth++
-                if (char == '>' || char == ')' || char == ']' || char == '}') depth--
+                if (char == '>' && text.getOrNull(index - 1) != '-' || char == ')' || char == ']' || char == '}') depth--
                 if (char == ',' && depth == 0) { result += text.substring(start, index).trim(); start = index + 1 }
             }
             text.substring(start).trim().takeIf { it.isNotEmpty() }?.let(result::add)

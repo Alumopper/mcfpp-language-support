@@ -17,7 +17,11 @@ import org.eclipse.lsp4j.jsonrpc.messages.Either
 
 internal class MCFPPNavigationHandler(private val workspace: MCFPPWorkspaceView) {
     fun definition(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis): Either<List<Location>, List<LocationLink>> {
-        val locations = workspace.resolveSymbolAt(params, analysis)?.takeIf { !it.isExternal || it.uri.endsWith(".mcfpp") }?.location()?.let(::listOf).orEmpty()
+        val target = workspace.resolveSymbolAt(params, analysis)
+        val locations = target?.let { symbol ->
+            if (!symbol.isExternal || symbol.uri.endsWith(".mcfpp")) symbol.location()
+            else symbol.nativeImplementation?.let(MCFPPValueMembers::resolveImplementation)
+        }?.let(::listOf).orEmpty()
         return Either.forLeft(locations)
     }
 
@@ -49,6 +53,8 @@ internal class MCFPPNavigationHandler(private val workspace: MCFPPWorkspaceView)
 
     fun implementation(params: ImplementationParams, analysis: MCFPPDocumentAnalysis): Either<List<Location>, List<LocationLink>> {
         val target = workspace.resolveSymbolAt(params, analysis) ?: return Either.forLeft(emptyList())
+        val native = workspace.withNativeMetadata(target).nativeImplementation?.let(MCFPPValueMembers::resolveImplementation)
+        if (native != null) return Either.forLeft(listOf(native))
         return if (target.isExternal) Either.forLeft(emptyList()) else Either.forLeft(findImplementations(target))
     }
 

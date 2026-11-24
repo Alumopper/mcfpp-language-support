@@ -14,15 +14,18 @@ public final class McfppMacroReferenceContributor extends PsiReferenceContributo
                     return PsiReference.EMPTY_ARRAY;
                 String text=file.getText(); int offset=element.getTextRange().getEndOffset();
                 while(offset<text.length() && Character.isWhitespace(text.charAt(offset))) offset++;
-                if(offset>=text.length() || text.charAt(offset)!='(') return PsiReference.EMPTY_ARRAY;
+                if(offset>=text.length() || (text.charAt(offset)!='(' && text.charAt(offset)!='{')) return PsiReference.EMPTY_ARRAY;
+                int qualifier = element.getTextOffset() - 1;
+                while (qualifier >= 0 && Character.isWhitespace(text.charAt(qualifier))) qualifier--;
+                if (qualifier >= 0 && text.charAt(qualifier) == '.') return PsiReference.EMPTY_ARRAY;
                 if(McfppMacroIndex.visibleAt(file,element.getText(),element.getTextOffset()).isEmpty()) return PsiReference.EMPTY_ARRAY;
                 return new PsiReference[]{new PsiPolyVariantReferenceBase<PsiElement>(element,TextRange.from(0,element.getTextLength()),false) {
                     @Override public ResolveResult @NotNull [] multiResolve(boolean incompleteCode) {
-                        return McfppMacroIndex.visibleAt(file,element.getText(),element.getTextOffset()).stream().map(m -> new PsiElementResolveResult(m.method())).toArray(ResolveResult[]::new);
+                        return McfppMacroIndex.visibleAt(file, element.getText(), element.getTextOffset()).stream()
+                                .map(McfppMacroIndex.Macro::declaration).filter(java.util.Objects::nonNull)
+                                .map(PsiElementResolveResult::new).toArray(ResolveResult[]::new);
                     }
                     @Override public @NotNull PsiElement handleElementRename(@NotNull String name) {
-                        var macros=McfppMacroIndex.visibleAt(file,element.getText(),element.getTextOffset());
-                        if(macros.stream().anyMatch(m -> !McfppMacroIndex.constant(m.method().getAnnotation(McfppMacroIndex.ANNOTATION).findDeclaredAttributeValue("identifier")).isEmpty())) return element;
                         return element.replace(McfppElementFactory.createIdentifier(element.getProject(),name));
                     }
                 }};

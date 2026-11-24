@@ -63,6 +63,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
                 context.argumentGroup != MCFPPArgumentGroup.READ_ONLY || symbol.parameters.any { it.isReadOnly }
             }
             .distinctBy { symbolIdentityKey(it) }
+            .map(workspace::withNativeMetadata)
     }
 
     private fun callableValues(analysis: MCFPPDocumentAnalysis, value: MCFPPSymbol, visited: Set<String>): List<MCFPPSymbol> {
@@ -73,7 +74,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
             val contexts = declared?.contextParameters ?: signature.contextTypes.mapIndexed { index, type -> MCFPPFunctionParameter("context${index + 1}", type) }
             return listOf(value.copy(parameters = signature.parameters, contextParameters = contexts, typeName = signature.returnType, detail = signature.returnType))
         }
-        val reference = value.initializer?.takeIf { it.matches(Regex("(?:[A-Za-z_][A-Za-z0-9_.]*:)?[A-Za-z_][A-Za-z0-9_]*")) }
+        val reference = value.initializer?.takeIf { FUNCTION_REFERENCE.matches(it) }
             ?: return emptyList()
         val name = reference.substringAfterLast(':')
         if (':' !in reference) {
@@ -96,6 +97,21 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         }.map { value.copy(parameters = it.parameters, typeName = it.typeName, detail = it.detail) }
     }
 
+    fun isConstantReceiver(analysis: MCFPPDocumentAnalysis, receiver: String, position: Position): Boolean {
+        val values = MCFPPValueFacts(analysis) { name, at ->
+            workspace.resolveLocalSymbol(analysis, name, at) ?: workspace.resolveGlobalSymbol(analysis, name, at)
+        }
+        val field = lastTopLevelMemberSeparator(receiver).takeIf { it > 0 }?.let { separator ->
+            val owner = receiver.substring(0, separator).removeSuffix("?")
+            val name = receiver.substring(separator + 1).trim().takeIf(IDENTIFIER_REGEX::matches) ?: return@let null
+            resolveReceiverTypeAt(analysis, owner, position)?.let { type ->
+                workspace.receiverMembers(analysis, owner, type, position).firstOrNull { it.name == name }
+            }
+        }
+        val stage = if (field == null) values.stage(receiver, position) else values.symbolStage(field, position)
+        return stage == MCFPPValueFacts.Stage.CONSTANT
+    }
+
     fun resolveReceiverTypeAt(analysis: MCFPPDocumentAnalysis, receiver: String, position: Position): String? {
         val expression = receiver.trim().removeSuffix("!!").removeSuffix("?").removeSurrounding("(", ")").trim()
         MCFPPDocumentIndex.referenceFactoryType(expression)?.let { return it }
@@ -104,6 +120,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         if (expression.startsWith('@') && lastTopLevelMemberSeparator(expression) < 0) return "entity"
         if (IDENTIFIER_REGEX.matches(expression)) {
             val local = workspace.resolveLocalSymbol(analysis, expression, position)
+                ?: workspace.resolveGlobalSymbol(analysis, expression, position)
             local?.typeName?.let { return it }
             local?.initializer?.takeIf { it.trim() != expression }?.let {
                 val initializer = local.initializerStart?.let { start -> analysis.expressionAt(start, it) }
@@ -207,6 +224,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         val symbol = workspace.accessibleMemberSymbolsForType(analysis, ownerType, position)
             .asSequence()
             .filter { it.kind in CALLABLE_SYMBOL_KINDS && it.name == name }
+            .map { instantiate(it, context.copy(argumentPositions = emptyList()), analysis, position) }
             .maxByOrNull { signatureMatchScore(it, context, analysis, position) }
             ?: return null
         val returnType = symbol.typeName ?: symbol.detail ?: return null
@@ -325,6 +343,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         val callPosition = offsetToPosition(callText, closingOffset)
         val context = MCFPPCallContextFinder.findCandidates(callText, callPosition).firstOrNull() ?: return null
         val symbol = resolveCallableSymbols(analysis, context, position)
+            .map { instantiate(it, context.copy(argumentPositions = emptyList()), analysis, position) }
             .maxByOrNull { signatureMatchScore(it, context, analysis, position) }
             ?: return null
         val returnType = symbol.typeName ?: symbol.detail ?: return null
@@ -382,15 +401,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
             argumentPositions = occurrence.readOnlyArgumentRanges.map { it.start }
         ).takeIf { it.arguments.isNotEmpty() }
         val readOnlyExpressions = readOnlyContext?.parsedArguments(analysis).orEmpty()
-        return candidates.map { candidate ->
-            val inferred = candidate.inferTypesFromArguments.mapValues { (_, index) ->
-                occurrence.normalArguments.getOrNull(index)?.let { argument ->
-                    inferArgumentType(analysis, argument, occurrence.normalArgumentRanges.getOrNull(index)?.start
-                        ?: occurrence.range.start, normalExpressions.getOrNull(index))
-                } ?: "any"
-            }
-            MCFPPValueMembers.substitute(candidate, inferred)
-        }.maxByOrNull { candidate ->
+        return candidates.map { instantiate(it, normalContext, analysis, occurrence.range.start, normalExpressions) }.maxByOrNull { candidate ->
             var score = signatureMatchScore(candidate, normalContext, analysis, occurrence.range.start, normalExpressions)
             if (readOnlyContext != null) {
                 score += signatureMatchScore(
@@ -405,7 +416,30 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         }
     }
 
+    fun instantiate(
+        symbol: MCFPPSymbol,
+        context: MCFPPCallContext,
+        analysis: MCFPPDocumentAnalysis,
+        position: Position,
+        expressions: List<mcfppParser.ExpressionContext?> = emptyList(),
+    ): MCFPPSymbol {
+        val explicit = typeParameterSubstitutions(symbol, context.readOnlyArguments)
+        val member = MCFPPValueMembers.substitute(symbol, explicit)
+        if (context.argumentGroup != MCFPPArgumentGroup.NORMAL) return member
+        val checker by lazy { workspace.typeChecker(analysis) }
+        return MCFPPValueMembers.instantiate(member, context.arguments.size) { index, expected ->
+            val raw = context.arguments[index]
+            val expression = expressions.getOrNull(index)
+            val start = context.argumentPositions.getOrNull(index) ?: position
+            val callback = MCFPPValueMembers.callbackSignature(expected)
+            if (callback != null && raw.trimStart().startsWith('{')) {
+                checker.callbackType(expression ?: analysis.argumentAt(start, raw), raw, callback.first)
+            } else inferArgumentType(analysis, raw, start, expression)
+        }
+    }
+
     private companion object {
+        val FUNCTION_REFERENCE = Regex("(?:[A-Za-z_][A-Za-z0-9_.]*:)?[A-Za-z_][A-Za-z0-9_]*")
         val SIGNED_INTEGER = Regex("[+-]?\\d+[bBsSlL]?")
         val SIGNED_DECIMAL = Regex("[+-]?(?:\\d+\\.\\d*|\\d*\\.\\d+)(?:[eE][+-]?\\d+)?[fFdD]?")
         val CALL_EXPRESSION = Regex("([A-Za-z_][A-Za-z0-9_.:]*)\\s*(?:<.*>)?\\s*\\(.*\\)")

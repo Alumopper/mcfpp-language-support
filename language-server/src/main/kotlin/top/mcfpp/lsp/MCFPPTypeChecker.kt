@@ -554,22 +554,17 @@ class MCFPPTypeChecker(
         private fun validateFunctionCall(ctx: mcfppParser.FunctionCallContext, target: MCFPPSymbol) {
             val readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
             val typeSubstitutions = typeParameterSubstitutions(target, readOnlyArguments.map { it.text })
-            val containing = ctx.parent as? mcfppParser.LambdaCallExpressionContext
-            val selector = ctx.parent?.parent as? mcfppParser.SelectorContext
-            val chain = selector?.parent as? mcfppParser.LambdaCallExpressionContext
-            val trailing = containing?.takeIf { it.functionCall() === ctx }?.inlineLambda()
-                ?: selector?.inlineLambda() ?: chain?.inlineLambda()?.takeIf { selector.stop.tokenIndex + 1 <= it.start.tokenIndex &&
-                    chain.selector().lastOrNull { s -> s.stop.tokenIndex < it.start.tokenIndex } === selector }
+            diagnostics += MCFPPMacroCallChecker.check(ctx, target, document, resolveLocalSymbol, resolveGlobalSymbol, ::isAssignable, ::contextRange)
             val normal = ctx.arguments()?.normalArgs()
-            val expressions = normal.argumentExpressions()
-            val names = normal.argumentNames()
+            val expressions = ctx.callArgumentNodes()
+            val names = normal.argumentNodeNames()
             val contextNames = target.contextParameters.mapNotNull { it.name }.toSet()
             val ordinary = expressions.indices.filter { names.getOrNull(it) !in contextNames }
             val position = tokenPosition(ctx.start)
             for (dependency in target.contextParameters) {
                 val explicit = names.indexOf(dependency.name)
                 if (explicit >= 0) {
-                    val actual = inferExpressionType(expressions[explicit])
+                    val actual = inferExpressionType(expressions[explicit] as? mcfppParser.ExpressionContext)
                     if (!isAssignable(dependency.typeName, actual)) diagnostics += Diagnostic(contextRange(expressions[explicit]),
                         "Context `${dependency.name}` requires `${dependency.typeName}`, found `$actual`", DiagnosticSeverity.Error, "mcfpp")
                     continue
@@ -603,7 +598,6 @@ class MCFPPTypeChecker(
                 parameters = target.parameters.filterNot { it.isReadOnly },
                 arguments = ordinary.map { expressions[it] },
                 typeSubstitutions = typeSubstitutions,
-                trailing = trailing,
                 names = ordinary.map { names.getOrNull(it) }
             )
         }
@@ -613,13 +607,12 @@ class MCFPPTypeChecker(
             functionName: String,
             groupLabel: String,
             parameters: List<MCFPPFunctionParameter>,
-            arguments: List<mcfppParser.ExpressionContext>,
+            arguments: List<ParserRuleContext>,
             typeSubstitutions: Map<String, String>,
-            trailing: mcfppParser.InlineLambdaContext? = null,
             names: List<String?> = emptyList()
         ) {
             val requiredCount = parameters.count { !it.hasDefault }
-            val suppliedCount = arguments.size + if (trailing == null) 0 else 1
+            val suppliedCount = arguments.size
             if (suppliedCount !in requiredCount..parameters.size) {
                 val expectedCount = if (requiredCount == parameters.size) {
                     parameters.size.toString()
@@ -641,7 +634,8 @@ class MCFPPTypeChecker(
                     return@forEachIndexed
                 }
                 val expectedType = substituteTypeParameters(parameter.typeName, typeSubstitutions)
-                val actualType = inferExpressionType(expression, expectedType)
+                if (directInlineLambda(expression) != null && MCFPPValueMembers.callbackSignature(expectedType) != null) return@forEachIndexed
+                val actualType = inferExpressionType(expression as? mcfppParser.ExpressionContext, expectedType)
                 if (!isAssignable(expectedType, actualType)) {
                     diagnostics += Diagnostic(
                         contextRange(expression),
@@ -803,14 +797,8 @@ class MCFPPTypeChecker(
         if (owner == null) return null
         val call = selector.`var`()?.functionCall()
         val name = selector.memberKeyword()?.text ?: call?.namespaceID()?.text ?: selector.`var`()?.varWithSuffix()?.Identifier()?.text
-        if (name == "fold" && owner.substringBefore('<') in setOf("list", "ImmutableList"))
-            return inferExpressionType(call?.arguments()?.normalArgs().argumentExpressions().firstOrNull())
-        if (name == "map" && callback != null && owner.substringBefore('<') in setOf("list", "ImmutableList")) {
-            val parameter = callback.lambdaParameterList()?.lambdaParameter()?.singleOrNull()?.Identifier()?.text ?: "it"
-            lambdaBindings.addLast(mapOf(parameter to owner.substringAfter('<', "any").removeSuffix(">")))
-            val result = try { inferExpressionType(callback.lambdaBody()?.lambdaTailExpression()?.expression()) } finally { lambdaBindings.removeLast() }
-            return "list<${result ?: "any"}>"
-        }
+        val arguments = (call?.arguments() ?: selector.arguments())?.normalArgs().argumentNodes() + listOfNotNull(callback)
+        MCFPPBuiltinCallInference.result(owner, name, arguments, { inferExpressionType(it) }, ::callbackType)?.let { return it }
         selector.memberKeyword()?.let { return resolveMemberSymbol(owner, it.text, tokenPosition(it.start))?.typeName }
         return inferMemberVarType(owner, selector.`var`())
     }
@@ -930,7 +918,7 @@ class MCFPPTypeChecker(
         val nameToken = identifiers.lastOrNull()?.symbol ?: return null
         val position = tokenPosition(nameToken)
         val readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
-        val normalArguments = ctx.arguments()?.normalArgs().argumentExpressions()
+        val normalArguments = ctx.callArgumentNodes()
         return MCFPPReferenceOccurrence(
             name = nameToken.text,
             range = tokenRange(nameToken),
@@ -939,16 +927,23 @@ class MCFPPTypeChecker(
             isCall = true,
             namespaceQualifier = identifiers.dropLast(1).joinToString(".") { it.text }.takeIf { it.isNotEmpty() },
             readOnlyArguments = readOnlyArguments.map { it.text },
-            normalArguments = normalArguments.map { it.text },
+            normalArguments = normalArguments.map { it.sourceText() },
             readOnlyArgumentRanges = readOnlyArguments.map(::contextRange),
             normalArgumentRanges = normalArguments.map(::contextRange)
         )
     }
 
+    internal fun callbackType(expression: ParserRuleContext?, source: String, inputs: List<String>): String? =
+        (directInlineLambda(expression) ?: MCFPPBuiltinCallInference.parseCallback(source))?.let { callbackType(it, inputs) }
+
+    private fun callbackType(callback: mcfppParser.InlineLambdaContext, inputs: List<String>): String? {
+        lambdaBindings.addLast(MCFPPBuiltinCallInference.bindings(callback, inputs) ?: return null)
+        return try { MCFPPBuiltinCallInference.callbackType(callback, inputs) { inferExpressionType(it) } }
+        finally { lambdaBindings.removeLast() }
+    }
+
     private fun inferMemberVarType(ownerType: String?, ctx: mcfppParser.VarContext?): String? {
-        if (ownerType == null || ctx == null) {
-            return null
-        }
+        if (ownerType == null || ctx == null) return null
         ctx.functionCall()?.let { call ->
             val member = resolveMemberSymbol(ownerType, call.namespaceID().text, tokenPosition(call.start))
             if (member?.isSynthetic == true) return member.typeName

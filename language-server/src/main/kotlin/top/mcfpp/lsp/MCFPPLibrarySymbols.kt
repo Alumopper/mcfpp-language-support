@@ -10,7 +10,7 @@ import top.mcfpp.library.model.*
 import top.mcfpp.library.syntax.*
 
 /** Read editor metadata without binding compiler globals or loading library providers. */
-internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): List<MCFPPSymbol> {
+internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, sources: MCFPPSourceJarResolver? = null): List<MCFPPSymbol> {
     val model = LibraryModelCodec(listOf(CompoundCodec, NativeCodec)).decode(bytes)
     val declarations = model.declarations
     fun qualifiedDeclarationName(reference: DeclarationReference): String = when (reference) {
@@ -74,6 +74,9 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
         is MacroType.Source -> typeName(type.type)
         is MacroType.Callback -> "(${type.parameters.joinToString(", ") { macroType(it.type) }}) -> ${macroType(type.result)}"
     }
+    fun macroParameter(parameter: MacroParameter): MCFPPFunctionParameter =
+        MCFPPFunctionParameter(parameter.name, macroType(parameter.type), macroMode = parameter.mode,
+            macroCallbackParameters = (parameter.type as? MacroType.Callback)?.parameters.orEmpty().map(::macroParameter))
     val range = Range(Position(0, 0), Position(0, 0))
     val docsByDeclarationId: Map<Long, String> = model.debug?.documents
         ?.associate { it.declaration.value to it.text }
@@ -103,8 +106,10 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
                 receiver = declaration.receiver?.let { typeName(it) }
             }
             is MacroDeclaration -> {
-                kind = SymbolKind.Function; name = declaration.binding.sourceName; type = macroType(declaration.binding.result)
-                params = declaration.binding.parameters.map { MCFPPFunctionParameter(it.name, macroType(it.type)) }
+                receiver = declaration.binding.native.caller?.let { typeName(it) }
+                kind = if (receiver == null) SymbolKind.Function else SymbolKind.Method
+                name = declaration.binding.sourceName; type = macroType(declaration.binding.result)
+                params = declaration.binding.parameters.map(::macroParameter)
             }
             is CompoundDeclaration -> {
                 kind = SymbolKind.Class; type = name
@@ -130,11 +135,17 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
             val data = model.tables.constant(declaration.data) as? ConstantValue.Nbt
             data?.let { "$container.$name = ${it.snbt} (ordinal ${declaration.ordinal})" }
         } else type
+        val native = when (declaration) {
+            is FunctionDeclaration -> declaration.native
+            is MacroDeclaration -> declaration.binding.native
+            else -> null
+        }
         MCFPPSymbol(uri = uri, name = name, kind = kind, range = range, detail = detail, typeName = type,
             containerName = container, topLevel = container == null, namespaceName = declarations.environment(common.environment).namespace,
             isExternal = true, isStdlib = standard, parameters = params, contextParameters = contexts, receiverType = receiver, superTypes = parents,
             isStatic = declaration is EnumMemberDeclaration || common.flags and DeclarationFlags.STATIC != 0L,
             isReadOnly = declaration is EnumMemberDeclaration,
+            isRuntimeValue = (declaration as? ValueDeclaration)?.storage == ValueStorage.EXTERNAL,
             accessModifier = when (common.access) {
                 DeclarationAccess.PRIVATE -> MCFPPAccessModifier.PRIVATE
                 DeclarationAccess.PROTECTED -> MCFPPAccessModifier.PROTECTED
@@ -142,7 +153,8 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean): L
             },
             isDataTemplate = declaration is CompoundDeclaration && declaration.category == CompoundCategory.DATA && common.flags and DeclarationFlags.ENTITY == 0L,
             isAbstract = common.flags and DeclarationFlags.ABSTRACT != 0L,
-            isNative = declaration is FunctionDeclaration && declaration.native != null || declaration is MacroDeclaration,
+            isNative = native != null,
+            nativeImplementation = native?.let { sources?.implementation(it) ?: MCFPPValueMembers.implementation(it) },
             isMacro = declaration is MacroDeclaration,
             initializer = if (declaration is ValueDeclaration && (declaration.defaultBody != null || declaration.frozen != null)) "<library default>" else null,
             isEntityTemplate = declaration is CompoundDeclaration && common.flags and DeclarationFlags.ENTITY != 0L,

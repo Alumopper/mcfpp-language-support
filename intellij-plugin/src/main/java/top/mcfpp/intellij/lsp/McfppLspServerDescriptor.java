@@ -79,6 +79,15 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
         if (compilerJar != null) {
             args.add("-Dmcfpp.stdlib.jar=" + compilerJar);
         }
+        var sources = top.mcfpp.intellij.mni.McfppLibraryRootsProvider.localCompilerSourcePaths(getProject());
+        if (!sources.isEmpty()) {
+            args.add("-Dmcfpp.kotlin.source.roots=" + sources.stream().map(Path::toString)
+                    .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator)));
+        }
+        String mavenRepository = System.getProperty("maven.repo.local");
+        if (mavenRepository != null && !mavenRepository.isBlank()) {
+            args.add("-Dmaven.repo.local=" + mavenRepository);
+        }
         args.add("-jar");
         args.add(McfppLanguageServerResource.extract().toString());
         return new GeneralCommandLine(args);

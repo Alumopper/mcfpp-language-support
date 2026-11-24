@@ -66,7 +66,7 @@ internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspa
             ?: return null
         val (context, symbols) = resolved
         val arguments = context.parsedArguments(analysis)
-        val scored = symbols.map { symbol ->
+        val scored = symbols.map { workspace.calls.instantiate(it, context, analysis, params.position, arguments) }.map { symbol ->
             symbol to workspace.calls.signatureMatchScore(symbol, context, analysis, params.position, arguments)
         }
         val activeSignature = scored.indices.maxByOrNull { scored[it].second } ?: 0

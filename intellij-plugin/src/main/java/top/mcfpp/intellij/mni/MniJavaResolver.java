@@ -67,7 +67,7 @@ final class MniJavaResolver {
             return List.of(psiClass);
         }
 
-        return List.of();
+        return MniKotlinSource.resolve(PsiManager.getInstance(project), fallbackRoots(project), prefix, null, Optional.empty());
     }
 
     private static List<PsiElement> resolveStaticMethods(
@@ -79,7 +79,8 @@ final class MniJavaResolver {
     ) {
         PsiClass owner = findClass(project, facade, scope, target.ownerQualifiedName());
         if (owner == null) {
-            return List.of();
+            return MniKotlinSource.resolve(PsiManager.getInstance(project), fallbackRoots(project),
+                    target.ownerQualifiedName(), target.memberName(), signature);
         }
 
         List<PsiElement> members = new ArrayList<>();
@@ -90,12 +91,14 @@ final class MniJavaResolver {
         for (PsiMethod method : owner.findMethodsByName(target.memberName(), false)) {
             if (method.hasModifierProperty(PsiModifier.PUBLIC) && method.hasModifierProperty(PsiModifier.STATIC)) {
                 members.add(method);
-                if (signature.isPresent() && signature.get().name().equals(target.memberName()) &&
-                        MniJavaAnnotation.from(method).filter(signature.get()::parametersMatch).isPresent()) {
+                if (signature.isPresent() && MniJavaAnnotation.from(method).filter(signature.get()::parametersMatch)
+                        .filter(annotation -> signature.get().returnType().equals(annotation.returnType())).isPresent()) {
                     exactBindings.add(method);
                 }
             }
         }
+        if (members.isEmpty()) return MniKotlinSource.resolve(PsiManager.getInstance(project), fallbackRoots(project),
+                target.ownerQualifiedName(), target.memberName(), signature);
         return exactBindings.isEmpty() ? List.copyOf(members) : List.copyOf(exactBindings);
     }
 
@@ -138,6 +141,8 @@ final class MniJavaResolver {
             addRoot(roots, contentRoot);
             addRelativeRoot(roots, contentRoot, "src/main/java");
             addRelativeRoot(roots, contentRoot, "src/test/java");
+            addRelativeRoot(roots, contentRoot, "src/main/kotlin");
+            addRelativeRoot(roots, contentRoot, "src/test/kotlin");
         }
         String basePath = project.getBasePath();
         if (basePath != null) {
@@ -146,6 +151,8 @@ final class MniJavaResolver {
                 addRoot(roots, base);
                 addRelativeRoot(roots, base, "src/main/java");
                 addRelativeRoot(roots, base, "src/test/java");
+                addRelativeRoot(roots, base, "src/main/kotlin");
+                addRelativeRoot(roots, base, "src/test/kotlin");
             }
         }
         roots.addAll(McfppLibraryRootsProvider.sourceRoots(project));

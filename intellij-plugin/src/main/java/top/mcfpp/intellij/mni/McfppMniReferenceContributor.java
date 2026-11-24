@@ -98,13 +98,12 @@ public final class McfppMniReferenceContributor extends PsiReferenceContributor 
     ) {
         McfppFileModel model = McfppFileModels.get(element.getContainingFile());
         McfppSymbol declaration = model.declarationAt(element.getTextOffset());
-        if (declaration == null) return Optional.empty();
-
-        if (declaration.kind() == McfppSymbolKind.FUNCTION) {
+        if (declaration == null || declaration.kind() == McfppSymbolKind.FUNCTION) {
             return targetIndex.targets().stream()
                     .filter(target -> target.kind() == MniJavaTargetParser.Kind.JAVA_METHOD)
-                    .filter(target -> target.declarationStartOffset() >= declaration.declarationStart())
-                    .filter(target -> target.endOffset() <= declaration.endOffset())
+                    .filter(target -> target.declarationStartOffset() <= element.getTextOffset() && element.getTextOffset() < target.startOffset())
+                    .filter(target -> MniFunctionSignature.from(targetIndex.source(), target)
+                            .filter(signature -> signature.nameOffset() == element.getTextOffset()).isPresent())
                     .findFirst();
         }
         if (declaration.kind() != McfppSymbolKind.TYPE) return Optional.empty();

@@ -19,6 +19,7 @@
                 implementation="top.mcfpp.intellij.mni.McfppMniReferenceContributor"/>
         <gotoDeclarationHandler
                 implementation="top.mcfpp.intellij.mni.McfppMniGotoDeclarationHandler"/>
+        <definitionsScopedSearch implementation="top.mcfpp.intellij.mni.McfppMniImplementationSearch"/>
         <codeInsight.lineMarkerProvider
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.mni.McfppMniLineMarkerProvider"/>

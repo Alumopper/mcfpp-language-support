@@ -17,7 +17,8 @@ record MniFunctionSignature(
         @NotNull List<String> normalTypes,
         @NotNull String returnType,
         @NotNull List<String> readOnlyNames,
-        @NotNull List<String> normalNames
+        @NotNull List<String> normalNames,
+        int nameOffset
 ) {
     private static final Pattern FUNCTION_NAME = Pattern.compile(
             "\\bfunc\\s+([A-Za-z_$][A-Za-z0-9_$]*)"
@@ -67,7 +68,7 @@ record MniFunctionSignature(
             if (returnType.isEmpty()) returnType = "void";
         }
         return Optional.of(new MniFunctionSignature(function.group(1), readOnly, normal, returnType,
-                readOnlyNames, normalNames));
+                readOnlyNames, normalNames, start + function.start(1)));
     }
 
     boolean parametersMatch(MniJavaAnnotation annotation) {
@@ -139,7 +140,7 @@ record MniFunctionSignature(
         return normalizeType(withoutModifiers);
     }
 
-    private static List<String> splitTopLevel(String text) {
+    static List<String> splitTopLevel(String text) {
         List<String> result = new ArrayList<>();
         int start = 0;
         int angle = 0;
@@ -162,7 +163,7 @@ record MniFunctionSignature(
             }
             switch (value) {
                 case '<' -> angle++;
-                case '>' -> angle = Math.max(0, angle - 1);
+                case '>' -> { if (index == 0 || text.charAt(index - 1) != '-') angle = Math.max(0, angle - 1); }
                 case '(' -> parentheses++;
                 case ')' -> parentheses = Math.max(0, parentheses - 1);
                 case '[' -> brackets++;
@@ -200,7 +201,7 @@ record MniFunctionSignature(
                 continue;
             }
             if (value == open) depth++;
-            else if (value == close && --depth == 0) return index;
+            else if (value == close && (value != '>' || text.charAt(index - 1) != '-') && --depth == 0) return index;
         }
         return -1;
     }
