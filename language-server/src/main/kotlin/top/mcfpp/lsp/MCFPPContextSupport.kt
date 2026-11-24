@@ -22,11 +22,14 @@ internal fun mcfppParser.NormalArgsContext?.argumentNodeNames(): List<String?> =
 internal fun mcfppParser.FunctionCallContext?.trailingLambda(): mcfppParser.InlineLambdaContext? {
     if (this == null) return null
     (parent as? mcfppParser.LambdaCallExpressionContext)?.let { if (it.functionCall() === this) return it.inlineLambda() }
-    val selector = parent?.parent as? mcfppParser.SelectorContext ?: return null
-    selector.inlineLambda()?.let { return it }
-    val chain = selector.parent as? mcfppParser.LambdaCallExpressionContext ?: return null
+    return (parent?.parent as? mcfppParser.SelectorContext)?.trailingLambda()
+}
+
+internal fun mcfppParser.SelectorContext.trailingLambda(): mcfppParser.InlineLambdaContext? {
+    inlineLambda()?.let { return it }
+    val chain = parent as? mcfppParser.LambdaCallExpressionContext ?: return null
     val callback = chain.inlineLambda() ?: return null
-    return callback.takeIf { chain.selector().lastOrNull { s -> s.stop.tokenIndex < callback.start.tokenIndex } === selector }
+    return callback.takeIf { chain.selector().lastOrNull { s -> s.stop.tokenIndex < callback.start.tokenIndex } === this }
 }
 
 internal fun mcfppParser.FunctionCallContext?.callArgumentNodes(): List<ParserRuleContext> =

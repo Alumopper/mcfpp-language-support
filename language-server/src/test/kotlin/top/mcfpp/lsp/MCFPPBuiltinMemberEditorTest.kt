@@ -12,6 +12,8 @@ class MCFPPBuiltinMemberEditorTest {
         func main() {
             var values = [1, 2]
             values.add(3)
+            var mapped = values.map { value -> value + 1 }
+            var filtered = values.filter { value -> value > 1 }
             print(values.fold(0) { sum, value -> sum + value })
             var label = " MCFPP ".trim().lowercase()
             var ref = nbtStorageRef<list<int>>("test:values", "source")
@@ -41,16 +43,22 @@ class MCFPPBuiltinMemberEditorTest {
 
     @Test fun builtinsExposeDocumentationDeclarationsAndRuntimeRestrictions() = withServer { server, document ->
         val service = server.textDocumentService
-        for (name in listOf("add", "fold", "trim", "lowercase", "tryRead")) {
+        val macros = mapOf("map" to "mapList", "filter" to "filterList", "fold" to "foldList")
+        val labels = service.completion(CompletionParams(document, position(source, "values.")))
+            .get(10, TimeUnit.SECONDS).left.map { it.label }
+        for (name in macros.keys + "add") assertEquals(1, labels.count { it == name }, labels.toString())
+        for (name in listOf("add", "map", "filter", "fold", "trim", "lowercase", "tryRead")) {
             val at = position(source, ".$name")
             val hover = service.hover(HoverParams(document, at)).get(10, TimeUnit.SECONDS)
             assertTrue("\n---\n" in hover.contents.right.value, hover.toString())
             if (name == "fold") assertContains(hover.contents.right.value, "fold(initial: int, operation: (int, int) -> int): int")
             if (name == "add") assertContains(hover.contents.right.value, "add(int)")
             val location = service.definition(DefinitionParams(document, at)).get(10, TimeUnit.SECONDS).left.single()
-            assertTrue(location.uri.endsWith(".kt"), location.toString())
-            val line = Files.readAllLines(Path.of(URI.create(location.uri)))[location.range.start.line]
-            assertEquals(name, line.substring(location.range.start.character, location.range.end.character))
+            assertTrue(location.uri.endsWith(if (name in macros) "collections.mcfpp" else ".kt"), location.toString())
+            assertEquals(name, sourceAt(location))
+            val implementation = service.implementation(ImplementationParams(document, at)).get(10, TimeUnit.SECONDS).left.single()
+            assertTrue(implementation.uri.endsWith(if (name in macros) "CollectionMacros.kt" else ".kt"))
+            assertEquals(macros[name] ?: name, sourceAt(implementation))
         }
         val runtime = "func main(value: string) { print(value.length()) }"
         service.didChange(DidChangeTextDocumentParams(VersionedTextDocumentIdentifier(document.uri, 2),
@@ -81,11 +89,17 @@ class MCFPPBuiltinMemberEditorTest {
         }
     }
 
+    private fun sourceAt(location: Location): String {
+        val line = Files.readAllLines(Path.of(URI.create(location.uri)))[location.range.start.line]
+        return line.substring(location.range.start.character, location.range.end.character)
+    }
+
     @Test fun genericCallbacksBindReceiverAndMethodTypes() = withServer { server, document ->
         val text = """
-            func main(values: list<int>) {
+            func main(values: list<int>, immutable: ImmutableList<int>) {
                 var flags = values.mapIndexed({ index, value -> value > index })
                 var total = values.fold(0.0, { accumulator, value -> accumulator + value })
+                var mapped = immutable.map { value -> value > 1 }
             }
         """.trimIndent()
         val service = server.textDocumentService
@@ -95,6 +109,11 @@ class MCFPPBuiltinMemberEditorTest {
         assertContains(mapping.contents.right.value, "callback: (int, int) -> bool): list<bool>")
         val folding = service.hover(HoverParams(document, position(text, ".fold"))).get(10, TimeUnit.SECONDS)
         assertContains(folding.contents.right.value, "fold(initial: float, operation: (float, int) -> float): float")
+        val mappedAt = position(text, "immutable.map")
+        val immutableMapping = service.hover(HoverParams(document, mappedAt)).get(10, TimeUnit.SECONDS)
+        assertContains(immutableMapping.contents.right.value, "map(transform: (int) -> bool): list<bool>")
+        val implementation = service.implementation(ImplementationParams(document, mappedAt)).get(10, TimeUnit.SECONDS).left.single()
+        assertEquals("mapImmutableList", sourceAt(implementation))
     }
 
     @Test fun matchingSourceJarResolvesExactJvmOverload() {

@@ -245,9 +245,7 @@ object MCFPPParserSemanticExtractor {
 
         override fun visitTerminal(node: TerminalNode) {
             val token = node.symbol ?: return
-            if (token.type != mcfppParser.Identifier) {
-                return
-            }
+            if (token.type != mcfppParser.Identifier && node.parent !is mcfppParser.MemberKeywordContext) return
             if (typeStack.lastOrNull()?.ctx is mcfppParser.EnumDeclarationContext) return
             if (node.parent is mcfppParser.JavaReferContext) {
                 return
@@ -266,21 +264,20 @@ object MCFPPParserSemanticExtractor {
                 (node.parent as mcfppParser.CallArgumentContext).ASSIGNMENT() != null
             val range = tokenRange(token)
             val namespaceId = node.parent as? mcfppParser.NamespaceIDContext
-            if (namespaceId != null) {
-                val identifiers = namespaceId.getTokens(mcfppParser.Identifier)
-                if (namespaceId.getToken(mcfppParser.COLON, 0) != null && identifiers.lastOrNull()?.symbol?.tokenIndex != token.tokenIndex) {
-                    return
-                }
+            val lastIdentifier = namespaceId?.getTokens(mcfppParser.Identifier)?.lastOrNull()?.symbol
+            if (namespaceId?.namespacePath() != null && lastIdentifier?.tokenIndex != token.tokenIndex) return
+            val member = when (val parent = node.parent) {
+                is mcfppParser.MemberKeywordContext -> parent.parent as? mcfppParser.SelectorContext
+                is mcfppParser.VarWithSuffixContext -> (parent.parent?.parent as? mcfppParser.SelectorContext)
+                    ?.takeIf { parent.identifierSuffix().isEmpty() }
+                else -> null
             }
             val functionCall = namespaceId?.parent as? mcfppParser.FunctionCallContext
-            val isCall = functionCall != null && namespaceId.getTokens(mcfppParser.Identifier).lastOrNull()?.symbol?.tokenIndex == token.tokenIndex
-            val namespaceQualifier = if (isCall) {
-                namespaceId?.namespacePath()?.text
-            } else {
-                null
-            }
-            val readOnlyArguments = functionCall?.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
-            val normalArguments = functionCall.callArgumentNodes()
+            val arguments = functionCall?.arguments() ?: member?.arguments()
+            val isCall = functionCall != null || arguments != null || member?.trailingLambda() != null
+            val readOnlyArguments = arguments?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
+            val normalArguments = if (functionCall != null) functionCall.callArgumentNodes()
+                else arguments?.normalArgs().argumentNodes() + listOfNotNull(member?.trailingLambda())
             referencesByName.getOrPut(token.text) { mutableListOf() }.add(range)
             referenceOccurrencesByName.getOrPut(token.text) { mutableListOf() }.add(
                 MCFPPReferenceOccurrence(
@@ -289,7 +286,7 @@ object MCFPPParserSemanticExtractor {
                     enclosingTypeScopeId = currentTypeScopeId(),
                     enclosingFunctionScopeId = currentFunctionScopeId(),
                     isCall = isCall,
-                    namespaceQualifier = namespaceQualifier,
+                    namespaceQualifier = namespaceId?.namespacePath()?.text.takeIf { isCall },
                     readOnlyArguments = readOnlyArguments.map { it.sourceText() },
                     normalArguments = normalArguments.map { it.sourceText() },
                     readOnlyArgumentRanges = readOnlyArguments.map(::contextRange),

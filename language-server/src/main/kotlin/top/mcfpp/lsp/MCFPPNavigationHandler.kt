@@ -19,7 +19,7 @@ internal class MCFPPNavigationHandler(private val workspace: MCFPPWorkspaceView)
     fun definition(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis): Either<List<Location>, List<LocationLink>> {
         val target = workspace.resolveSymbolAt(params, analysis)
         val locations = target?.let { symbol ->
-            if (!symbol.isExternal || symbol.uri.endsWith(".mcfpp")) symbol.location()
+            if (!symbol.isExternal || symbol.uri.endsWith(".mcfpp")) MCFPPValueMembers.resolveDeclaration(symbol.location())
             else symbol.nativeImplementation?.let(MCFPPValueMembers::resolveImplementation)
         }?.let(::listOf).orEmpty()
         return Either.forLeft(locations)

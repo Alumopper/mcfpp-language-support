@@ -140,8 +140,9 @@ internal fun MCFPPWorkspaceView.memberSymbolsForType(
 }
 
 private fun mergeMemberMetadata(declared: Collection<MCFPPSymbol>, intrinsic: List<MCFPPSymbol>): List<MCFPPSymbol> =
-    (declared.filterNot { candidate -> candidate.isSynthetic && intrinsic.any {
-        it.name == candidate.name && parameterSignatureKey(it).filterNot(Char::isWhitespace) ==
+    (declared.filterNot { candidate -> intrinsic.any {
+        (candidate.isSynthetic || candidate.isStdlib && candidate.isExternal && candidate.isMacro && it.isMacro) &&
+            it.name == candidate.name && parameterSignatureKey(it).filterNot(Char::isWhitespace) ==
             parameterSignatureKey(candidate).filterNot(Char::isWhitespace)
     } } + intrinsic).distinctBy { it.name to parameterSignatureKey(it).filterNot(Char::isWhitespace) }
 

@@ -57,12 +57,13 @@ data class MCFPPFunctionParameter(
     val isReadOnly: Boolean = false,
     val macroMode: top.mcfpp.library.model.MacroParameterMode? = null,
     val macroCallbackParameters: List<MCFPPFunctionParameter> = emptyList(),
+    val acceptsFunctionValues: Boolean = false,
 ) {
     fun label(): String = buildString {
         when (macroMode) {
             top.mcfpp.library.model.MacroParameterMode.REF -> append("ref ")
             top.mcfpp.library.model.MacroParameterMode.CONST -> append("const ")
-            top.mcfpp.library.model.MacroParameterMode.INLINE -> append("inline ")
+            top.mcfpp.library.model.MacroParameterMode.INLINE -> if (!acceptsFunctionValues) append("inline ") else Unit
             else -> Unit
         }
         if (isReadOnly && name != null && typeName.equals("type", ignoreCase = true)) {

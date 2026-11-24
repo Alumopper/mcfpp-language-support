@@ -16,15 +16,24 @@ import top.mcfpp.library.model.MacroParameterMode
 
 /** Read builtin native value-member overloads from the exported compiler metadata JSON. */
 internal object MCFPPValueMembers {
-    private data class KotlinSource(val path: String, val line: Int, val column: Int, val length: Int) {
-        fun location() = Location(sourceUriPrefix + path, Range(Position(line, column), Position(line, column + length)))
+    private data class Source(val path: String, val line: Int, val column: Int, val length: Int) {
+        fun location(prefix: String = sourceUriPrefix) = Location(prefix + path, Range(Position(line, column), Position(line, column + length)))
     }
     private data class JvmMethod(val owner: String, val method: String, val parameterTypes: List<String>, val returnType: String)
-    private data class ExportedImplementation(val binding: JvmMethod, val source: KotlinSource)
+    private data class ExportedImplementation(val binding: JvmMethod, val source: Source)
+    private data class MacroParameter(val name: String?, val type: String, val mode: MacroParameterMode,
+                                      val callbackParameters: List<MacroParameter>) {
+        fun parameter(acceptsFunctionValues: Boolean = false): MCFPPFunctionParameter =
+            MCFPPFunctionParameter(name, type, macroMode = mode,
+                macroCallbackParameters = callbackParameters.map { it.parameter() },
+                acceptsFunctionValues = acceptsFunctionValues && mode == MacroParameterMode.INLINE)
+    }
 
     private data class ExportedMember(
         val caller: String = "",
         val name: String = "",
+        val receiverType: String? = null,
+        val namespace: String? = null,
         val returnType: String = "void",
         val readOnlyParams: List<String> = emptyList(),
         val normalParams: List<String> = emptyList(),
@@ -35,7 +44,10 @@ internal object MCFPPValueMembers {
         val receiverParameters: List<String>? = null,
         val typeParameters: List<String>? = null,
         val inlineCallback: Boolean = false,
-        val implementation: KotlinSource? = null,
+        val implementation: Source? = null,
+        val declaration: Source? = null,
+        val macroParameters: List<MacroParameter>? = null,
+        val acceptsFunctionValues: Boolean = false,
         val jvmBinding: JvmMethod? = null,
     )
 
@@ -48,6 +60,7 @@ internal object MCFPPValueMembers {
     )
 
     private const val sourceUriPrefix = "mcfpp-kotlin-source:/"
+    private const val stdlibUriPrefix = "mcfpp-stdlib-declaration:/"
     private val sourceDirectory by lazy {
         Files.createTempDirectory("mcfpp-kotlin-sources-").apply { toFile().deleteOnExit() }
     }
@@ -74,51 +87,65 @@ internal object MCFPPValueMembers {
         catalogue.members.mapIndexed { index, entry ->
             val parameters = entry.readOnlyParams.map { MCFPPFunctionParameter(null, it, isReadOnly = true) } +
                 entry.normalParams.mapIndexed { i, type ->
+                    entry.macroParameters?.getOrNull(i)?.parameter(entry.acceptsFunctionValues) ?:
                     MCFPPFunctionParameter(entry.parameterNames.getOrNull(i)?.takeIf(String::isNotEmpty), type,
                         macroMode = MacroParameterMode.INLINE.takeIf { entry.inlineCallback && callbackSignature(type) != null })
                 }
             val implementation = entry.implementation?.location()
+            val declaration = entry.declaration?.location(stdlibUriPrefix)
             val symbol = MCFPPSymbol(
-                "mcfpp-builtin:/" + entry.caller, entry.name, if (entry.caller.isEmpty()) SymbolKind.Function else SymbolKind.Method,
-                Range(Position(index, 0), Position(index, entry.name.length)),
-                containerName = entry.caller.ifEmpty { null }, receiverType = entry.caller.ifEmpty { null }, typeName = entry.returnType,
+                declaration?.uri ?: "mcfpp-builtin:/" + entry.caller, entry.name,
+                if (entry.caller.isEmpty()) SymbolKind.Function else SymbolKind.Method,
+                declaration?.range ?: Range(Position(index, 0), Position(index, entry.name.length)),
+                containerName = entry.caller.ifEmpty { null }, receiverType = entry.receiverType ?: entry.caller.ifEmpty { null }, typeName = entry.returnType,
                 topLevel = entry.caller.isEmpty(),
                 detail = entry.returnType, parameters = parameters, documentation = entry.documentation,
-                isStdlib = true, isExternal = true, isSynthetic = true, namespaceName = "mcfpp.lang",
+                isStdlib = true, isExternal = true, isSynthetic = true, namespaceName = entry.namespace ?: "mcfpp.lang",
                 requiresConstantReceiver = entry.requiresConstantReceiver,
                 inferTypesFromArguments = entry.inferTypesFromArguments,
                 nativeImplementation = implementation,
                 isNative = entry.jvmBinding != null,
+                isMacro = entry.macroParameters != null,
                 typeParameters = entry.typeParameters.orEmpty(),
             )
             Declaration(symbol, entry.receiverParameters ?: listOf("T"))
-        }.groupBy { it.symbol.receiverType.orEmpty() }
+        }.groupBy { it.symbol.containerName.orEmpty() }
     }
 
-    private val implementations by lazy { catalogue.implementations.orEmpty().associate { it.binding to it.source } }
+    private val implementations by lazy {
+        catalogue.implementations.orEmpty().associate { it.binding to it.source } +
+            catalogue.members.mapNotNull { entry -> entry.jvmBinding?.let { binding -> entry.implementation?.let { binding to it } } }
+    }
 
     fun implementation(binding: NativeBinding): Location? =
         implementations[JvmMethod(binding.ownerClass, binding.method, binding.jvmParameters, binding.jvmResult)]?.location()
 
-    fun resolveImplementation(location: Location): Location? {
-        if (!location.uri.startsWith(sourceUriPrefix)) return location
-        val source = location.uri.removePrefix(sourceUriPrefix)
-        if (!source.endsWith(".kt")) return null
-        val file = sourceFiles[source] ?: runCatching {
-            sourceFiles.computeIfAbsent(source) {
-                val target = sourceDirectory.resolve(source).normalize()
+    fun resolveImplementation(location: Location): Location? =
+        resolveSource(location, sourceUriPrefix, "kotlin-sources", ".kt", localRoots)
+
+    fun resolveDeclaration(location: Location): Location? =
+        resolveSource(location, stdlibUriPrefix, "stdlib-sources", ".mcfpp", emptyList())
+
+    private fun resolveSource(location: Location, prefix: String, directory: String, extension: String, roots: List<Path>): Location? {
+        if (!location.uri.startsWith(prefix)) return location
+        val source = location.uri.removePrefix(prefix)
+        if (!source.endsWith(extension)) return null
+        val resource = "$directory/$source"
+        val file = sourceFiles[resource] ?: runCatching {
+            sourceFiles.computeIfAbsent(resource) {
+                val target = sourceDirectory.resolve(resource).normalize()
                 require(target.startsWith(sourceDirectory))
                 // Preserve the Kotlin filename and package path for the IDE.
                 val parents = generateSequence(target.parent) { it.parent }
                     .takeWhile { it != sourceDirectory }.toList()
                 Files.createDirectories(target.parent)
                 parents.asReversed().forEach { it.toFile().deleteOnExit() }
-                loader.getResourceAsStream("editor/kotlin-sources/" + source)?.use { Files.copy(it, target) }
-                    ?: error("Missing Kotlin source " + source)
+                loader.getResourceAsStream("editor/$resource")?.use { Files.copy(it, target) }
+                    ?: error("Missing editor source $resource")
                 target.apply { toFile().deleteOnExit() }
             }
         }.getOrNull() ?: return null
-        val local = localRoots.firstNotNullOfOrNull { root ->
+        val local = roots.firstNotNullOfOrNull { root ->
             val candidate = root.resolve(source).normalize()
             candidate.takeIf { it.startsWith(root) && Files.isRegularFile(it) && runCatching {
                 Files.mismatch(it, file) == -1L

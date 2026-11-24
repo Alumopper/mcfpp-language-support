@@ -32,7 +32,8 @@ internal object MCFPPMacroCallChecker {
                     CONST -> if (values.stage(node, range(node).start) == MCFPPValueFacts.Stage.RUNTIME)
                         report(node, "Macro parameter $label requires a compile-time constant")
                     INLINE -> if (callback == null) {
-                        report(node, "Parameter $label requires a direct inline lambda")
+                        if (!parameter.acceptsFunctionValues)
+                            report(node, "Parameter $label requires a direct inline lambda")
                     } else {
                         checkCallback(callback, parameter, local, assignable, range, ::report, ::checkMode)
                     }
