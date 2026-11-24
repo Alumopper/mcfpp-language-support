@@ -15,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.lang.McfppLanguage;
 import top.mcfpp.intellij.lang.McfppFileModel;
 import top.mcfpp.intellij.lang.McfppFileModels;
+import top.mcfpp.intellij.lang.McfppReferenceNames;
 import top.mcfpp.intellij.lang.McfppSymbol;
 import top.mcfpp.intellij.lang.McfppSymbolKind;
 import top.mcfpp.intellij.lang.McfppTokenTypes;
@@ -47,7 +48,7 @@ public final class McfppMniReferenceContributor extends PsiReferenceContributor 
         if (element.getFirstChild() != null || element.getNode() == null) {
             return PsiReference.EMPTY_ARRAY;
         }
-        if (element.getNode().getElementType() != McfppTokenTypes.IDENTIFIER &&
+        if (!McfppReferenceNames.isName(element) &&
                 element.getNode().getElementType() != McfppTokenTypes.STRING) {
             return PsiReference.EMPTY_ARRAY;
         }
@@ -78,8 +79,7 @@ public final class McfppMniReferenceContributor extends PsiReferenceContributor 
 
     /** Returns the Java binding represented by an MCFPP native declaration name. */
     static Optional<MniJavaTargetParser.Target> declarationTarget(PsiElement element) {
-        if (element.getFirstChild() != null || element.getNode() == null ||
-                element.getNode().getElementType() != McfppTokenTypes.IDENTIFIER) {
+        if (!McfppReferenceNames.isName(element)) {
             return Optional.empty();
         }
         PsiFile file = element.getContainingFile();

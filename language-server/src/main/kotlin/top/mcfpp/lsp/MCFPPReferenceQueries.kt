@@ -9,11 +9,11 @@ internal fun MCFPPWorkspaceView.resolveSymbolAt(params: TextDocumentPositionPara
     val references = analysis.referenceOccurrencesByName[word].orEmpty()
     references.firstOrNull { it.isNamedArgument && containsPosition(it.range, params.position) }
         ?.let { return resolveNamedArgument(analysis, it) }
+    references.firstOrNull { it.isCall && containsPosition(it.range, params.position) }
+        ?.let { calls.resolveCallTarget(analysis, it) }?.let { return it }
     val receiver = analysis.receiverBefore(params.position)
     resolveQualifiedGlobalSymbol(analysis, word, params.position)?.let { return it }
     if (receiver != null) {
-        references.firstOrNull { it.isCall && containsPosition(it.range, params.position) }
-            ?.let { calls.resolveCallTarget(analysis, it) }?.let { return it }
         val typeName = calls.resolveReceiverTypeAt(analysis, receiver, params.position)
         if (typeName != null) {
             return receiverMembers(analysis, receiver, typeName, params.position).firstOrNull { it.name == word }

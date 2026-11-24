@@ -20,6 +20,8 @@
         <gotoDeclarationHandler
                 implementation="top.mcfpp.intellij.mni.McfppMniGotoDeclarationHandler"/>
         <definitionsScopedSearch implementation="top.mcfpp.intellij.mni.McfppMniImplementationSearch"/>
+        <targetElementUtilExtender implementation="top.mcfpp.intellij.mni.McfppImplementationTargetEvaluator"/>
+        <targetElementEvaluator language="MCFPP" implementationClass="top.mcfpp.intellij.mni.McfppImplementationTargetEvaluator"/>
         <codeInsight.lineMarkerProvider
                 language="MCFPP"
                 implementationClass="top.mcfpp.intellij.mni.McfppMniLineMarkerProvider"/>

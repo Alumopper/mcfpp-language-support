@@ -1,5 +1,8 @@
 package top.mcfpp.intellij.mni;
 
+import com.intellij.codeInsight.TargetElementUtil;
+import com.intellij.psi.search.searches.DefinitionsScopedSearch;
+import com.intellij.testFramework.ServiceContainerUtil;
 import top.mcfpp.intellij.lang.McfppFileModels;
 
 public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
@@ -36,6 +39,8 @@ public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
                 McfppMniLineMarkerProvider.findJavaTargets(declaredName));
         assertEquals(java.util.List.of(provider.findMethodsByName("answer", false)[0]),
                 com.intellij.psi.search.searches.DefinitionsScopedSearch.search(declaredName).findAll().stream().toList());
+        assertEquals(java.util.List.of(provider.findMethodsByName("answer", false)[0]),
+                DefinitionsScopedSearch.search(identifier).findAll().stream().toList());
 
         var snapshot = McfppMacroIndex.snapshot(getProject());
         assertEquals("int", snapshot.symbols.getFirst().typeName);
@@ -50,6 +55,8 @@ public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
             var usage = consumer.findElementAt(consumer.getText().indexOf(call));
             assertTrue(java.util.Arrays.stream(usage.getReferences())
                     .anyMatch(r -> r.resolve() == declaredName));
+            assertEquals(java.util.List.of(provider.findMethodsByName("answer", false)[0]),
+                    DefinitionsScopedSearch.search(usage).findAll().stream().toList());
         }
         assertEquals("result", McfppMacroIndex.visibleName(consumer, McfppMacroIndex.all(getProject()).getFirst(),
                 consumer.getText().indexOf("result()")));
@@ -120,8 +127,53 @@ public final class McfppMacroIntegrationTest extends McfppJavaFixtureTestCase {
         assertTrue(java.util.Arrays.stream(usage.getReferences()).anyMatch(reference -> reference.resolve() == declaredName));
         assertEquals(java.util.List.of(provider.findMethodsByName("map", false)[0]),
                 com.intellij.psi.search.searches.DefinitionsScopedSearch.search(declaredName).findAll().stream().toList());
+        assertEquals(java.util.List.of(provider.findMethodsByName("map", false)[0]),
+                DefinitionsScopedSearch.search(usage).findAll().stream().toList());
         var target = declaration.findElementAt(declaration.getText().lastIndexOf("map"));
         assertTrue(java.util.Arrays.stream(target.getReferences())
                 .anyMatch(reference -> reference.resolve() == provider.findMethodsByName("map", false)[0]));
+    }
+
+    public void testImplementationSearchUsesRemoteKotlinTargetsForUnresolvedReceiverCalls() {
+        var provider = myFixture.addFileToProject("src/main/kotlin/example/mni/AcceptanceCollections.kt", """
+                package example.mni
+                object AcceptanceCollections {
+                    fun mapList() {}
+                    fun foldList() {}
+                }
+                """);
+        var consumer = myFixture.addFileToProject("src/main/mcfpp/main.mcfpp", """
+                namespace demo
+                func main(items: list<int>, lookup: map<int>) {
+                    items.map({ value -> value + 1 });
+                    items.fold(0, { total, value -> total + value });
+                }
+                """);
+        myFixture.configureFromExistingVirtualFile(consumer.getVirtualFile());
+        var requested = new java.util.ArrayList<String>();
+        // Light PSI fixtures keep the LSP process disabled. Supply its resolved Kotlin targets here.
+        ServiceContainerUtil.registerOrReplaceServiceInstance(getProject(), McfppRemoteImplementationLookup.class, call -> {
+            assertEquals(consumer, call.getContainingFile());
+            requested.add(call.getText());
+            int offset = provider.getText().indexOf(call.getText() + "List");
+            assertTrue(offset >= 0);
+            return java.util.List.of(provider.findElementAt(offset));
+        }, getTestRootDisposable());
+        assertSame(top.mcfpp.intellij.lang.McfppTokenTypes.TYPE_KEYWORD,
+                consumer.findElementAt(consumer.getText().indexOf("map<int>")).getNode().getElementType());
+        for (String name : java.util.List.of("map", "fold")) {
+            int offset = consumer.getText().indexOf("items." + name) + "items.".length();
+            var call = consumer.findElementAt(offset);
+            myFixture.getEditor().getCaretModel().moveToOffset(offset + 1);
+            assertSame(call, TargetElementUtil.findTargetElement(myFixture.getEditor(),
+                    TargetElementUtil.getInstance().getDefinitionSearchFlags()));
+            assertFalse(TargetElementUtil.getInstance().includeSelfInGotoImplementation(call));
+            var targets = DefinitionsScopedSearch.search(call).findAll().stream().toList();
+            assertEquals(name + " " + targets, 1, targets.size());
+            var target = targets.getFirst();
+            assertEquals(provider.getVirtualFile(), target.getContainingFile().getVirtualFile());
+            assertEquals(name + "List", provider.findElementAt(target.getTextOffset()).getText());
+        }
+        assertEquals(java.util.List.of("map", "fold"), requested);
     }
 }

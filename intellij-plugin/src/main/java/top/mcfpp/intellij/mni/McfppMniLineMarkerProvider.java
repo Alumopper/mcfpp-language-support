@@ -21,6 +21,7 @@ import com.intellij.util.indexing.FileBasedIndex;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.lang.McfppFile;
 import top.mcfpp.intellij.lang.McfppLanguage;
+import top.mcfpp.intellij.lang.McfppReferenceNames;
 import top.mcfpp.intellij.lang.McfppSymbolIndex;
 import top.mcfpp.intellij.lang.McfppTokenTypes;
 
@@ -61,7 +62,7 @@ public final class McfppMniLineMarkerProvider extends RelatedItemLineMarkerProvi
     static @NotNull List<PsiElement> findJavaTargets(@NotNull PsiElement element) {
         if (element.getLanguage() != McfppLanguage.INSTANCE || element.getFirstChild() != null ||
                 element.getNode() == null ||
-                (element.getNode().getElementType() != McfppTokenTypes.IDENTIFIER &&
+                (!McfppReferenceNames.isName(element) &&
                         element.getNode().getElementType() != McfppTokenTypes.STRING)) {
             return List.of();
         }

@@ -1,6 +1,8 @@
 package top.mcfpp.lsp
 
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import org.eclipse.lsp4j.SymbolKind
 import top.mcfpp.language.VersionPreprocessor
 import top.mcfpp.language.ProjectConfiguration
@@ -28,7 +30,8 @@ data class MCFPPProjectConfig(
     val jars: List<Path>,
     val targetPath: Path?,
     val ignoreStdLib: Boolean,
-    val targetVersion: String = VersionPreprocessor.DEFAULT_VERSION
+    val targetVersion: String = VersionPreprocessor.DEFAULT_VERSION,
+    val nativeArtifacts: List<Path> = emptyList()
 )
 
 data class MCFPPProjectSnapshot(
@@ -273,13 +276,18 @@ class MCFPPProjectIndex {
     private fun parseConfig(configFile: Path): MCFPPProjectConfig {
         val config = ProjectConfiguration.read(configFile)
         val modelFile = config.root().resolve(".mcfpp/ide-model.json")
-        val libraries = runCatching {
-            val model = com.google.gson.JsonParser.parseString(modelFile.readText()).asJsonObject
-            model.getAsJsonArray("libraries").mapNotNull { it.asJsonObject.get("path")?.asString?.let(Path::of) }
-        }.getOrDefault(emptyList())
+        val model = runCatching { JsonParser.parseString(modelFile.readText()).asJsonObject }.getOrNull()
+        val libraries = model?.artifactPaths("libraries").orEmpty()
+        val nativeArtifacts = model?.artifactPaths("plugins").orEmpty()
         return MCFPPProjectConfig(configFile, config.root(), config.sourcePath(), config.namespace(),
-            config.includes() + libraries, config.jars(), config.targetPath(), config.ignoreStdLib(), config.version())
+            config.includes() + libraries, config.jars(), config.targetPath(), config.ignoreStdLib(), config.version(),
+            nativeArtifacts)
     }
+
+    private fun JsonObject.artifactPaths(key: String): List<Path> =
+        get(key)?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { entry ->
+            runCatching { Path.of(entry.asJsonObject.get("path").asString) }.getOrNull()
+        }.orEmpty()
 
     private fun readStringList(element: JsonElement?): List<String> {
         if (element == null || element.isJsonNull) {
@@ -342,7 +350,7 @@ class MCFPPProjectIndex {
                         else -> null
                     }
                     if (bytes != null) addAll(librarySymbols(bytes, file.toUri().toString(), false,
-                        MCFPPSourceJarResolver(file, project.jars, project.root)))
+                        MCFPPSourceJarResolver(file, project.nativeArtifacts + project.jars, project.root)))
                 }
             }
         }
@@ -389,7 +397,7 @@ class MCFPPProjectIndex {
     private fun librarySignature(project: MCFPPProjectConfig): String {
         return buildList {
             add("stdlib=${!project.ignoreStdLib}")
-            (project.includes + project.jars)
+            (project.includes + project.jars + project.nativeArtifacts)
                 .map { it.toAbsolutePath().normalize() }
                 .distinct()
                 .forEach { path ->

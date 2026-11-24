@@ -1,6 +1,8 @@
 <idea-plugin>
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="top.mcfpp.intellij.lsp.McfppMniSymbolPublisher"/>
+        <projectService serviceInterface="top.mcfpp.intellij.mni.McfppRemoteImplementationLookup"
+                        serviceImplementation="top.mcfpp.intellij.lsp.McfppLspImplementationLookup"/>
     </extensions>
     <extensions defaultExtensionNs="com.intellij.platform.lsp">
         <serverSupportProvider implementation="top.mcfpp.intellij.lsp.McfppLspIntegrationProvider"/>

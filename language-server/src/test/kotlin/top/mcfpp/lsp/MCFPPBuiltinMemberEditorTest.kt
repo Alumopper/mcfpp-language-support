@@ -17,9 +17,9 @@ class MCFPPBuiltinMemberEditorTest {
             print(values.fold(0) { sum, value -> sum + value })
             var label = " MCFPP ".trim().lowercase()
             var ref = nbtStorageRef<list<int>>("test:values", "source")
-            ref.tryRead { input ->
+            ref.tryRead({ input ->
                 print(input)
-            }
+            })
         }
     """.trimIndent()
 
@@ -44,6 +44,13 @@ class MCFPPBuiltinMemberEditorTest {
     @Test fun builtinsExposeDocumentationDeclarationsAndRuntimeRestrictions() = withServer { server, document ->
         val service = server.textDocumentService
         val macros = mapOf("map" to "mapList", "filter" to "filterList", "fold" to "foldList")
+        val signatures = mapOf(
+            "add" to "add(int)",
+            "fold" to "fold(initial: int, operation: (int, int) -> int): int",
+            "trim" to "trim(): string",
+            "lowercase" to "lowercase(): string",
+            "tryRead" to "(list<int>) -> void"
+        )
         val labels = service.completion(CompletionParams(document, position(source, "values.")))
             .get(10, TimeUnit.SECONDS).left.map { it.label }
         for (name in macros.keys + "add") assertEquals(1, labels.count { it == name }, labels.toString())
@@ -51,8 +58,15 @@ class MCFPPBuiltinMemberEditorTest {
             val at = position(source, ".$name")
             val hover = service.hover(HoverParams(document, at)).get(10, TimeUnit.SECONDS)
             assertTrue("\n---\n" in hover.contents.right.value, hover.toString())
-            if (name == "fold") assertContains(hover.contents.right.value, "fold(initial: int, operation: (int, int) -> int): int")
-            if (name == "add") assertContains(hover.contents.right.value, "add(int)")
+            signatures[name]?.let { expected ->
+                assertContains(hover.contents.right.value, expected)
+                val marker = if (name == "fold") ".fold(0" else ".$name("
+                val help = assertNotNull(service.signatureHelp(SignatureHelpParams(document, position(source, marker)))
+                    .get(10, TimeUnit.SECONDS), name)
+                val active = help.signatures[help.activeSignature]
+                assertContains(active.label, expected)
+                assertTrue(active.documentation.right.value.isNotBlank(), name)
+            }
             val location = service.definition(DefinitionParams(document, at)).get(10, TimeUnit.SECONDS).left.single()
             assertTrue(location.uri.endsWith(if (name in macros) "collections.mcfpp" else ".kt"), location.toString())
             assertEquals(name, sourceAt(location))
@@ -86,6 +100,8 @@ class MCFPPBuiltinMemberEditorTest {
                 .get(10, TimeUnit.SECONDS).left.map { it.label }
             assertContains(labels, "length", receiver)
             assertEquals(receiver == "label.", "trim" in labels, receiver)
+            assertEquals(receiver == "label.", "lowercase" in labels, receiver)
+            assertTrue(labels.none { it == "add" || it == "fold" || it == "tryRead" }, receiver)
         }
     }
 
