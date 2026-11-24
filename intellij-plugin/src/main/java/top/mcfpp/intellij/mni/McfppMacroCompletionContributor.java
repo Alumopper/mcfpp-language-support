@@ -5,15 +5,24 @@ import com.intellij.patterns.PlatformPatterns;
 import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.lang.*;
+
+import java.util.Map;
+
 public final class McfppMacroCompletionContributor extends CompletionContributor {
     public McfppMacroCompletionContributor() {
         extend(CompletionType.BASIC,PlatformPatterns.psiElement().withLanguage(McfppLanguage.INSTANCE),new CompletionProvider<>() {
             @Override protected void addCompletions(@NotNull CompletionParameters p,@NotNull ProcessingContext context,@NotNull CompletionResultSet result) {
                 if(!(p.getOriginalFile() instanceof McfppFile file)) return;
                 int start=p.getOffset()-result.getPrefixMatcher().getPrefix().length();
-                if(isMemberAccess(file,start)) return;
-                for(var macro:McfppMacroIndex.visibleAt(file,null,start)) result.addElement(LookupElementBuilder.create(macro.method(),McfppMacroIndex.visibleName(file,macro,start))
-                    .withIcon(com.intellij.icons.AllIcons.Nodes.Method).withTailText(macro.signature().substring(5+macro.name().length()),true)
+                boolean member = isMemberAccess(file,start);
+                String receiver = member ? McfppMacroIndex.receiverTypeAt(file,start) : null;
+                for(var macro:McfppMacroIndex.visibleAt(file,null,start)) {
+                    if(member && !McfppMacroIndex.receiverMatches(macro,receiver)) continue;
+                    if(!member && macro.receiverType()!=null && !macro.receiverType().isBlank()) continue;
+                    Map<String,String> bindings = member ? McfppMacroIndex.receiverBindings(macro,receiver) : Map.of();
+                    String signature = macro.callSignature(bindings);
+                    result.addElement(LookupElementBuilder.create(macro.method(),McfppMacroIndex.visibleName(file,macro,start))
+                    .withIcon(com.intellij.icons.AllIcons.Nodes.Method).withTailText(signature.substring(macro.name().length()),true)
                     .withTypeText(macro.namespace(),true).withInsertHandler((insertion,item) -> {
                         int tail=insertion.getTailOffset();
                         if(tail>=insertion.getDocument().getTextLength() || insertion.getDocument().getCharsSequence().charAt(tail)!='(') {
@@ -21,6 +30,7 @@ public final class McfppMacroCompletionContributor extends CompletionContributor
                             insertion.getEditor().getCaretModel().moveToOffset(tail+(macro.parameters().isEmpty()?2:1));
                         }
                     }));
+                }
             }
         });
     }
@@ -29,12 +39,15 @@ public final class McfppMacroCompletionContributor extends CompletionContributor
         if(!(file instanceof McfppFile) || signature==null) return false;
         int start=Math.min(offset,file.getTextLength());
         while(start>0 && Character.isUnicodeIdentifierPart(file.getText().charAt(start-1))) start--;
-        if(isMemberAccess(file,start)) return false;
+        boolean member = isMemberAccess(file,start);
+        String receiver = member ? McfppMacroIndex.receiverTypeAt(file,start) : null;
         for(var macro:McfppMacroIndex.visibleAt(file,null,start)) {
+            if(member && !McfppMacroIndex.receiverMatches(macro,receiver)) continue;
+            if(!member && macro.receiverType()!=null && !macro.receiverType().isBlank()) continue;
             if(!McfppMacroIndex.visibleName(file,macro,start).equals(name)) continue;
-            String parameters=macro.parameters().stream().map(p -> p.name+": "+p.typeName)
-                .collect(java.util.stream.Collectors.joining(", "));
-            String expected=name+"("+parameters+")"+("void".equals(macro.returnType()) ? "" : ": "+macro.returnType());
+            Map<String,String> bindings = member ? McfppMacroIndex.receiverBindings(macro,receiver) : Map.of();
+            String expected=macro.callSignature(bindings,name);
+            if(expected.endsWith(": void")) expected=expected.substring(0,expected.length()-6);
             if(expected.equals(signature)) return true;
         }
         return false;

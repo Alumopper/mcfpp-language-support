@@ -57,8 +57,10 @@ internal object MCFPPCallContextFinder {
                     } else if (expectedOpen.isEmpty()) {
                         if (character == '(') {
                             buildContext(text, index, cursorOffset, mask, MCFPPArgumentGroup.NORMAL)?.let(candidates::add)
-                        } else {
+                        } else if (character != '{') {
                             break
+                        } else {
+                            // A cursor inside a trailing lambda still belongs to its call.
                         }
                     }
                 }

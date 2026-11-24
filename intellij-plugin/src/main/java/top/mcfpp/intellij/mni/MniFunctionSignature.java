@@ -13,6 +13,8 @@ import java.util.regex.Pattern;
 /** The part of a native MCFPP declaration used by the compiler to select an {@code @MNIFunction}. */
 record MniFunctionSignature(
         @NotNull String name,
+        @NotNull String receiverType,
+        @NotNull List<String> typeParameters,
         @NotNull List<String> readOnlyTypes,
         @NotNull List<String> normalTypes,
         @NotNull String returnType,
@@ -21,10 +23,11 @@ record MniFunctionSignature(
         int nameOffset
 ) {
     private static final Pattern FUNCTION_NAME = Pattern.compile(
-            "\\bfunc\\s+([A-Za-z_$][A-Za-z0-9_$]*)"
+            "\\bfunc\\s+(?:([A-Za-z_$][A-Za-z0-9_$:!?<>.,\\[\\]\\s]*)\\.\\s*)?([A-Za-z_$][A-Za-z0-9_$]*)"
     );
 
     MniFunctionSignature {
+        typeParameters = List.copyOf(typeParameters);
         readOnlyTypes = List.copyOf(readOnlyTypes);
         normalTypes = List.copyOf(normalTypes);
         readOnlyNames = List.copyOf(readOnlyNames);
@@ -44,6 +47,7 @@ record MniFunctionSignature(
 
         Matcher function = FUNCTION_NAME.matcher(header);
         if (!function.find()) return Optional.empty();
+        String receiver = function.group(1) == null ? "" : normalizeType(function.group(1));
         int cursor = skipWhitespace(header, function.end());
 
         List<String> readOnly = List.of();
@@ -67,13 +71,15 @@ record MniFunctionSignature(
             returnType = normalizeType(header.substring(cursor + 1));
             if (returnType.isEmpty()) returnType = "void";
         }
-        return Optional.of(new MniFunctionSignature(function.group(1), readOnly, normal, returnType,
-                readOnlyNames, normalNames, start + function.start(1)));
+        return Optional.of(new MniFunctionSignature(function.group(2), receiver,
+                receiver.isEmpty() ? List.of() : readOnlyNames, readOnly, normal, returnType,
+                readOnlyNames, normalNames, start + function.start(2)));
     }
 
     boolean parametersMatch(MniJavaAnnotation annotation) {
-        if (annotation.macro()) return readOnlyTypes.isEmpty() && normalTypes.equals(annotation.normalTypes());
-        return readOnlyTypes.equals(annotation.readOnlyTypes()) && normalTypes.equals(annotation.normalTypes());
+        if (!normalTypes.equals(annotation.normalTypes())) return false;
+        if (annotation.macro() && !receiverType.isEmpty()) return readOnlyTypes.stream().allMatch("type"::equals);
+        return readOnlyTypes.equals(annotation.readOnlyTypes());
     }
 
     int javaArgumentCount() {
@@ -81,12 +87,14 @@ record MniFunctionSignature(
     }
 
     int macroArgumentCount() {
-        return normalTypes.size() + 1;
+        return normalTypes.size() + 1 + (receiverType.isEmpty() ? 0 : 1);
     }
 
     String parametersText() {
         String readOnly = readOnlyTypes.isEmpty() ? "" : "<" + String.join(", ", readOnlyTypes) + ">";
-        return readOnly + "(" + String.join(", ", normalTypes) + ")";
+        String prefix = receiverType.isEmpty() ? readOnly : receiverType + "." + name +
+                (typeParameters.isEmpty() ? "" : "<" + String.join(", ", typeParameters) + ">");
+        return prefix + "(" + String.join(", ", normalTypes) + ")";
     }
 
     private static List<String> parameterNames(String parameters, boolean readOnly) {

@@ -250,8 +250,9 @@ public final class McfppLexer extends LexerBase {
             String text = buffer.subSequence(tokenStart, tokenEnd).toString();
             int previous = tokenStart - 1;
             while (previous >= 0 && Character.isWhitespace(buffer.charAt(previous))) previous--;
-            tokenType = (text.equals("text") || text.equals("new") || text.equals("data")) && previous >= 0 && buffer.charAt(previous) == '.'
-                    ? McfppTokenTypes.IDENTIFIER : keywordType(text);
+            IElementType keyword = keywordType(text);
+            tokenType = keyword != McfppTokenTypes.IDENTIFIER && previous >= 0 && buffer.charAt(previous) == '.'
+                    ? McfppTokenTypes.IDENTIFIER : keyword;
             return;
         }
 

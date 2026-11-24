@@ -17,11 +17,15 @@ public final class McfppMacroReferenceContributor extends PsiReferenceContributo
                 if(offset>=text.length() || (text.charAt(offset)!='(' && text.charAt(offset)!='{')) return PsiReference.EMPTY_ARRAY;
                 int qualifier = element.getTextOffset() - 1;
                 while (qualifier >= 0 && Character.isWhitespace(text.charAt(qualifier))) qualifier--;
-                if (qualifier >= 0 && text.charAt(qualifier) == '.') return PsiReference.EMPTY_ARRAY;
-                if(McfppMacroIndex.visibleAt(file,element.getText(),element.getTextOffset()).isEmpty()) return PsiReference.EMPTY_ARRAY;
+                boolean member = qualifier >= 0 && text.charAt(qualifier) == '.';
+                var candidates = member
+                        ? McfppMacroIndex.visibleAtReceiver(file,element.getText(),element.getTextOffset())
+                        : McfppMacroIndex.visibleAt(file,element.getText(),element.getTextOffset()).stream()
+                                .filter(macro -> macro.receiverType()==null || macro.receiverType().isBlank()).toList();
+                if(candidates.isEmpty()) return PsiReference.EMPTY_ARRAY;
                 return new PsiReference[]{new PsiPolyVariantReferenceBase<PsiElement>(element,TextRange.from(0,element.getTextLength()),false) {
                     @Override public ResolveResult @NotNull [] multiResolve(boolean incompleteCode) {
-                        return McfppMacroIndex.visibleAt(file, element.getText(), element.getTextOffset()).stream()
+                        return candidates.stream()
                                 .map(McfppMacroIndex.Macro::declaration).filter(java.util.Objects::nonNull)
                                 .map(PsiElementResolveResult::new).toArray(ResolveResult[]::new);
                     }

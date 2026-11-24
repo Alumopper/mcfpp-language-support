@@ -6,11 +6,12 @@ public final class MniSymbolSnapshot {
     public long generation;
     public List<Symbol> symbols=List.of();
     public static final class Symbol {
-        public String namespace,name,typeName,detail,uri,documentation;
+        public String namespace,name,typeName,detail,uri,documentation,receiverType;
         public int line,character,endLine,endCharacter;
         public String declarationUri;
         public int declarationLine, declarationCharacter;
         public boolean macro;
+        public List<String> typeParameters=List.of();
         public List<Parameter> parameters=List.of();
     }
     public static final class Parameter {

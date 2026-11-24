@@ -26,7 +26,9 @@ import top.mcfpp.language.MniSymbolSnapshot;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -40,7 +42,7 @@ public final class McfppMacroIndex {
     private static final Key<CachedValue<List<Macro>>> CACHE = Key.create("mcfpp.macro.index");
     private static final Pattern NAMESPACE_QUALIFIER = Pattern.compile("([\\w.]+)\\s*:\\s*$");
 
-    public record Macro(String namespace, String name, String returnType,
+    public record Macro(String namespace, String name, String receiverType, List<String> typeParameters, String returnType,
                         List<MniSymbolSnapshot.Parameter> parameters, PsiMethod method,
                         VirtualFile declarationFile, int declarationOffset, int declarationLine, int declarationCharacter) {
         PsiElement declaration() {
@@ -48,11 +50,25 @@ public final class McfppMacroIndex {
             return file == null ? null : file.findElementAt(declarationOffset);
         }
 
-        public String signature() {
-            return "func " + name + "(" + parameters.stream()
-                    .map(p -> p.name + ": " + p.typeName)
-                    .collect(java.util.stream.Collectors.joining(", ")) + "): " + returnType;
+        public String signature() { return signature(Map.of()); }
+
+        public String signature(Map<String, String> substitutions) {
+            String receiver = receiverType.isEmpty() ? "" : substitute(receiverType, substitutions) + ".";
+            return "func " + receiver + callSignature(substitutions);
         }
+
+        public String callSignature(Map<String, String> substitutions, String displayName) {
+            List<String> remaining = typeParameters.stream().filter(type -> !substitutions.containsKey(type)).toList();
+            String generics = remaining.isEmpty() ? "" : "<" + String.join(", ", remaining) + ">";
+            String args = parameters.stream().map(p -> p.name + ": " + substitute(p.typeName, substitutions))
+                    .collect(java.util.stream.Collectors.joining(", "));
+            return displayName + generics + "(" + args + "): " + substitute(returnType, substitutions);
+        }
+
+        public String callSignature(Map<String, String> substitutions) {
+            return callSignature(substitutions, name);
+        }
+
     }
 
     private McfppMacroIndex() {
@@ -96,18 +112,19 @@ public final class McfppMacroIndex {
                     parameter.name = index < signature.normalNames().size()
                             ? signature.normalNames().get(index) : "arg" + (index + 1);
                     parameter.typeName = signature.normalTypes().get(index);
-                    parameter.mode = index < annotation.parameterModes().size()
-                            ? annotation.parameterModes().get(index) : "VALUE";
+                    int methodIndex = index + (signature.receiverType().isEmpty() ? 0 : 1);
+                    parameter.mode = methodIndex < annotation.parameterModes().size()
+                            ? annotation.parameterModes().get(methodIndex) : "VALUE";
                     parameter.macroCallbackParameters = MniJavaAnnotation.callbackParameters(method, index);
                     parameters.add(parameter);
                 }
-                String identity = namespace + ":" + signature.name() + parameters.stream()
-                        .map(p -> p.typeName).toList();
+                String identity = namespace + ":" + signature.receiverType() + ":" + signature.name() + ":" +
+                        signature.typeParameters() + parameters.stream().map(p -> p.typeName).toList();
                 if (seen.add(identity)) {
                     var document = com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(file);
                     int line = document == null ? 0 : document.getLineNumber(signature.nameOffset());
                     int column = document == null ? 0 : signature.nameOffset() - document.getLineStartOffset(line);
-                    result.add(new Macro(namespace, signature.name(), signature.returnType(),
+                    result.add(new Macro(namespace, signature.name(), signature.receiverType(), signature.typeParameters(), signature.returnType(),
                             List.copyOf(parameters), method, virtual, signature.nameOffset(), line, column));
                 }
             }
@@ -122,6 +139,7 @@ public final class McfppMacroIndex {
             if (!method.hasModifierProperty(PsiModifier.PUBLIC) ||
                     !method.hasModifierProperty(PsiModifier.STATIC)) continue;
             if (MniJavaAnnotation.from(method).filter(MniJavaAnnotation::macro)
+                    .filter(a -> method.getParameterList().getParametersCount() == signature.macroArgumentCount())
                     .filter(signature::parametersMatch).filter(a -> a.returnType().equals(signature.returnType())).isEmpty()) continue;
             if (match != null) return null;
             match = method;
@@ -166,6 +184,35 @@ public final class McfppMacroIndex {
                 .findFirst().orElse(macro.name());
     }
 
+    public static Map<String, String> receiverBindings(Macro macro, String actualType) {
+        if (macro.receiverType() == null || actualType == null) return Map.of();
+        var bindings = new LinkedHashMap<String, String>();
+        return unify(macro.receiverType(), actualType, Set.copyOf(macro.typeParameters()), bindings) ? Map.copyOf(bindings) : Map.of();
+    }
+
+    public static boolean receiverMatches(Macro macro, String actualType) {
+        if (macro.receiverType() == null || actualType == null) return false;
+        return unify(macro.receiverType(), actualType, Set.copyOf(macro.typeParameters()), new LinkedHashMap<>());
+    }
+
+    public static List<Macro> visibleAtReceiver(PsiFile file, String name, int offset) {
+        String receiver = receiverTypeAt(file, offset);
+        if (receiver == null) return List.of();
+        return visibleAt(file, name, offset).stream().filter(macro -> receiverMatches(macro, receiver)).toList();
+    }
+
+    public static String receiverTypeAt(PsiFile file, int offset) {
+        int cursor = Math.min(offset, file.getTextLength()) - 1;
+        while (cursor >= 0 && Character.isWhitespace(file.getText().charAt(cursor))) cursor--;
+        if (cursor < 0 || file.getText().charAt(cursor) != '.') return null;
+        String expression = top.mcfpp.language.MemberExpressions.receiverBefore(file.getText(), cursor);
+        if (expression == null) return null;
+        if (!expression.matches("[A-Za-z_$][A-Za-z0-9_$]*")) return null;
+        var model = McfppFileModels.get(file);
+        return model.visibleLocalSymbols(expression, offset).stream().findFirst()
+                .map(McfppMacroIndex::declaredType).orElse(null);
+    }
+
     public static MniSymbolSnapshot snapshot(Project project) {
         var snapshot = new MniSymbolSnapshot();
         snapshot.projectUri = project.getBasePath() == null ? "" : Path.of(project.getBasePath()).toUri().toString();
@@ -175,6 +222,8 @@ public final class McfppMacroIndex {
             var symbol = new MniSymbolSnapshot.Symbol();
             symbol.namespace = macro.namespace();
             symbol.name = macro.name();
+            symbol.receiverType = macro.receiverType().isBlank() ? null : macro.receiverType();
+            symbol.typeParameters = macro.typeParameters();
             symbol.macro = true;
             symbol.typeName = macro.returnType();
             symbol.detail = macro.signature();
@@ -207,5 +256,53 @@ public final class McfppMacroIndex {
         Object result = JavaPsiFacade.getInstance(value.getProject())
                 .getConstantEvaluationHelper().computeConstantExpression(expression);
         return result instanceof String text ? text : "";
+    }
+
+    private static String declaredType(top.mcfpp.intellij.lang.McfppSymbol symbol) {
+        String signature = symbol.signature();
+        int colon = signature.indexOf(':');
+        if (colon < 0) return null;
+        String type = signature.substring(colon + 1).split("=", 2)[0].replace(";", "").strip();
+        return type.isEmpty() ? null : MniFunctionSignature.normalizeType(type);
+    }
+
+    private static boolean unify(String expected, String actual, Set<String> parameters, Map<String, String> bindings) {
+        expected = MniFunctionSignature.normalizeType(expected);
+        actual = MniFunctionSignature.normalizeType(actual);
+        if (parameters.contains(expected)) {
+            String previous = bindings.putIfAbsent(expected, actual);
+            return previous == null || previous.equals(actual);
+        }
+        String expectedBase = baseTypeName(expected);
+        String actualBase = baseTypeName(actual);
+        if (!expectedBase.equals(actualBase)) return false;
+        List<String> expectedArgs = genericArguments(expected);
+        List<String> actualArgs = genericArguments(actual);
+        return expectedArgs.size() == actualArgs.size() && java.util.stream.IntStream.range(0, expectedArgs.size())
+                .allMatch(index -> unify(expectedArgs.get(index), actualArgs.get(index), parameters, bindings));
+    }
+
+    private static String substringBeforeGeneric(String type) {
+        int open = type.indexOf('<');
+        return open < 0 ? type : type.substring(0, open);
+    }
+
+    private static String baseTypeName(String type) {
+        String base = substringBeforeGeneric(type);
+        int separator = base.lastIndexOf(':');
+        return separator < 0 ? base : base.substring(separator + 1);
+    }
+
+    private static List<String> genericArguments(String type) {
+        int open = type.indexOf('<');
+        return open < 0 || !type.endsWith(">") ? List.of() : MniFunctionSignature.splitTopLevel(type.substring(open + 1, type.length() - 1));
+    }
+
+    private static String substitute(String type, Map<String, String> substitutions) {
+        String result = type;
+        for (var entry : substitutions.entrySet()) result = result.replaceAll(
+                "(?<![A-Za-z0-9_])" + Pattern.quote(entry.getKey()) + "(?![A-Za-z0-9_])",
+                java.util.regex.Matcher.quoteReplacement(entry.getValue()));
+        return result;
     }
 }

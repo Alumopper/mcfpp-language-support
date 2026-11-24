@@ -191,4 +191,79 @@ class MCFPPCompositionEditorTest {
                 messages.filter { "Cannot assign to const callback parameter" in it })
         }
     }
+
+    @Test fun `receiver generic macros specialize callback signatures and preserve navigation`() {
+        val source = """
+            namespace generic
+            func list<E>.map<E, R>(callback: (E) -> R): list<R> = example.Provider.map
+            func main(items: list<int>) {
+                var output = items.map({ item -> "converted" });
+            }
+        """.trimIndent()
+        val callbackParameter = top.mcfpp.language.MniSymbolSnapshot.Parameter().apply {
+            name = "callback"; typeName = "(E) -> R"; mode = "INLINE"
+            macroCallbackParameters = listOf(top.mcfpp.language.MniSymbolSnapshot.Parameter().apply {
+                name = "item"; typeName = "E"; mode = "VALUE"
+            })
+        }
+        val snapshot = top.mcfpp.language.MniSymbolSnapshot().apply {
+            projectUri = root.toUri().toString(); generation = 2
+            symbols = listOf(top.mcfpp.language.MniSymbolSnapshot.Symbol().apply {
+                namespace = "generic"; name = "map"; receiverType = "list<E>"; typeParameters = listOf("E", "R")
+                typeName = "list<R>"; detail = "map(callback: (E) -> R): list<R>"; macro = true
+                declarationUri = root.resolve("main.mcfpp").toUri().toString()
+                declarationLine = 1; declarationCharacter = source.lines()[1].indexOf("map")
+                uri = root.resolve("Provider.kt").toUri().toString(); endCharacter = 3
+                parameters = listOf(callbackParameter)
+            })
+        }
+        check(source, snapshot) { service, uri, diagnostics ->
+            assertTrue(diagnostics.none { it.severity == DiagnosticSeverity.Error },
+                diagnostics.joinToString("\n") { "${it.range}: ${it.message}" })
+            assertTrue(complete(service, uri, source, "items.").contains("map"))
+            val signature = service.signatureHelp(SignatureHelpParams(TextDocumentIdentifier(uri),
+                position(source, """items.map({ item -> "converted" }"""))).get()?.signatures?.first()?.label.orEmpty()
+            assertTrue(signature.replace(" ", "").contains("(int)->string"), signature)
+            assertTrue(signature.contains("list<string>"), signature)
+            val document = TextDocumentIdentifier(uri)
+            val usage = position(source, "items.map")
+            assertEquals(uri, service.definition(DefinitionParams(document, usage)).get().left.single().uri)
+            assertEquals(root.resolve("Provider.kt").toUri().toString(),
+                service.implementation(ImplementationParams(document, usage)).get().left.single().uri)
+            val hover = service.hover(HoverParams(document, usage)).get()
+            assertContains(hover.contents.right.value, "list<int>")
+        }
+    }
+
+    @Test fun `import aliases expose receiver generic macro completions`() {
+        val source = """
+            namespace caller
+            import generic:map as transform
+            func main(items: list<int>) {
+                var output = items.transform({ item -> "converted" });
+            }
+        """.trimIndent()
+        val callback = top.mcfpp.language.MniSymbolSnapshot.Parameter().apply {
+            name = "callback"; typeName = "(E) -> R"; mode = "INLINE"
+            macroCallbackParameters = listOf(top.mcfpp.language.MniSymbolSnapshot.Parameter().apply {
+                name = "item"; typeName = "E"; mode = "VALUE"
+            })
+        }
+        val snapshot = top.mcfpp.language.MniSymbolSnapshot().apply {
+            projectUri = root.toUri().toString(); generation = 3
+            symbols = listOf(top.mcfpp.language.MniSymbolSnapshot.Symbol().apply {
+                namespace = "generic"; name = "map"; receiverType = "list<E>"; typeParameters = listOf("E", "R")
+                typeName = "list<R>"; macro = true; parameters = listOf(callback)
+                declarationUri = root.resolve("api.mcfpp").toUri().toString()
+                uri = root.resolve("Provider.kt").toUri().toString()
+            })
+        }
+        check(source, snapshot) { service, uri, diagnostics ->
+            assertTrue(diagnostics.none { it.severity == DiagnosticSeverity.Error }, diagnostics.joinToString("\n") { it.message })
+            assertTrue(complete(service, uri, source, "items.").contains("transform"))
+            val help = service.signatureHelp(SignatureHelpParams(TextDocumentIdentifier(uri),
+                position(source, """items.transform({ item -> "converted" }"""))).get()
+            assertContains(assertNotNull(help).signatures.first().label, "(int) -> string")
+        }
+    }
 }

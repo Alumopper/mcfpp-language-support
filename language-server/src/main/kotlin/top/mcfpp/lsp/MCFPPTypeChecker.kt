@@ -554,7 +554,8 @@ class MCFPPTypeChecker(
         private fun validateFunctionCall(ctx: mcfppParser.FunctionCallContext, target: MCFPPSymbol) {
             val readOnlyArguments = ctx.arguments()?.readOnlyArgs()?.expressionList()?.expression().orEmpty()
             val typeSubstitutions = typeParameterSubstitutions(target, readOnlyArguments.map { it.text })
-            diagnostics += MCFPPMacroCallChecker.check(ctx, target, document, resolveLocalSymbol, resolveGlobalSymbol, ::isAssignable, ::contextRange)
+            diagnostics += MCFPPMacroCallChecker.check(ctx, target, document, resolveLocalSymbol, resolveGlobalSymbol,
+                ::isAssignable, ::contextRange, typeSubstitutions)
             val normal = ctx.arguments()?.normalArgs()
             val expressions = ctx.callArgumentNodes()
             val names = normal.argumentNodeNames()
@@ -797,6 +798,7 @@ class MCFPPTypeChecker(
         if (owner == null) return null
         val call = selector.`var`()?.functionCall()
         val name = selector.memberKeyword()?.text ?: call?.namespaceID()?.text ?: selector.`var`()?.varWithSuffix()?.Identifier()?.text
+        call?.let(::functionCallOccurrence)?.let(resolveCallSymbol)?.takeIf { it.isMacro }?.typeName?.let { return it }
         val arguments = (call?.arguments() ?: selector.arguments())?.normalArgs().argumentNodes() + listOfNotNull(callback)
         MCFPPBuiltinCallInference.result(owner, name, arguments, { inferExpressionType(it) }, ::callbackType)?.let { return it }
         selector.memberKeyword()?.let { return resolveMemberSymbol(owner, it.text, tokenPosition(it.start))?.typeName }
@@ -945,6 +947,7 @@ class MCFPPTypeChecker(
     private fun inferMemberVarType(ownerType: String?, ctx: mcfppParser.VarContext?): String? {
         if (ownerType == null || ctx == null) return null
         ctx.functionCall()?.let { call ->
+            functionCallOccurrence(call)?.let(resolveCallSymbol)?.takeIf { it.isMacro }?.typeName?.let { return it }
             val member = resolveMemberSymbol(ownerType, call.namespaceID().text, tokenPosition(call.start))
             if (member?.isSynthetic == true) return member.typeName
             return inferFunctionCallType(call) ?: member?.typeName

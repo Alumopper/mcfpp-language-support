@@ -60,4 +60,17 @@ class MniFunctionSignatureTest {
         assertEquals(List.of("entity<1,\"zombie\",\"undead\">", "(int|string)"), signature.normalTypes());
         assertEquals("void", signature.returnType());
     }
+
+    @Test
+    void parsesReceiverGenericMacroDeclarationsAndCountsTheImplicitReceiver() {
+        String source = "func list<E>.map<E, R>(callback: (E) -> R): list<R> = example.mni.Provider.map";
+        var target = MniJavaTargetParser.parse(source).getFirst();
+        var signature = MniFunctionSignature.from(source, target).orElseThrow();
+
+        assertEquals("list<E>", signature.receiverType());
+        assertEquals(List.of("E", "R"), signature.typeParameters());
+        assertEquals(List.of("(E)->R"), signature.normalTypes());
+        assertEquals("list<R>", signature.returnType());
+        assertEquals(3, signature.macroArgumentCount());
+    }
 }

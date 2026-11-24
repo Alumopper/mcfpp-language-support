@@ -70,9 +70,18 @@ internal fun MCFPPWorkspaceView.memberSymbolsForType(
         return members
     }
     val visibleSymbols = visibleGlobalSymbolsForDocument(analysis)
+    val receiverMacros = visibleSymbols.asSequence()
+        .filter { it.isMacro && it.receiverType != null }
+        .mapNotNull { symbol ->
+            val bindings = MCFPPMacroExtraction.receiverBindings(
+                symbol.receiverType.orEmpty(), receiverType, symbol.typeParameters.toSet()
+            ) ?: return@mapNotNull null
+            MCFPPValueMembers.substitute(symbol.copy(receiverType = receiverType, containerName = receiverType), bindings)
+        }
+        .toList()
     val membersByOwner = visibleSymbols
         .asSequence()
-        .filter { it.containerName != null || it.receiverType != null }
+        .filter { (it.containerName != null || it.receiverType != null) && !(it.isMacro && it.receiverType != null) }
         .groupBy { normalizeTypeName(it.containerName ?: it.receiverType).orEmpty() }
     val typesByName = visibleSymbols
         .asSequence()
@@ -116,7 +125,18 @@ internal fun MCFPPWorkspaceView.memberSymbolsForType(
         }
         top.mcfpp.language.EntityBuiltins.parent(currentType)?.let(pending::addLast)
     }
-    return mergeMemberMetadata(members.values, intrinsic).also { memberSymbolsCache[cacheKey] = it }
+    val resolved = mergeMemberMetadata(members.values + receiverMacros, intrinsic).flatMap { symbol ->
+        if (!symbol.isMacro || symbol.receiverType == null) return@flatMap listOf(symbol)
+        val imports = analysis.imports.filter {
+            it.namespace == symbol.namespaceName && it.importedName == symbol.name && it.alias != null
+        }
+        val originalVisible = symbol.isStdlib || symbol.uri == analysis.uri || symbol.namespaceName == analysis.namespaceName ||
+            analysis.imports.any { it.namespace == symbol.namespaceName &&
+                (it.importedName == "*" || it.importedName == symbol.name && it.alias == null) }
+        if (imports.isEmpty()) listOf(symbol) else listOfNotNull(symbol.takeIf { originalVisible }) +
+            imports.map { symbol.copy(name = it.alias!!) }
+    }
+    return resolved.also { memberSymbolsCache[cacheKey] = it }
 }
 
 private fun mergeMemberMetadata(declared: Collection<MCFPPSymbol>, intrinsic: List<MCFPPSymbol>): List<MCFPPSymbol> =

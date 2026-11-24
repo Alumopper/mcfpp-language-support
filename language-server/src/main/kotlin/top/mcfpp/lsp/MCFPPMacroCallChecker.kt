@@ -14,8 +14,10 @@ internal object MCFPPMacroCallChecker {
         call: P.FunctionCallContext, target: MCFPPSymbol, document: MCFPPDocumentAnalysis,
         local: (String, Position) -> MCFPPSymbol?, global: (String, Position) -> MCFPPSymbol?,
         assignable: (String?, String?) -> Boolean, range: (ParserRuleContext) -> Range,
+        typeSubstitutions: Map<String, String> = emptyMap(),
     ): List<Diagnostic> {
-        val parameters = target.parameters.filterNot { it.isReadOnly }
+        val instantiated = MCFPPValueMembers.substitute(target, typeSubstitutions)
+        val parameters = instantiated.parameters.filterNot { it.isReadOnly }
         if (parameters.none { it.macroMode != null }) return emptyList()
         val values = MCFPPValueFacts(document) { name, position -> local(name, position) ?: global(name, position) }
         return buildList {
@@ -34,7 +36,7 @@ internal object MCFPPMacroCallChecker {
                     } else {
                         checkCallback(callback, parameter, local, assignable, range, ::report, ::checkMode)
                     }
-                    VALUE -> if (target.isMacro && callback != null)
+                    VALUE -> if (instantiated.isMacro && callback != null)
                         report(node, "Macro parameter $label requires a value. Direct callbacks require INLINE mode.")
                     null -> Unit
                 }

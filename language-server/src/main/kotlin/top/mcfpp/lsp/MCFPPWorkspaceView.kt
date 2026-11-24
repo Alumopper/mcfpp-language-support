@@ -8,18 +8,21 @@ private data class MacroSignatureKey(
     val namespace: String?,
     val name: String,
     val receiver: String?,
+    val typeParameters: List<String>,
     val parameters: List<String>,
 )
 
 private fun macroSignatureKey(symbol: MCFPPSymbol) = MacroSignatureKey(
     symbol.namespaceName, symbol.name, symbol.receiverType,
-    symbol.parameters.map { it.typeName.filterNot(Char::isWhitespace) },
+    symbol.typeParameters,
+    symbol.parameters.filterNot { it.isReadOnly }.map { it.typeName.filterNot(Char::isWhitespace) },
 )
 
 private fun MCFPPSymbol.withMacroMetadata(macro: MCFPPSymbol) = copy(
     isMacro = true,
     nativeImplementation = macro.nativeImplementation ?: nativeImplementation,
     documentation = documentation?.takeUnless(String::isBlank) ?: macro.documentation,
+    typeParameters = macro.typeParameters.ifEmpty { typeParameters },
     parameters = if (parameters.size == macro.parameters.size) parameters.zip(macro.parameters).map { (source, metadata) ->
         source.copy(macroMode = metadata.macroMode ?: source.macroMode,
             macroCallbackParameters = metadata.macroCallbackParameters.ifEmpty { source.macroCallbackParameters })
@@ -179,7 +182,8 @@ internal class MCFPPWorkspaceView(
                     false
                 } else {
                     val owner = normalizeTypeName(symbol.containerName ?: symbol.receiverType)
-                    (symbol.topLevel && imported.importedName == symbol.name) || owner == imported.importedName
+                    (symbol.topLevel && imported.importedName == symbol.name) ||
+                        (symbol.isMacro && imported.importedName == symbol.name) || owner == imported.importedName
                 }
             }
         }.also { cache.visible = it }

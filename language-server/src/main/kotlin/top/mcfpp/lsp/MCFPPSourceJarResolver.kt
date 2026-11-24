@@ -128,12 +128,13 @@ internal class MCFPPSourceJarResolver(private val artifact: Path, dependencies: 
             Path.of(System.getProperty("user.home"), ".m2", "repository")).distinct()
         val version = versionSuffix.find(artifactName)?.value?.drop(1) ?: return emptyList()
         val artifactId = artifactName.removeSuffix("-$version")
-        return roots.filter(Files::isDirectory).flatMap { root ->
+        return roots.filter(Files::isDirectory).firstNotNullOfOrNull { root ->
             Files.walk(root).use { entries ->
                 entries.filter { it.fileName.toString() == name && it.parent?.fileName?.toString() == version &&
-                    it.parent?.parent?.fileName?.toString() == artifactId && Files.isRegularFile(it) }.toList()
+                    it.parent?.parent?.fileName?.toString() == artifactId && Files.isRegularFile(it) }
+                    .sorted().findFirst().orElse(null)
             }
-        }.singleOrNull()?.let(::listOf).orEmpty()
+        }?.let(::listOf).orEmpty()
     }
 
     companion object {

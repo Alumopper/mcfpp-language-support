@@ -196,7 +196,7 @@ object MCFPPParserSemanticExtractor {
                 is mcfppParser.FunctionDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
                 is mcfppParser.InlineFunctionDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
                 is mcfppParser.CompileTimeFuncDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
-                is mcfppParser.NativeFuncDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx)
+                is mcfppParser.NativeFuncDeclarationContext -> recordFunction(ctx.functionDeclarationPart(), null, ctx, macroHeader = MCFPPMacroExtraction.extract(ctx))
                 is mcfppParser.TemplateFunctionDeclarationContext ->
                     recordFunction(ctx.functionDeclarationPart(), null, ctx, isEntityMember = ctx.ENTITY() != null)
                 is mcfppParser.ExtensionFunctionDeclarationContext -> recordExtensionFunction(ctx)
@@ -539,34 +539,33 @@ object MCFPPParserSemanticExtractor {
         private fun recordFunction(
             part: mcfppParser.FunctionDeclarationPartContext?,
             receiverType: String?,
-            ownerCtx: ParserRuleContext,
-            isEntityMember: Boolean = false
+            ownerCtx: ParserRuleContext, isEntityMember: Boolean = false, macroHeader: MCFPPMacroExtraction.Header? = null
         ) {
-            if (part == null) {
-                return
-            }
-            val nameToken = part.getToken(mcfppParser.Identifier, 0) ?: return
+            if (part == null && macroHeader == null) return
+            val nameToken = macroHeader?.name ?: part?.getToken(mcfppParser.Identifier, 0)?.symbol ?: return
             markDeclaration(nameToken)
+            val effectiveReceiverType = macroHeader?.receiverType ?: receiverType
             val currentType = currentTypeName()
-            val returnType = part.functionReturnType()?.text?.trim()
-            val kind = if (currentType != null || receiverType != null) SymbolKind.Method else SymbolKind.Function
+            val returnType = macroHeader?.returnType ?: part?.functionReturnType()?.text?.trim()
+            val kind = if (currentType != null || effectiveReceiverType != null) SymbolKind.Method else SymbolKind.Function
             val symbol = recordSymbol(
-                declarationToken = nameToken.symbol,
+                declarationToken = nameToken,
                 name = nameToken.text,
                 kind = kind,
                 detail = returnType,
                 typeName = returnType,
-                receiverType = receiverType,
-                topLevel = currentType == null && receiverType == null,
+                receiverType = effectiveReceiverType,
+                topLevel = currentType == null && effectiveReceiverType == null,
                 containerName = currentType,
                 fullRange = contextRange(ownerCtx),
-                parameters = extractFunctionParameters(part.functionParams()),
-                contextParameters = contextParameters(part.contextParameters() ?: ownerCtx.getRuleContext(mcfppParser.ContextParametersContext::class.java, 0)),
+                parameters = extractFunctionParameters(macroHeader?.parameters ?: part?.functionParams()),
+                contextParameters = contextParameters(part?.contextParameters() ?: ownerCtx.getRuleContext(mcfppParser.ContextParametersContext::class.java, 0)),
                 accessModifier = accessModifier(ownerCtx),
                 isEntityMember = isEntityMember,
-                isNative = ownerCtx is mcfppParser.NativeFuncDeclarationContext
+                isNative = ownerCtx is mcfppParser.NativeFuncDeclarationContext,
+                typeParameters = macroHeader?.typeParameters.orEmpty()
             )
-            val memberOwner = receiverType ?: currentType
+            val memberOwner = effectiveReceiverType ?: currentType
             if (memberOwner != null) {
                 typeMembers.getOrPut(memberOwner) { mutableListOf() }.add(symbol)
             }
@@ -901,7 +900,8 @@ object MCFPPParserSemanticExtractor {
             isEntityMember: Boolean = false,
             isDataTemplate: Boolean = false,
             isAbstract: Boolean = false,
-            isNative: Boolean = false, isRuntimeValue: Boolean = false
+            isNative: Boolean = false, isRuntimeValue: Boolean = false,
+            typeParameters: List<String> = emptyList()
         ): MCFPPSymbol {
             val symbol = MCFPPSymbol(
                 uri = uri,
@@ -934,7 +934,7 @@ object MCFPPParserSemanticExtractor {
                 isEntityMember = isEntityMember,
                 isDataTemplate = isDataTemplate,
                 isAbstract = isAbstract,
-                isNative = isNative, isRuntimeValue = isRuntimeValue
+                isNative = isNative, isRuntimeValue = isRuntimeValue, typeParameters = typeParameters
             )
             symbols += symbol
             if (topLevel) {

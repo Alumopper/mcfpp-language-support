@@ -13,8 +13,11 @@ internal fun MniSymbolSnapshot.toSymbols(): List<MCFPPSymbol> = symbols.orEmpty(
         Range(Position(symbol.declarationLine, symbol.declarationCharacter),
             Position(symbol.declarationLine, symbol.declarationCharacter + symbol.name.length))
     }
-    MCFPPSymbol(uri = symbol.declarationUri ?: symbol.uri, name = symbol.name, kind = SymbolKind.Function, range = declaration ?: range,
-        detail = symbol.detail, typeName = symbol.typeName, topLevel = true, namespaceName = symbol.namespace,
+    val receiver = symbol.receiverType?.takeIf(String::isNotBlank)
+    MCFPPSymbol(uri = symbol.declarationUri ?: symbol.uri, name = symbol.name,
+        kind = if (receiver == null) SymbolKind.Function else SymbolKind.Method, range = declaration ?: range,
+        detail = symbol.detail, typeName = symbol.typeName, receiverType = receiver, containerName = receiver,
+        topLevel = receiver == null, typeParameters = symbol.typeParameters.orEmpty(), namespaceName = symbol.namespace,
         documentation = symbol.documentation, isExternal = true, isNative = true, isMacro = symbol.macro,
         nativeImplementation = symbol.uri?.let { Location(it, range) },
         parameters = symbol.parameters.orEmpty().map(MniSymbolSnapshot.Parameter::toParameter))

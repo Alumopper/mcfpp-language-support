@@ -49,7 +49,8 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, so
                     is CompoundDeclaration -> owner.readonly
                     else -> emptyList()
                 }
-                parameters.getOrNull(type.index.toInt())?.let { declarations.declaration(it).common.name } ?: "T${type.index}"
+                if (owner is MacroDeclaration) owner.binding.genericParameters.getOrNull(type.index.toInt())?.name ?: "T${type.index}"
+                else parameters.getOrNull(type.index.toInt())?.let { declarations.declaration(it).common.name } ?: "T${type.index}"
             }
             is LibraryType.Applied -> "${nested(type.constructor)}<${type.arguments.joinToString(", ", transform = ::nested)}>"
             is LibraryType.Specialized -> nested(type.constructor)
@@ -106,7 +107,7 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, so
                 receiver = declaration.receiver?.let { typeName(it) }
             }
             is MacroDeclaration -> {
-                receiver = declaration.binding.native.caller?.let { typeName(it) }
+                receiver = declaration.binding.receiverType?.let { typeName(it) }
                 kind = if (receiver == null) SymbolKind.Function else SymbolKind.Method
                 name = declaration.binding.sourceName; type = macroType(declaration.binding.result)
                 params = declaration.binding.parameters.map(::macroParameter)
@@ -156,6 +157,7 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, so
             isNative = native != null,
             nativeImplementation = native?.let { sources?.implementation(it) ?: MCFPPValueMembers.implementation(it) },
             isMacro = declaration is MacroDeclaration,
+            typeParameters = (declaration as? MacroDeclaration)?.binding?.genericParameters?.map { it.name }.orEmpty(),
             initializer = if (declaration is ValueDeclaration && (declaration.defaultBody != null || declaration.frozen != null)) "<library default>" else null,
             isEntityTemplate = declaration is CompoundDeclaration && common.flags and DeclarationFlags.ENTITY != 0L,
             isEntityMember = common.flags and DeclarationFlags.ENTITY != 0L,

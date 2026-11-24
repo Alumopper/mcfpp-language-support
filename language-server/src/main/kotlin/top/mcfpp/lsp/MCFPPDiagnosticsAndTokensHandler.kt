@@ -231,6 +231,11 @@ internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWork
 
     private fun shouldCheckUndefinedReference(document: MCFPPDocumentAnalysis, reference: MCFPPReferenceOccurrence): Boolean {
         if (reference.isNamedArgument) return false
+        if (document.symbols.any { symbol ->
+                symbol.isNative && symbol.receiverType != null && reference.name in symbol.typeParameters &&
+                    isBeforeOrEqual(symbol.fullRange.start, reference.range.start) &&
+                    isBeforeOrEqual(reference.range.end, symbol.fullRange.end)
+            }) return false
         if (reference.name in MCFPPDocumentIndex.keywords || reference.name in MCFPPDocumentIndex.builtinValues || reference.name in MCFPPDocumentIndex.builtinTypes || reference.name in MCFPPDocumentIndex.referenceFactories) {
             return false
         }

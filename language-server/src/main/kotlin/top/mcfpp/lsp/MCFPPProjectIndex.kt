@@ -58,6 +58,7 @@ private data class LibrarySymbolKey(
     val namespaceName: String?,
     val containerName: String?,
     val receiverType: String?,
+    val typeParameters: List<String>,
     val parameters: List<LibraryParameterKey>
 )
 
@@ -162,7 +163,7 @@ class MCFPPProjectIndex {
     private fun mergedLibrarySymbols(): List<MCFPPSymbol> {
         fun key(symbol: MCFPPSymbol) =
             LibrarySymbolKey(
-                symbol.name, symbol.kind, symbol.namespaceName, symbol.containerName, symbol.receiverType,
+                symbol.name, symbol.kind, symbol.namespaceName, symbol.containerName, symbol.receiverType, symbol.typeParameters,
                 symbol.parameters.map { LibraryParameterKey(it.isReadOnly, it.typeName.filterNot(Char::isWhitespace), it.hasDefault) }
             )
         val live = mniSnapshots.values.flatMap { it.symbols }.associateBy(::key)
