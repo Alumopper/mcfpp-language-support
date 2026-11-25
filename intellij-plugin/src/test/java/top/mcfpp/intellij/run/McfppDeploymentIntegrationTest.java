@@ -3,9 +3,11 @@ package top.mcfpp.intellij.run;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
+import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class McfppDeploymentIntegrationTest extends BasePlatformTestCase {
@@ -47,33 +49,41 @@ public final class McfppDeploymentIntegrationTest extends BasePlatformTestCase {
     }
 
     public void testBuildRunConfigurationDeploysCompiledDatapack() throws Exception {
-        var root=java.nio.file.Path.of("build/deployment-ui/project").toAbsolutePath();
-        java.nio.file.Files.createDirectories(root.resolve("src/main/mcfpp"));
-        java.nio.file.Files.writeString(root.resolve("mcfpp.toml"),"schema = 1\nname = \"deployment-demo\"\nnamespace = \"deployment_demo\"\n");
-        java.nio.file.Files.writeString(root.resolve("src/main/mcfpp/main.mcfpp"),"func main() { print(\"Deployment works!\") }\n");
-        var settings=McfppRunConfigurations.get(getProject(),McfppTask.BUILD);
-        var configuration=(McfppRunConfiguration)settings.getConfiguration();
-        configuration.projectPath=root.toString(); configuration.deployAfterBuild=true;
-        configuration.deploymentDirectory="../world/datapacks";
-        var executor=com.intellij.execution.executors.DefaultRunExecutor.getRunExecutorInstance();
-        var environment=com.intellij.execution.runners.ExecutionEnvironmentBuilder.create(executor,settings).build();
-        var result=configuration.getState(executor,environment).execute(executor,new McfppProgramRunner());
-        assertNotNull(result);
+        var fixture = Files.createTempDirectory("mcfpp-deployment-test-").toRealPath();
         try {
-            var handler=result.getProcessHandler();
-            var output=new StringBuilder();
-            handler.addProcessListener(new ProcessAdapter() {
-                @Override public void onTextAvailable(@NotNull ProcessEvent event,@NotNull com.intellij.openapi.util.Key type) { synchronized(output) { output.append(event.getText()); } }
-            });
-            handler.startNotify();
-            boolean finished=handler.waitFor(60000);
-            if(!finished) handler.destroyProcess();
-            assertTrue("Build timed out: "+output,finished);
-            assertEquals(output.toString(),Integer.valueOf(0),handler.getExitCode());
-            assertTrue(output.toString(),output.toString().contains("MCFPP datapack deployed to:"));
-            assertTrue(java.nio.file.Files.isRegularFile(root.resolve("../world/datapacks/deployment-demo/pack.mcmeta")));
+            var root = fixture.resolve("project");
+            Files.createDirectories(root.resolve("src/main/mcfpp"));
+            Files.writeString(root.resolve("mcfpp.toml"), "schema = 1\nname = \"deployment-demo\"\nnamespace = \"deployment_demo\"\n");
+            Files.writeString(root.resolve("src/main/mcfpp/main.mcfpp"), "func main() { print(\"Deployment works!\") }\n");
+            var settings = McfppRunConfigurations.get(getProject(), McfppTask.BUILD);
+            var configuration = (McfppRunConfiguration) settings.getConfiguration();
+            configuration.projectPath = root.toString();
+            configuration.deployAfterBuild = true;
+            configuration.deploymentDirectory = "../world/datapacks";
+            var executor = com.intellij.execution.executors.DefaultRunExecutor.getRunExecutorInstance();
+            var environment = com.intellij.execution.runners.ExecutionEnvironmentBuilder.create(executor, settings).build();
+            var result = configuration.getState(executor, environment).execute(executor, new McfppProgramRunner());
+            assertNotNull(result);
+            try {
+                var handler = result.getProcessHandler();
+                var output = new StringBuilder();
+                handler.addProcessListener(new ProcessAdapter() {
+                    @Override public void onTextAvailable(@NotNull ProcessEvent event, @NotNull com.intellij.openapi.util.Key type) {
+                        synchronized (output) { output.append(event.getText()); }
+                    }
+                });
+                handler.startNotify();
+                boolean finished = handler.waitFor(60000);
+                if (!finished) handler.destroyProcess();
+                assertTrue("Build timed out: " + output, finished);
+                assertEquals(output.toString(), Integer.valueOf(0), handler.getExitCode());
+                assertTrue(output.toString(), output.toString().contains("MCFPP datapack deployed to:"));
+                assertTrue(Files.isRegularFile(fixture.resolve("world/datapacks/deployment-demo/pack.mcmeta")));
+            } finally {
+                if (result.getExecutionConsole() != null) com.intellij.openapi.util.Disposer.dispose(result.getExecutionConsole());
+            }
         } finally {
-            if(result.getExecutionConsole()!=null) com.intellij.openapi.util.Disposer.dispose(result.getExecutionConsole());
+            FileUtil.delete(fixture.toFile());
         }
     }
 

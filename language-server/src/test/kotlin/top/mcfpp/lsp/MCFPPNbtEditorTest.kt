@@ -58,7 +58,7 @@ class MCFPPNbtEditorTest {
                 assertTrue((completions.left ?: completions.right.items).any { it.label == "merge" }, call)
                 val signature = service.signatureHelp(SignatureHelpParams(TextDocumentIdentifier(uri),
                     position(source, call, call.indexOf(".merge") + ".merge(".length))).get()
-                assertTrue(signature.signatures.any { it.label.contains("merge(d: nbt)") }, signature.toString())
+                assertEquals("merge(nbt): nbt", signature.signatures.single().label)
                 val definition = service.definition(DefinitionParams(TextDocumentIdentifier(uri),
                     position(source, call, call.indexOf(".merge") + 3))).get()
                 assertTrue(definition.left?.isNotEmpty() == true || definition.right?.isNotEmpty() == true, call)

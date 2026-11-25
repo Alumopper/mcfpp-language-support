@@ -589,7 +589,7 @@ class MCFPPLanguageServerTest {
             val help = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), position)
             ).get()
-            assertEquals("identity<T>(value: T): T", help.signatures.single().label)
+            assertEquals("identity<T>(value: int): int", help.signatures.single().label)
             assertEquals(1, help.activeParameter)
         } finally {
             server.shutdown().get()
@@ -862,14 +862,14 @@ class MCFPPLanguageServerTest {
             val readOnlyHelp = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), readOnlyPosition)
             ).get()
-            assertEquals("Box<T>(value: T)", readOnlyHelp.signatures.single().label)
+            assertEquals("Box<T>(value: int)", readOnlyHelp.signatures.single().label)
             assertEquals(0, readOnlyHelp.activeParameter)
 
             val normalPosition = Position(4, readOnlyLine.indexOf("(1") + "(1".length)
             val normalHelp = service.signatureHelp(
                 SignatureHelpParams(TextDocumentIdentifier(uri), normalPosition)
             ).get()
-            assertEquals("Box<T>(value: T)", normalHelp.signatures.single().label)
+            assertEquals("Box<T>(value: int)", normalHelp.signatures.single().label)
             assertEquals(1, normalHelp.activeParameter)
         } finally {
             server.shutdown().get()

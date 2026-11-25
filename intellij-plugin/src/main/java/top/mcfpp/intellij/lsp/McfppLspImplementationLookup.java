@@ -19,6 +19,7 @@ import top.mcfpp.intellij.mni.McfppRemoteImplementationLookup;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 public final class McfppLspImplementationLookup implements McfppRemoteImplementationLookup {
     private final Project project;
@@ -42,9 +43,15 @@ public final class McfppLspImplementationLookup implements McfppRemoteImplementa
                     ? extended.getTextDocumentService().implementation(params)
                     : java.util.concurrent.CompletableFuture.completedFuture(null));
             if (reply == null) continue;
-            var targets = reply.isLeft()
-                    ? reply.getLeft().stream().map(this::target)
-                    : reply.getRight().stream().map(link -> target(new Location(link.getTargetUri(), link.getTargetSelectionRange())));
+            Stream<PsiElement> targets;
+            if (reply.isLeft()) {
+                targets = reply.getLeft().stream().map(this::target);
+            } else if (reply.isRight()) {
+                targets = reply.getRight().stream()
+                        .map(link -> target(new Location(link.getTargetUri(), link.getTargetSelectionRange())));
+            } else {
+                continue;
+            }
             return targets.filter(Objects::nonNull).distinct().toList();
         }
         return List.of();
