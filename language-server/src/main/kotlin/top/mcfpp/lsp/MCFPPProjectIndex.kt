@@ -31,7 +31,10 @@ data class MCFPPProjectConfig(
     val targetPath: Path?,
     val ignoreStdLib: Boolean,
     val targetVersion: String = VersionPreprocessor.DEFAULT_VERSION,
-    val nativeArtifacts: List<Path> = emptyList()
+    val nativeArtifacts: List<Path> = emptyList(),
+    val dataPath: Path = root.resolve("src/main/resources/data"),
+    val assetsPath: Path = root.resolve("src/main/resources/assets"),
+    val entrypoints: Map<String, String> = emptyMap(),
 )
 
 data class MCFPPProjectSnapshot(
@@ -89,7 +92,7 @@ class MCFPPProjectIndex {
     private var snapshot: MCFPPProjectSnapshot = MCFPPProjectSnapshot()
 
     @Volatile
-    private var indexedProjects: List<MCFPPProjectConfig> = emptyList()
+    private var resourceIndexes = emptyMap<MCFPPProjectConfig, MCFPPResourceIndex>()
 
     private var workspaceFileCache: Map<Path, CachedWorkspaceAnalysis> = emptyMap()
     private var projectLibraryCache: Map<Path, CachedProjectLibraries> = emptyMap()
@@ -156,7 +159,7 @@ class MCFPPProjectIndex {
 
         workspaceFileCache = nextFileCache
         projectLibraryCache = nextLibraryCache
-        indexedProjects = projects
+        resourceIndexes = projects.associateWith(MCFPPResourceIndex::scan)
         return synchronized(symbolPublicationLock) {
             diskLibrarySymbols = librarySymbols
             MCFPPProjectSnapshot(fileAnalyses, mergedLibrarySymbols(), configFiles.distinct()).also { snapshot = it }
@@ -178,7 +181,8 @@ class MCFPPProjectIndex {
                 nativeImplementation = source.nativeImplementation ?: library.nativeImplementation,
                 parameters = if (source.parameters.size == library.parameters.size) source.parameters.zip(library.parameters)
                     .map { (actual, compiled) -> actual.copy(macroMode = actual.macroMode ?: compiled.macroMode,
-                        macroCallbackParameters = actual.macroCallbackParameters.ifEmpty { compiled.macroCallbackParameters }) }
+                        macroCallbackParameters = actual.macroCallbackParameters.ifEmpty { compiled.macroCallbackParameters },
+                        resourceKind = actual.resourceKind ?: compiled.resourceKind) }
                     else source.parameters,
             )
         }
@@ -187,25 +191,35 @@ class MCFPPProjectIndex {
 
     fun snapshot(): MCFPPProjectSnapshot = snapshot
 
+    internal fun resourcesForUri(uri: String): MCFPPResourceIndex? {
+        val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return null
+        val indexes = resourceIndexes
+        return sourceProject(path, indexes.keys)?.let(indexes::get)
+    }
+
+    internal fun sourceProject(uri: String): MCFPPProjectConfig? {
+        val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return null
+        return sourceProject(path)
+    }
+
+    private fun sourceProject(path: Path, projects: Set<MCFPPProjectConfig> = resourceIndexes.keys): MCFPPProjectConfig? =
+        projects.filter { project -> sourceRoots(project).any { path.startsWith(it.toAbsolutePath().normalize()) } }
+            .maxByOrNull { it.sourcePath.nameCount }
+
     fun namespaceForUri(uri: String): String? {
         val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return null
-        val project = indexedProjects
-            .filter { project -> sourceRoots(project).any { path.startsWith(it.toAbsolutePath().normalize()) } }
-            .maxByOrNull { it.sourcePath.nameCount }
-            ?: return null
+        val project = sourceProject(path) ?: return null
         return projectNamespace(project, path)
     }
 
     fun targetVersionForUri(uri: String): String {
-        val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return VersionPreprocessor.DEFAULT_VERSION
-        return indexedProjects
-            .filter { project -> sourceRoots(project).any { path.startsWith(it.toAbsolutePath().normalize()) } }
-            .maxByOrNull { it.sourcePath.nameCount }
-            ?.targetVersion ?: VersionPreprocessor.DEFAULT_VERSION
+        return sourceProject(uri)?.targetVersion ?: VersionPreprocessor.DEFAULT_VERSION
     }
 
     fun isRelevantWorkspaceChange(uri: String): Boolean {
         val path = uriToPath(uri)?.toAbsolutePath()?.normalize() ?: return false
+        val indexedProjects = resourceIndexes.keys
+        if (indexedProjects.any { path.startsWith(it.dataPath) || path.startsWith(it.assetsPath) }) return true
         return workspaceRoots.any { workspaceRoot ->
             val root = workspaceRoot.toAbsolutePath().normalize()
             if (!path.startsWith(root)) {
@@ -281,7 +295,7 @@ class MCFPPProjectIndex {
         val nativeArtifacts = model?.artifactPaths("plugins").orEmpty()
         return MCFPPProjectConfig(configFile, config.root(), config.sourcePath(), config.namespace(),
             config.includes() + libraries, config.jars(), config.targetPath(), config.ignoreStdLib(), config.version(),
-            nativeArtifacts)
+            nativeArtifacts, config.dataPath(), config.assetsPath(), config.entrypoints())
     }
 
     private fun JsonObject.artifactPaths(key: String): List<Path> =

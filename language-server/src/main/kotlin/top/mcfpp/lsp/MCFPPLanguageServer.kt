@@ -5,6 +5,7 @@ import org.eclipse.lsp4j.CodeActionKind
 import org.eclipse.lsp4j.CodeActionOptions
 import org.eclipse.lsp4j.InitializeParams
 import org.eclipse.lsp4j.InitializeResult
+import org.eclipse.lsp4j.HoverParams
 import org.eclipse.lsp4j.InlayHintRegistrationOptions
 import org.eclipse.lsp4j.RenameOptions
 import org.eclipse.lsp4j.SaveOptions
@@ -18,11 +19,13 @@ import org.eclipse.lsp4j.TextDocumentSyncOptions
 import org.eclipse.lsp4j.WorkspaceFoldersOptions
 import org.eclipse.lsp4j.WorkspaceServerCapabilities
 import org.eclipse.lsp4j.jsonrpc.messages.Either
+import org.eclipse.lsp4j.jsonrpc.services.JsonRequest
 import org.eclipse.lsp4j.services.LanguageClient
 import org.eclipse.lsp4j.services.LanguageClientAware
 import org.eclipse.lsp4j.services.LanguageServer
 import org.eclipse.lsp4j.services.TextDocumentService
 import org.eclipse.lsp4j.services.WorkspaceService
+import top.mcfpp.language.McfppDocumentationData
 import java.util.concurrent.CompletableFuture
 
 class MCFPPLanguageServer : LanguageServer, LanguageClientAware {
@@ -30,6 +33,9 @@ class MCFPPLanguageServer : LanguageServer, LanguageClientAware {
     fun updateMniSymbols(snapshot: top.mcfpp.language.MniSymbolSnapshot) {
         textDocumentService.updateMniSymbols(snapshot)
     }
+
+    @JsonRequest("mcfpp/documentation")
+    fun documentation(params: HoverParams): CompletableFuture<McfppDocumentationData?> = textDocumentService.documentation(params)
     @Volatile
     private var client: LanguageClient? = null
     private val textDocumentService = MCFPPTextDocumentService(this)
@@ -47,6 +53,7 @@ class MCFPPLanguageServer : LanguageServer, LanguageClientAware {
 
     @Suppress("DEPRECATION")
     override fun initialize(params: InitializeParams): CompletableFuture<InitializeResult> {
+        definitionLinks = params.capabilities?.textDocument?.definition?.linkSupport == true
         val roots = params.workspaceFolders?.mapNotNull { it.uri }?.takeIf { it.isNotEmpty() }
             ?: params.rootUri?.let(::listOf)
             ?: emptyList()
@@ -61,7 +68,7 @@ class MCFPPLanguageServer : LanguageServer, LanguageClientAware {
             change = TextDocumentSyncKind.Incremental
             setSave(SaveOptions(true))
         })
-        capabilities.completionProvider = CompletionOptions(false, listOf(".", ":", "@", "/", "#"))
+        capabilities.completionProvider = CompletionOptions(false, listOf(".", ":", "@", "/", "#", "\"", "'"))
         capabilities.signatureHelpProvider = SignatureHelpOptions(listOf("(", "<", ","), listOf(","))
         capabilities.definitionProvider = Either.forLeft(true)
         capabilities.declarationProvider = Either.forLeft(true)
@@ -115,6 +122,9 @@ class MCFPPLanguageServer : LanguageServer, LanguageClientAware {
         client ?: throw IllegalStateException("LSP LanguageClient has not been connected yet")
 
     fun getClientOrNull(): LanguageClient? = client
+
+    internal var definitionLinks = false
+        private set
 
     fun traceValue(): String = traceValue
 

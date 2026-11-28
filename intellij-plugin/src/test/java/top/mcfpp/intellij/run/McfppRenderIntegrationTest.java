@@ -1,10 +1,20 @@
 package top.mcfpp.intellij.run;
 
+import com.intellij.execution.RunManager;
+import com.intellij.execution.configurations.ConfigurationTypeUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.jdom.Element;
 import javax.swing.*;
 
 public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
+    private McfppRunConfiguration configuration(McfppTask task) {
+        var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
+        var settings=RunManager.getInstance(getProject()).createConfiguration("Execution test",type);
+        var configuration=(McfppRunConfiguration)settings.getConfiguration();
+        configuration.task=task;
+        return configuration;
+    }
+
     public void testHeadlessConsoleOpensOnProgramOutputAndKeepsCompilationAvailable() {
         var factory=com.intellij.execution.filters.TextConsoleBuilderFactory.getInstance();
         var view=new McfppExecutionConsole(factory.createBuilder(getProject()).getConsole(),
@@ -19,11 +29,11 @@ public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
         } finally { com.intellij.openapi.util.Disposer.dispose(view); }
     }
 
-    public void testHeadlessRunPersistsItsLevelAndRebuildsTheNormalPack() throws Exception {
-        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.RUN).getConfiguration();
+    public void testHeadlessRunPersistsItsLevelAndReusesTheNormalPack() throws Exception {
+        var configuration=configuration(McfppTask.RUN);
         configuration.projectPath=java.nio.file.Path.of("../../MCFPP/examples/display-animation").toAbsolutePath().normalize().toString();
         configuration.runFunction="demo:main";
-        configuration.arguments="-O0 --reuse-build";
+        configuration.arguments="-O0";
         configuration.optimizationLevel=2;
         var state=new Element("configuration");
         configuration.writeExternal(state);
@@ -36,12 +46,16 @@ public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
         var args=restored.commandLine().getParametersList().getList();
         assertTrue(args.contains("--optimization-level=2"));
         assertTrue(args.contains("--run-info"));
+        assertTrue(args.contains("--reuse-build"));
+        assertFalse(args.contains("-O0") || args.contains("--no-reuse-build") || args.contains("--render-info"));
+        restored.arguments="--no-reuse-build";
+        args=restored.commandLine().getParametersList().getList();
         assertTrue(args.contains("--no-reuse-build"));
-        assertFalse(args.contains("-O0") || args.contains("--reuse-build") || args.contains("--render-info"));
+        assertFalse(args.contains("--reuse-build"));
     }
 
     public void testRenderConfigurationPersistsAndBuildEnablesMetadata() throws Exception {
-        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.BUILD).getConfiguration();
+        var configuration=configuration(McfppTask.BUILD);
         configuration.render=true; configuration.renderFunction="demo:main";
         configuration.projectPath=java.nio.file.Path.of("../../MCFPP/examples/display-animation").toAbsolutePath().normalize().toString();
         var state=new Element("configuration"); configuration.writeExternal(state);
@@ -56,7 +70,7 @@ public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
     }
 
     public void testRenderOutputChannelsRemainSeparate() throws Exception {
-        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.BUILD).getConfiguration();
+        var configuration=configuration(McfppTask.BUILD);
         var service=getProject().getService(top.mcfpp.intellij.project.McfppProjectService.class);
         service.acquire();
         var handler=new McfppExecutionProcessHandler(configuration,service);
@@ -73,7 +87,7 @@ public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
     }
 
     public void testTestRenderingRequiresOneCase() {
-        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.TEST).getConfiguration();
+        var configuration=configuration(McfppTask.TEST);
         configuration.arguments="--tests demo:sample";
         assertEquals("demo:sample",McfppRenderSession.target(configuration));
         configuration.arguments="--tests=demo:*";
@@ -82,7 +96,7 @@ public final class McfppRenderIntegrationTest extends BasePlatformTestCase {
     }
 
     public void testEditorUpdatesRenderControlsAndPersistsTarget() throws Exception {
-        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.BUILD).getConfiguration();
+        var configuration=configuration(McfppTask.BUILD);
         var editor=new McfppRunSettingsEditor(getProject());
         try {
             var panel=editor.createEditor(); editor.resetEditorFrom(configuration);

@@ -76,9 +76,8 @@ public final class McfppRunConfiguration extends RunConfigurationBase<RunConfigu
             extra.add("--optimization-level="+optimizationLevel);
         }
         if(task==McfppTask.RUN) {
-            extra.removeIf(arg -> arg.equals("--reuse-build") || arg.equals("--no-reuse-build") || arg.startsWith("--reuse-build=") ||
-                arg.equals("--run-info") || arg.startsWith("--run-info="));
-            extra.add("--no-reuse-build");
+            extra.removeIf(arg -> arg.equals("--run-info") || arg.startsWith("--run-info="));
+            addBuildReuse(extra);
             extra.add("--run-info");
         }
         args.addAll(extra);

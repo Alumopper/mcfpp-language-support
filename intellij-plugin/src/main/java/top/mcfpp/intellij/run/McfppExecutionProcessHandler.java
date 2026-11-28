@@ -115,7 +115,7 @@ final class McfppExecutionProcessHandler extends ProcessHandler implements Dispo
 
     private int runHeadless(Path root,Path output) throws Exception {
         Path index=output.resolve("mcfpp.run.json");
-        Files.deleteIfExists(index);
+        runtime.notifyTextAvailable("Compiling...\n",ProcessOutputTypes.SYSTEM);
         int code=execute(configuration.commandLine(),this,null);
         if(code!=0 || cancelled) return code;
         var metadata=McfppRenderSession.read(index);
@@ -129,14 +129,20 @@ final class McfppExecutionProcessHandler extends ProcessHandler implements Dispo
                 "--command","data remove storage mcfpp:system stack_frame[0]","--strict");
             runtimeActive=true;
             var diagnostics=new StringBuilder();
-            code=execute(sandbox(root,args),runtime,null,text -> {
-                diagnostics.append(text);
-                if(diagnostics.length()>8192) diagnostics.delete(0,diagnostics.length()-8192);
-            });
-            if(!cancelled) {
-                McfppRunOutput.publish(outputs,text -> runtime.notifyTextAvailable(text,ProcessOutputTypes.STDOUT));
-                // DSB reports command failures on stdout even though it exits with a failure code.
-                if(code!=0 && !diagnostics.isEmpty()) runtime.notifyTextAvailable(diagnostics.toString(),ProcessOutputTypes.STDERR);
+            runtime.notifyTextAvailable("Running...\n",ProcessOutputTypes.SYSTEM);
+            try(var tail=new McfppRunOutput.Tail(outputs,text -> runtime.notifyTextAvailable(text,ProcessOutputTypes.STDOUT))) {
+                code=execute(sandbox(root,args),runtime,null,text -> {
+                    diagnostics.append(text);
+                    if(diagnostics.length()>8192) diagnostics.delete(0,diagnostics.length()-8192);
+                },tail);
+                if(!cancelled) {
+                    try {
+                        tail.finish();
+                    } finally {
+                        // DSB reports command failures on stdout even though it exits with a failure code.
+                        if(code!=0 && !diagnostics.isEmpty()) runtime.notifyTextAvailable(diagnostics.toString(),ProcessOutputTypes.STDERR);
+                    }
+                }
             }
             return code;
         } finally { Files.deleteIfExists(outputs); }
@@ -150,10 +156,11 @@ final class McfppExecutionProcessHandler extends ProcessHandler implements Dispo
     }
 
     private int execute(GeneralCommandLine command,ProcessHandler destination,Writer log) throws Exception {
-        return execute(command,destination,log,null);
+        return execute(command,destination,log,null,null);
     }
 
-    private int execute(GeneralCommandLine command,ProcessHandler destination,Writer log,Consumer<String> captureStdout) throws Exception {
+    private int execute(GeneralCommandLine command,ProcessHandler destination,Writer log,
+                        Consumer<String> captureStdout,McfppRunOutput.Tail tail) throws Exception {
         KillableColoredProcessHandler handler;
         synchronized(this) {
             if(cancelled) return 130;
@@ -173,9 +180,17 @@ final class McfppExecutionProcessHandler extends ProcessHandler implements Dispo
             }
         });
         handler.startNotify();
-        while(!handler.waitFor(200)) if(cancelled && !handler.isProcessTerminating()) handler.destroyProcess();
-        synchronized(this) { child=null; }
-        return handler.getExitCode()==null ? 1 : handler.getExitCode();
+        try {
+            while(!handler.waitFor(150)) {
+                if(cancelled) {
+                    if(!handler.isProcessTerminating()) handler.destroyProcess();
+                } else if(tail!=null) tail.poll();
+            }
+            return handler.getExitCode()==null ? 1 : handler.getExitCode();
+        } finally {
+            if(!handler.isProcessTerminated() && !handler.isProcessTerminating()) handler.destroyProcess();
+            synchronized(this) { child=null; }
+        }
     }
 
     private void message(String message) { notifyTextAvailable(message,ProcessOutputTypes.SYSTEM); }

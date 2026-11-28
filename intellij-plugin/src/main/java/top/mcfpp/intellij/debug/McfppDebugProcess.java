@@ -155,7 +155,9 @@ public final class McfppDebugProcess extends XDebugProcess implements IDebugProt
         }).exceptionally(error -> { fail(error); return null; });
     }
     @Override public void output(OutputEventArguments event) {
-        if ("stdout".equals(event.getCategory()) || "stderr".equals(event.getCategory()))
+        if ("important".equals(event.getCategory()))
+            handler.notifyTextAvailable(event.getOutput(), ProcessOutputTypes.SYSTEM);
+        else if ("stdout".equals(event.getCategory()) || "stderr".equals(event.getCategory()))
             handler.notifyTextAvailable(event.getOutput(), "stderr".equals(event.getCategory()) ? ProcessOutputTypes.STDERR : ProcessOutputTypes.STDOUT);
         else compilationOutput(event.getOutput(), ProcessOutputTypes.STDOUT);
     }

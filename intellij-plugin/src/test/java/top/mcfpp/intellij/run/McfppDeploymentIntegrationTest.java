@@ -1,6 +1,9 @@
 package top.mcfpp.intellij.run;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
+import com.intellij.execution.RunManager;
+import com.intellij.execution.RunnerAndConfigurationSettings;
+import com.intellij.execution.configurations.ConfigurationTypeUtil;
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.openapi.util.io.FileUtil;
@@ -11,8 +14,13 @@ import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class McfppDeploymentIntegrationTest extends BasePlatformTestCase {
+    private RunnerAndConfigurationSettings buildSettings() {
+        var type=ConfigurationTypeUtil.findConfigurationType(McfppRunConfigurationType.class);
+        return RunManager.getInstance(getProject()).createConfiguration("Deployment test",type);
+    }
+
     public void testEditorPersistsDeploymentAndDisablesItForNonBuildTasks() throws Exception {
-        var configuration=(McfppRunConfiguration)McfppRunConfigurations.get(getProject(),McfppTask.BUILD).getConfiguration();
+        var configuration=(McfppRunConfiguration)buildSettings().getConfiguration();
         var editor=new McfppRunSettingsEditor(getProject());
         try {
             var panel=editor.createEditor();
@@ -55,7 +63,7 @@ public final class McfppDeploymentIntegrationTest extends BasePlatformTestCase {
             Files.createDirectories(root.resolve("src/main/mcfpp"));
             Files.writeString(root.resolve("mcfpp.toml"), "schema = 1\nname = \"deployment-demo\"\nnamespace = \"deployment_demo\"\n");
             Files.writeString(root.resolve("src/main/mcfpp/main.mcfpp"), "func main() { print(\"Deployment works!\") }\n");
-            var settings = McfppRunConfigurations.get(getProject(), McfppTask.BUILD);
+            var settings = buildSettings();
             var configuration = (McfppRunConfiguration) settings.getConfiguration();
             configuration.projectPath = root.toString();
             configuration.deployAfterBuild = true;

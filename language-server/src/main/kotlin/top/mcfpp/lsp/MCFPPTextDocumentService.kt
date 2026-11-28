@@ -59,10 +59,11 @@ import org.eclipse.lsp4j.WorkspaceEdit
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 import org.eclipse.lsp4j.jsonrpc.messages.Either3
 import org.eclipse.lsp4j.services.TextDocumentService
+import top.mcfpp.language.McfppDocumentationData
 import top.mcfpp.language.MniSymbolSnapshot
 import java.util.concurrent.CompletableFuture
 
-class MCFPPTextDocumentService(server: MCFPPLanguageServer) : TextDocumentService {
+class MCFPPTextDocumentService(private val server: MCFPPLanguageServer) : TextDocumentService {
     private val lifecycle = MCFPPDocumentLifecycle(server)
     private val workspace = lifecycle.workspace
     private val completion = MCFPPCompletionHandler(workspace)
@@ -86,6 +87,11 @@ class MCFPPTextDocumentService(server: MCFPPLanguageServer) : TextDocumentServic
     override fun hover(params: HoverParams): CompletableFuture<Hover> =
         lifecycle.withEditorAnalysis(params.textDocument.uri, null) { analysis ->
             hoverAndSignature.hover(params, analysis)
+        }
+
+    internal fun documentation(params: HoverParams): CompletableFuture<McfppDocumentationData?> =
+        lifecycle.withEditorAnalysis(params.textDocument.uri, null) { analysis ->
+            hoverAndSignature.documentation(params, analysis)
         }
 
     override fun signatureHelp(params: SignatureHelpParams): CompletableFuture<SignatureHelp> =
@@ -133,7 +139,7 @@ class MCFPPTextDocumentService(server: MCFPPLanguageServer) : TextDocumentServic
 
     override fun definition(params: DefinitionParams): CompletableFuture<Either<List<Location>, List<LocationLink>>> =
         lifecycle.withEditorAnalysis(params.textDocument.uri, Either.forLeft(emptyList())) { analysis ->
-            navigation.definition(params, analysis)
+            navigation.definition(params, analysis, server.definitionLinks)
         }
 
     override fun declaration(params: DeclarationParams): CompletableFuture<Either<List<Location>, List<LocationLink>>> =

@@ -397,7 +397,7 @@ final class McfppSymbolResolver {
                     McfppDeclarationSyntax.isAnnotationColon(source, left);
             if (left >= 0 && source.charAt(left) == ':' && !annotation) namespace = identifierBefore(source, left - 1, true);
             else if (left >= 0 && source.charAt(left) == '.') owner = top.mcfpp.language.MemberExpressions.receiverBefore(source, left);
-            boolean call = right < source.length() && source.charAt(right) == '(';
+            boolean call = right < source.length() && (source.charAt(right) == '(' || source.charAt(right) == '<');
             String previousWord = identifierBefore(source, left, false);
             boolean type = annotation || "as".equals(previousWord) || "extends".equals(previousWord) ||
                     left >= 1 && source.charAt(left) == '>' && source.charAt(left - 1) == '-';
@@ -405,8 +405,9 @@ final class McfppSymbolResolver {
             if (call && element.getContainingFile() instanceof McfppFile file) {
                 McfppCallContext callContext = McfppCallContext.fromCallee(element);
                 if (callContext != null) {
-                    argumentTypes = McfppArgumentInference.inferTypes(file, callContext.arguments());
-                }
+                    argumentTypes = McfppArgumentInference.inferTypes(file,
+                            callContext.arguments().stream().filter(argument -> !argument.isNamed()).toList());
+                } else call = false;
             }
             return new UsageContext(namespace, owner, call, type, argumentTypes);
         }

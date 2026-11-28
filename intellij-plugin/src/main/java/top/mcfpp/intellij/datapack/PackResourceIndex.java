@@ -5,13 +5,16 @@ import com.intellij.openapi.vfs.*;
 import com.intellij.psi.*;
 import com.intellij.psi.util.*;
 import top.mcfpp.api.resources.PackResources;
+import top.mcfpp.api.resources.VanillaResources;
 import top.mcfpp.intellij.lang.*;
 import top.mcfpp.language.ProjectConfiguration;
+import top.mcfpp.language.VersionPreprocessor;
 import java.nio.file.Path;
 import java.util.*;
 
 /** Source resources only: excluded build output cannot shadow definitions or produce duplicate suggestions. */
 public final class PackResourceIndex {
+    private static final VanillaResources DEFAULT_VANILLA = VanillaResources.forVersion(VersionPreprocessor.DEFAULT_VERSION);
     public record Target(PackResources.Key key, PsiFile file, int offset, boolean entrypoint) {
         public PsiElement element() {
             if (!entrypoint) return file;
@@ -132,6 +135,16 @@ public final class PackResourceIndex {
         return key != null ? key : PackResources.definition(configuration.assetsPath(), path, true);
     }
     public List<PackResources.Reference> references(PsiFile file) {
+        List<PackResources.Reference> commands = commandReferences(file);
+        if (!(file instanceof McfppFile)) return commands;
+        var references = new ArrayList<>(commands);
+        for (var argument : McfppResourceArguments.uses(file)) {
+            var reference = argument.reference();
+            if (reference != null) references.add(reference);
+        }
+        return references;
+    }
+    public List<PackResources.Reference> commandReferences(PsiFile file) {
         if (file.getName().equals("sounds.json")) return PackResources.soundReferences(file.getText());
         boolean mcfpp = file instanceof McfppFile;
         var owner = owner(file);
@@ -142,5 +155,13 @@ public final class PackResourceIndex {
         String ns = ref.key().id().split(":", 2)[0];
         return !ref.optional() && !ns.equals("minecraft") && namespaces.contains(ns)
                 && !definitions.containsKey(ref.key()) && !generatedFunctions.contains(ref.key());
+    }
+    boolean contains(PackResources.Key key) {
+        return definitions.containsKey(key) || generatedFunctions.contains(key);
+    }
+    static VanillaResources vanilla(PackResourceIndex index) {
+        if (index == null || VersionPreprocessor.DEFAULT_VERSION.equals(index.configuration.version())) return DEFAULT_VANILLA;
+        return CachedValuesManager.getCachedValue(index.configFile, () -> CachedValueProvider.Result.create(
+                VanillaResources.forVersion(index.configuration.version()), index.configFile));
     }
 }

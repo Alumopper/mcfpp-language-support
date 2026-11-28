@@ -54,6 +54,18 @@ Use Ctrl+Space inside a type string for builtins, generic parameters, project ty
 
 The parser is generated from the same ANTLR grammar as the language server. Diagnostics identify malformed syntax, unresolved/ambiguous names, and invalid readonly/type argument counts. Empty unary-operator `paramType` and native parameter defaults such as `"int = 1"` are supported. Rename preserves default expressions and unrelated strings such as `identifier`, `tag`, and parameter names. Java/Kotlin string escapes are decoded with source ranges mapped back to the original literal.
 
+## DSB render preview
+
+Choose **Run (Render)** beside a parameterless top-level function or **Test (Render)** beside an MCFPP test. The bundled DSB opens a paused realtime window with play/pause, tick stepping, free camera, reset and PNG export. Tests run normally first, then replay setup and the selected function in a separate world so cleanup does not erase the preview. Failed assertions can still be previewed; disabled tests are skipped.
+
+Configure a local Minecraft client JAR/assets directory and optional resource packs in **Settings | Tools | MCFPP**. Blank client assets use DSB fallback visuals. **Stop** terminates the preview process. See the [render preview example](../examples/render-preview).
+
+Preview builds retain compiler optimizations and write entry metadata to `<targetPath>/preview/mcfpp.render.json`. Temporary `render/session-*` copies are removed when the window closes or is stopped; abandoned copies are reclaimed on the next launch. Explicit PNG exports remain in `render/exports`, and `render/dsb.log` retains the last session log.
+
+Render runs have separate **Compilation** (or **Compilation / Tests**) and **DSB** output tabs. Full viewport logs are saved as `dsb.log` beside the session pack. Compilation uses INFO logging by default.
+
+Repeated render builds and source tests reuse unchanged compilation outputs for local projects without MNI or external libraries. Source, resource, configuration, compiler and output changes invalidate reuse; tests still execute in fresh worlds. Add `--no-reuse-build` to the run arguments to force compilation.
+
 ## Requirements
 
 - JetBrains IntelliJ IDEA 2025.3 or newer (SDK baseline: 2025.3.3, build 253.31033.145; UI acceptance: 2026.2.2)

@@ -75,7 +75,8 @@ data class MCFPPParserSemanticData(
     val referenceOccurrencesByName: Map<String, List<MCFPPReferenceOccurrence>>,
     val scopeRegions: List<MCFPPScopeRegion>,
     val diagnostics: List<Diagnostic>,
-    val compilationUnit: mcfppParser.CompilationUnitContext? = null
+    val compilationUnit: mcfppParser.CompilationUnitContext? = null,
+    val commandText: Map<Int, List<Range>> = emptyMap()
 )
 
 object MCFPPParserSemanticExtractor {
@@ -131,7 +132,8 @@ object MCFPPParserSemanticExtractor {
         val lexer = mcfppLexer(CharStreams.fromString(normalizedText))
         lexer.removeErrorListeners()
         lexer.addErrorListener(errorListener)
-        val parser = mcfppParser(CommonTokenStream(lexer)).apply {
+        val tokens = CommonTokenStream(lexer)
+        val parser = mcfppParser(tokens).apply {
             enableEditorRecovery()
             removeErrorListeners()
             addErrorListener(errorListener)
@@ -141,7 +143,7 @@ object MCFPPParserSemanticExtractor {
         ParseTreeWalker.DEFAULT.walk(collector, compilationUnit)
         return collector.build(
             diagnostics.distinctBy { ParserDiagnosticKey(it.range.start.line, it.range.start.character, it.message) }
-        ).copy(compilationUnit = compilationUnit)
+        ).copy(compilationUnit = compilationUnit, commandText = commandTextRanges(tokens.tokens, lineMap::position))
     }
 
     private fun diagnosticRange(lineMap: LineMap, line: Int, character: Int, offendingSymbol: Any?): Range {
@@ -784,7 +786,7 @@ object MCFPPParserSemanticExtractor {
                 typeName = typeName,
                 hasDefault = parameter.getToken(mcfppParser.ASSIGNMENT, 0) != null,
                 defaultValue = defaultValue,
-                isReadOnly = readOnly
+                isReadOnly = readOnly, resourceKind = parameter.resourceKind()
             )
         }
 

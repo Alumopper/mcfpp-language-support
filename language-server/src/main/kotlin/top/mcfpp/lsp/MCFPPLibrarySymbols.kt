@@ -68,7 +68,7 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, so
     fun parameters(readonly: List<DeclarationId>, normal: List<DeclarationId>) = (readonly + normal).mapNotNull { id ->
         (declarations.declaration(id) as? ValueDeclaration)?.let {
             MCFPPFunctionParameter(it.common.name, typeName(it.type), it.defaultBody != null || it.frozen != null,
-                isReadOnly = id in readonly)
+                isReadOnly = id in readonly, resourceKind = it.resourceKind)
         }
     }
     fun macroType(type: MacroType): String = when (type) {
@@ -77,7 +77,8 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, so
     }
     fun macroParameter(parameter: MacroParameter): MCFPPFunctionParameter =
         MCFPPFunctionParameter(parameter.name, macroType(parameter.type), macroMode = parameter.mode,
-            macroCallbackParameters = (parameter.type as? MacroType.Callback)?.parameters.orEmpty().map(::macroParameter))
+            macroCallbackParameters = (parameter.type as? MacroType.Callback)?.parameters.orEmpty().map(::macroParameter),
+            resourceKind = parameter.resourceKind)
     val range = Range(Position(0, 0), Position(0, 0))
     val docsByDeclarationId: Map<Long, String> = model.debug?.documents
         ?.associate { it.declaration.value to it.text }
@@ -141,7 +142,9 @@ internal fun librarySymbols(bytes: ByteArray, uri: String, standard: Boolean, so
             is MacroDeclaration -> declaration.binding.native
             else -> null
         }
-        MCFPPSymbol(uri = uri, name = name, kind = kind, range = range, detail = detail, typeName = type,
+        val sourceDeclaration = native?.takeIf { standard }?.let { MCFPPValueMembers.declaration(it, name) }
+        MCFPPSymbol(uri = sourceDeclaration?.uri ?: uri, name = name, kind = kind,
+            range = sourceDeclaration?.range ?: range, detail = detail, typeName = type,
             containerName = container, topLevel = container == null, namespaceName = declarations.environment(common.environment).namespace,
             isExternal = true, isStdlib = standard, parameters = params, contextParameters = contexts, receiverType = receiver, superTypes = parents,
             isStatic = declaration is EnumMemberDeclaration || common.flags and DeclarationFlags.STATIC != 0L,

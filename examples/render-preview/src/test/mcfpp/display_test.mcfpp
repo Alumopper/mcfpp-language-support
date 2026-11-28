@@ -1,0 +1,28 @@
+import mcfpp.test:*
+
+@BeforeEach
+func setup() {
+    main()
+}
+
+@Test
+func displayExists() {
+    assertTrue(entityByUUID<ItemDisplay>(UUID("0-0-0-0-1")).exists())
+}
+
+// The failed assertion remains in the IDEA test tree, and its replay still opens.
+@Test
+func failedPreview() {
+    assertTrue(false)
+}
+
+@Disabled("Demonstrates skipping the render window")
+@Test
+func disabledPreview() {
+    assertTrue(true)
+}
+
+@AfterEach
+func cleanup() {
+    /kill @e[tag=mcfpp_preview]
+}

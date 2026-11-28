@@ -1,0 +1,10 @@
+// Select Run (Render) beside main, then press Play in the DSB window.
+func main() {
+    /kill @e[tag=mcfpp_preview]
+    /execute at @a[limit=1] run summon minecraft:item_display ~2 ~ ~ {Tags:["mcfpp_preview"],UUID:[I;0,0,0,1],item:{id:"minecraft:stone",count:1}}
+    const display = entityByUUID<ItemDisplay>(UUID("0-0-0-0-1"))
+    tick { frame ->
+        display.transform.y = (50 - frame) / 50.0
+        return frame < 50
+    }
+}

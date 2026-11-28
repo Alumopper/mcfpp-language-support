@@ -16,13 +16,22 @@ import org.eclipse.lsp4j.TypeDefinitionParams
 import org.eclipse.lsp4j.jsonrpc.messages.Either
 
 internal class MCFPPNavigationHandler(private val workspace: MCFPPWorkspaceView) {
-    fun definition(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis): Either<List<Location>, List<LocationLink>> {
+    fun definition(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis,
+                   linkSupport: Boolean = false): Either<List<Location>, List<LocationLink>> {
+        workspace.resources.definition(analysis, params.position)?.let { (origin, targets) ->
+            return if (linkSupport && targets.isNotEmpty())
+                Either.forRight(targets.map { LocationLink(it.uri, it.range, it.range, origin) })
+            else Either.forLeft(targets)
+        }
         val target = workspace.resolveSymbolAt(params, analysis)
         val locations = target?.let { symbol ->
             if (!symbol.isExternal || symbol.uri.endsWith(".mcfpp")) MCFPPValueMembers.resolveDeclaration(symbol.location())
             else symbol.nativeImplementation?.let(MCFPPValueMembers::resolveImplementation)
-        }?.let(::listOf).orEmpty()
-        return Either.forLeft(locations)
+        } ?: return Either.forLeft(emptyList())
+        val origin = analysis.wordRange(params.position)
+        return if (linkSupport && origin != null) {
+            Either.forRight(listOf(LocationLink(locations.uri, locations.range, locations.range, origin)))
+        } else Either.forLeft(listOf(locations))
     }
 
     fun declaration(params: DeclarationParams, analysis: MCFPPDocumentAnalysis): Either<List<Location>, List<LocationLink>> =

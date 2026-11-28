@@ -1,6 +1,0 @@
-.vscode/**
-src/**
-**/*.map
-tsconfig.json
-node_modules/**
-server/simple-language-server.jar

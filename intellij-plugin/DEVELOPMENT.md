@@ -26,7 +26,7 @@
 
 0.6.2 同步结构类型 `{ x: int }`、交叉/联合类型 `(A & B)` / `(A | B)` 和 `new` 工厂。工厂通过 `Point(...)` 或 `Point.new(...)` 调用，参数提示和导航进入同一声明；`return { ... }` 按所属模板补全字段。data 继承只组合字段，显式字面量必须提供所有必需字段，并允许额外字段；字段初值仅供隐式工厂使用。可选字段支持 `?.`、`?:` 和 `!!` 的词法与成员类型推断。可打开[类型组合示例](../examples/type-composition)检查。
 
-Macro 函数默认使用紫色加粗，普通 MNI 函数默认使用青绿色斜体，覆盖声明、调用、导入别名和 provider 方法绑定。**Settings → Editor → Color Scheme → MCFPP → Identifiers → Macro function / MNI function** 可分别修改样式。样式依据解析后的声明及 `@MNIMacro` 元数据区分；普通函数和遮蔽同名宏的局部函数值保留自身样式。LSP 输出 `macro` / `mniFunction` 语义标记，IDEA 的宏符号快照和编译库元数据携带分类。
+Macro 函数默认使用紫色加粗，普通 MNI 函数默认使用青绿色正体，覆盖声明、调用、导入别名和 provider 方法绑定。**Settings → Editor → Color Scheme → MCFPP → Identifiers → Macro function / MNI function** 可分别修改样式。样式依据解析后的声明及 `@MNIMacro` 元数据区分；普通函数和遮蔽同名宏的局部函数值保留自身样式。LSP 输出 `macro` / `mniFunction` 语义标记，IDEA 的宏符号快照和编译库元数据携带分类。
 
 整文件 **Code → Reformat Code** 与保存共用后台 Node 服务：Linter 安全修复 → Prettier → 重新诊断。项目的 Linter 配置、忽略规则、Prettier 配置、`.prettierignore` 和 `.editorconfig` 会被重新读取。默认四空格、100 列并保留换行方式。局部格式化和输入缩进使用原生格式化器。
 
@@ -72,6 +72,12 @@ Macro 函数默认使用紫色加粗，普通 MNI 函数默认使用青绿色斜
 
 Build 成功后点击 **Data Pack** 查看数据包，点击 **Resource Pack** 查看配套资源包。标准库函数和资源按引用链链接进同一数据包；未使用的库对象不执行初始化。动态函数目标按可能匹配的函数族保守保留，并在 IR 链接报告中说明。Test 执行 Java MNI 测试和 `src/test/mcfpp` 下的 MCFPP 测试。MCFPP 使用 `import mcfpp.test:*`、`@Test`、`@BeforeEach`、`@AfterEach`、`@Disabled("原因")` 和 `assertEquals` / `assertTrue` 等断言；插件复用内置 DSB JAR 和命令服务的 Java 25 设置。函数名旁的运行按钮执行单例，MCFPP 结果显示在测试树中并支持源码跳转；运行配置可传 `--tests 'namespace:function*'`。JUnit XML 位于 `build/tests/mcfpp/TEST-mcfpp.xml`（自定义 `targetPath` 时随之变化）。Lint 和 Format Check 只检查文件，不写入源码。
 
+函数旁选择 **Run (Render)**，或在 `@Test` 旁选择 **Test (Render)**，可打开内置 DSB 的独立实时窗口。窗口初始暂停，支持播放、单 tick、镜头移动、重置和 PNG 导出。测试先正式执行并显示在测试树，再在独立世界重放初始化和被选用例，保留清理前的展示实体；断言失败也能预览，禁用用例跳过窗口。预览交互不修改正式测试结果。
+
+在 **Settings → Tools → MCFPP** 设置 Minecraft 客户端 JAR / assets 目录，以及每行一个的附加资源包路径；留空使用 DSB 的替代模型。工程生成的资源包先加载，附加资源包按填写顺序覆盖。运行配置的 **Open DSB render window** 开启预览，Build 用 **Render function** 指定无参数顶层函数，Test 用 `--tests namespace:function` 选择单例。临时预览包副本位于 `<targetPath>/render/session-*`，PNG 导出位于 `<targetPath>/render/exports`，IDEA **Stop** 和关闭项目会终止对应进程。参见[渲染预览示例](../examples/render-preview)。
+
+运行窗口将 **Compilation / Tests** 与 **DSB** 分开显示。预览使用 `--render-info` 保留正常优化，将入口信息写入 `preview/mcfpp.render.json`；调试器继续使用 `--debug-info`。临时会话在窗口结束或 Stop 后删除，异常退出遗留的目录在下次启动回收；用户主动导出的 PNG 保存在 `render/exports`，`render/dsb.log` 只保留最近一次日志。默认编译日志级别为 INFO。渲染构建与源码测试自动启用 `--reuse-build`：无 MNI、无外部库的本地工程在输入和输出内容均未变动时复用编译产物，测试仍在新世界执行；可用 `--no-reuse-build` 强制重新编译。
+
 ## 可复现工程
 
 - [普通工程](../examples/idea-cli-simple)：CLI 原始模板，运行 Build 后检查 `build/`。
@@ -85,7 +91,7 @@ Build 成功后点击 **Data Pack** 查看数据包，点击 **Resource Pack** �
 cd F:\Project_MCFPP\MCFPP
 .\gradlew.bat shadowJar editorRuntimeJar stdlibIndexJar sourcesJar verifyDistribution test --offline --no-daemon "-Dmaven.repo.local=F:\DevCache\.m2\repository"
 cd F:\Project_MCFPP\mcfpp-language-support\language-server
-.\gradlew.bat test shadowJar intellijServerJar syncExtensionServer --offline --no-daemon "-Dmaven.repo.local=F:\DevCache\.m2\repository"
+.\gradlew.bat test shadowJar intellijServerJar --offline --no-daemon --max-workers=6 "-Dmaven.repo.local=F:\DevCache\.m2\repository"
 cd F:\Project_MCFPP\mcfpp-language-support\intellij-plugin
 .\gradlew.bat test buildPlugin --offline --no-daemon "-Dmaven.repo.local=F:\DevCache\.m2\repository"
 ```

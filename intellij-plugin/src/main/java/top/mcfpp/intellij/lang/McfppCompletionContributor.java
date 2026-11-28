@@ -57,12 +57,13 @@ public final class McfppCompletionContributor extends CompletionContributor impl
 
     private static void complete(CompletionParameters parameters, CompletionResultSet result) {
         PsiElement position = parameters.getPosition();
-        if (!(position.getContainingFile() instanceof McfppFile file) ||
-                McfppReferenceContributor.isNativeJavaTarget(position)) return;
+        if (!(position.getContainingFile() instanceof McfppFile file)) return;
 
         int offset = parameters.getOffset();
         PsiFile originalFile = parameters.getOriginalFile();
+        if (McfppDocumentationEditor.complete(originalFile, offset, result)) return;
         String originalSource = originalFile.getViewProvider().getContents().toString();
+        if (top.mcfpp.intellij.mni.MniJavaTargetParser.completionAt(originalSource, offset).isPresent()) return;
         if (VersionPreprocessor.directivePrefixStart(originalSource, offset) >= 0) {
             for (String directive : List.of("if", "elif", "else", "endif")) {
                 String condition = directive.equals("if") || directive.equals("elif") ? " MC >= 26.3" : "";

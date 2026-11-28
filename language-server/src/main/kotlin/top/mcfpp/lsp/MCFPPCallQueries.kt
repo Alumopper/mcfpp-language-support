@@ -3,6 +3,7 @@ package top.mcfpp.lsp
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.SymbolKind
 import top.mcfpp.antlr.mcfppParser
+import top.mcfpp.language.McfppCodeMask
 
 internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
     fun resolveCallableSymbols(
@@ -180,10 +181,12 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         }
         val close = expression.indexOfLast { !it.isWhitespace() }
         if (close < 0 || expression[close] != ')') return null
+        val mask = McfppCodeMask.scan(expression, close + 1)
+        if (!mask.includes(close)) return null
         var depth = 1
         var open = close - 1
-        while (open >= 0 && depth > 0) {
-            when (expression[open]) {
+        while (open >= mask.start() && depth > 0) {
+            if (mask.includes(open)) when (expression[open]) {
                 ')' -> depth++
                 '(' -> depth--
             }
@@ -198,8 +201,8 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         if (genericClose >= 0 && expression[genericClose] == '>') {
             var angleDepth = 1
             var genericOpen = genericClose - 1
-            while (genericOpen >= 0 && angleDepth > 0) {
-                when (expression[genericOpen]) {
+            while (genericOpen >= mask.start() && angleDepth > 0) {
+                if (mask.includes(genericOpen)) when (expression[genericOpen]) {
                     '>' -> angleDepth++
                     '<' -> angleDepth--
                 }
@@ -219,7 +222,7 @@ internal class MCFPPCallQueries(private val workspace: MCFPPWorkspaceView) {
         val ownerExpression = expression.substring(0, separator).trim()
         val ownerType = resolveReceiverTypeAt(analysis, ownerExpression, position) ?: return null
         val syntheticCall = name + readOnlyArguments + expression.substring(open, close + 1)
-        val callPosition = Position(0, syntheticCall.lastIndexOf(')'))
+        val callPosition = offsetToPosition(syntheticCall, syntheticCall.lastIndexOf(')'))
         val context = MCFPPCallContextFinder.findCandidates(syntheticCall, callPosition).firstOrNull() ?: return null
         val symbol = workspace.accessibleMemberSymbolsForType(analysis, ownerType, position)
             .asSequence()

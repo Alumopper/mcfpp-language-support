@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.6.3 — 2026-11-28
+
+- Update IDEA and the standalone LSP for compiler preview `26m11a`, including resource argument completion, documentation navigation and MNI macro resolution.
+- Add Datapack Sandbox render preview for functions and source tests in IDEA. Include a runnable render preview example.
+- Publish the standalone language server and the IDEA installation ZIP. The separate VS Code extension is maintained in its own repository.
+
+- Complete enum members in typed expressions and expose the read-only properties `value`, `identifier`, and `data` on enum values. Resolve shorthand to its declaring enum and report equivalent NBT bindings at the conflicting declaration.
 
 - Highlight resolved Macro functions and ordinary MNI functions separately in IDEA, with independent color settings and light/dark defaults. Preserve classification for declarations, calls and import aliases, and publish `macro` / `mniFunction` semantic tokens through LSP metadata.
 - Synchronize IDEA and LSP with structural object types, intersections/unions, `new` factories and `?.` / `?:` / `!!`. Provide factory signatures, navigation, return-literal field completion and migration diagnostics for `constructor` and factory `this`. Data inheritance contributes fields; explicit literals accept additional fields and require all nonoptional fields, including fields with initializers. Read the compiler's object/literal library metadata and bundle matching CLI/LSP artifacts.

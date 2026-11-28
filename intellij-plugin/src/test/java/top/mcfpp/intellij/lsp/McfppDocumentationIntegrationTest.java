@@ -1,5 +1,8 @@
 package top.mcfpp.intellij.lsp;
 
+import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.openapi.extensions.PluginId;
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.platform.backend.documentation.DocumentationTargetProvider;
 import com.intellij.testFramework.ExtensionTestUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
@@ -8,6 +11,9 @@ import top.mcfpp.intellij.lang.McfppFileType;
 
 public final class McfppDocumentationIntegrationTest extends BasePlatformTestCase {
     public void testNativeAndLspDocumentationOfferOneTargetAndKeepTheNativeFallback() {
+        var plugin = PluginManagerCore.getPlugin(PluginId.getId("top.mcfpp.language"));
+        assertNotNull(plugin);
+        VfsRootAccess.allowRootAccess(getTestRootDisposable(), plugin.getPluginPath().toString());
         myFixture.configureByText(McfppFileType.INSTANCE, "/// One definition.\nfunc value(): int { return 1 }\nfunc main() { val<caret>ue() }");
         var nativeProvider = new McfppDocumentationTargetProvider();
         var nativeTargets = nativeProvider.documentationTargets(myFixture.getFile(), myFixture.getCaretOffset());

@@ -34,6 +34,7 @@ fun compilerArtifact(name: String, purpose: String) = configurations.resolvable(
 }
 
 val compilerDistribution = compilerArtifact("compilerDistribution", "mcfpp-cli")
+val compilerSources = compilerArtifact("compilerSources", "mcfpp-sources")
 val editorMetadata = compilerArtifact("editorMetadata", "mcfpp-editor-metadata")
 val stdlibIndex = compilerArtifact("stdlibIndex", "mcfpp-stdlib-index")
 
@@ -63,10 +64,18 @@ kotlin {
     jvmToolchain(25)
 }
 
+val unpackPackResourceSources by tasks.registering(Sync::class) {
+    dependsOn(compilerSources)
+    inputs.files(compilerSources)
+    from({ zipTree(compilerSources.get().singleFile) }) { include("top/mcfpp/api/resources/**") }
+    into(layout.buildDirectory.dir("pack-resource-api"))
+}
+
 sourceSets {
     main {
         java {
             srcDirs("src/main/kotlin", "../shared/src/main/java")
+            srcDir(unpackPackResourceSources)
         }
         kotlin {
             srcDirs("src/main/kotlin")
@@ -155,13 +164,6 @@ configurations.consumable("intellijServerElements") {
     outgoing.artifact(intellijServerJar)
 }
 
-val syncExtensionServer by tasks.registering(Copy::class) {
-    dependsOn(tasks.shadowJar)
-    from(tasks.shadowJar.flatMap { it.archiveFile })
-    into(layout.projectDirectory.dir("../vscode-extension/server"))
-}
-
 tasks.build {
     dependsOn(tasks.shadowJar, intellijServerJar)
-    finalizedBy(syncExtensionServer)
 }

@@ -26,9 +26,10 @@ public final class MniTypeReference extends PsiPolyVariantReferenceBase<PsiLangu
         else {
             var method = context.method == null ? null : context.method.getJavaPsi();
             var owner = method == null ? null : method.getContainingClass();
-            var bindingNamespaces = McfppAnnotationTypeIndex.bindingNamespaces(myElement.getContainingFile(),
+            var bindings = McfppAnnotationTypeIndex.bindingFiles(myElement.getContainingFile(),
                     owner == null ? null : owner.getQualifiedName(), method == null ? "" : method.getName());
-            var bound = targets.stream().filter(target -> symbol(target) != null && bindingNamespaces.contains(symbol(target).namespace())).toList();
+            var bound = bindings.stream().flatMap(file -> McfppAnnotationTypeIndex.visibleTypes(file, name.simpleName()).stream())
+                    .distinct().toList();
             String namespace = McfppAnnotationTypeIndex.namespace(myElement.getContainingFile());
             var local = targets.stream().filter(target -> symbol(target) != null && namespace.equals(symbol(target).namespace())).toList();
             if (!bound.isEmpty()) targets = bound;

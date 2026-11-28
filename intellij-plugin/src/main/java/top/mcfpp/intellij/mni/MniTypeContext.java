@@ -104,13 +104,15 @@ final class MniTypeContext {
         return text.length();
     }
 
-    Map<String, MniTypeParameter> generics() {
-        if (method == null || method.getSourcePsi() == null) return Map.of();
-        Map<String, MniTypeParameter> result = new LinkedHashMap<>();
-        for (var literal : PsiTreeUtil.findChildrenOfType(method.getSourcePsi(), PsiLanguageInjectionHost.class)) {
+    Map<String, PsiElement> generics() {
+        if (macro) return MniMacroTypeScope.generics(this);
+        PsiElement annotationSource = annotation.getSourcePsi();
+        if (!MniJavaAnnotation.FUNCTION_QUALIFIED_NAME.equals(annotation.getQualifiedName()) || annotationSource == null) return Map.of();
+        Map<String, PsiElement> result = new LinkedHashMap<>();
+        for (var literal : PsiTreeUtil.findChildrenOfType(annotationSource, PsiLanguageInjectionHost.class)) {
             MniTypeContext declaration = from(literal);
-            if (declaration != null && declaration.field == Field.GENERIC && declaration.method != null &&
-                    Objects.equals(declaration.method.getSourcePsi(), method.getSourcePsi()) && declaration.syntax().problems().isEmpty())
+            if (declaration != null && declaration.field == Field.GENERIC &&
+                    Objects.equals(declaration.annotation.getSourcePsi(), annotationSource) && declaration.syntax().problems().isEmpty())
                 result.putIfAbsent(declaration.text.trim(), new MniTypeParameter(declaration));
         }
         return result;

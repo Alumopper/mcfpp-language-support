@@ -34,7 +34,7 @@ class McfppSyntaxMigrationTest {
         String source = "/// # Counter\r\n  /// **value**\r\n  ///\r\n  ///     indented\r\ndata Counter {var value: int;}";
         McfppSymbol type = McfppFileModel.parse(source).symbols().stream().filter(symbol -> symbol.name().equals("Counter")).findFirst().orElseThrow();
         assertEquals("# Counter\n**value**\n\n    indented", type.documentation());
-        String html = McfppDocumentationTargetProvider.renderMarkdown(type.documentation());
+        String html = McfppQuickDocumentation.markdown(type.documentation());
         assertTrue(html.contains("<h1>Counter</h1>"));
         assertTrue(html.contains("<strong>value</strong>"));
         assertTrue(html.contains("<pre><code>indented"));

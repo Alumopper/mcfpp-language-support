@@ -58,8 +58,10 @@ data class MCFPPFunctionParameter(
     val macroMode: top.mcfpp.library.model.MacroParameterMode? = null,
     val macroCallbackParameters: List<MCFPPFunctionParameter> = emptyList(),
     val acceptsFunctionValues: Boolean = false,
+    val resourceKind: String? = null,
 ) {
     fun label(): String = buildString {
+        resourceKind?.let { append("@Resource(\"").append(it).append("\") ") }
         when (macroMode) {
             top.mcfpp.library.model.MacroParameterMode.REF -> append("ref ")
             top.mcfpp.library.model.MacroParameterMode.CONST -> append("const ")
@@ -186,7 +188,8 @@ data class MCFPPDocumentAnalysis(
     val analysisText: String = text,
     val targetVersion: String = VersionPreprocessor.DEFAULT_VERSION,
     val versionDirectives: List<Range> = emptyList(),
-    val compilationUnit: mcfppParser.CompilationUnitContext? = null
+    val compilationUnit: mcfppParser.CompilationUnitContext? = null,
+    val commandText: Map<Int, List<Range>> = emptyMap()
 ) {
     private val lines: List<String> = text.split("\n")
     private val scopesById: Map<String, MCFPPScopeRegion> = scopeRegions.associateBy { it.id }
@@ -582,7 +585,8 @@ object MCFPPDocumentIndex {
             versionDirectives = preprocessed.directives().map { directive ->
                 Range(offsetToPosition(originalText, directive.start()), offsetToPosition(originalText, directive.end()))
             },
-            compilationUnit = parserSemantic.compilationUnit
+            compilationUnit = parserSemantic.compilationUnit,
+            commandText = parserSemantic.commandText
         )
     }
 

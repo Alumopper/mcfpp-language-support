@@ -52,6 +52,7 @@ internal class MCFPPDiagnosticsAndTokensHandler(private val workspace: MCFPPWork
         diagnostics += collectUndefinedVariableDiagnostics(document)
         diagnostics += collectInaccessibleMemberDiagnostics(document)
         diagnostics += collectTypeDiagnostics(document)
+        diagnostics += workspace.resources.diagnostics(document)
         document.referenceOccurrencesByName.values.flatten().filter { it.isAssignmentTarget }.forEach {
             val symbol = workspace.resolveReferenceOccurrence(document, it)
             if (symbol?.isReadOnly == true && (symbol.kind == SymbolKind.EnumMember ||

@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /** Error-tolerant view of a function call, including compile-time read-only arguments. */
 record McfppCallContext(
@@ -60,8 +61,8 @@ record McfppCallContext(
                 callee,
                 open,
                 currentArgument(open, caretOffset),
-                readOnlyOpen == null ? List.of() : arguments(file, readOnlyOpen, readOnlyClose),
-                arguments(file, open, matchingParenthesisClose(open))
+                readOnlyOpen == null ? List.of() : arguments(file, readOnlyOpen, readOnlyClose.getTextOffset()),
+                arguments(file, open, argumentEnd(open, caretOffset))
         );
     }
 
@@ -121,8 +122,12 @@ record McfppCallContext(
         return null;
     }
 
-    private static List<Argument> arguments(PsiFile file, PsiElement open, @Nullable PsiElement close) {
-        if (close == null) return List.of();
+    private static int argumentEnd(PsiElement open, int caretOffset) {
+        PsiElement close = matchingParenthesisClose(open);
+        return close == null ? caretOffset : close.getTextOffset();
+    }
+
+    private static List<Argument> arguments(PsiFile file, PsiElement open, int end) {
         List<Argument> result = new ArrayList<>();
         int segmentStart = open.getTextRange().getEndOffset();
         int parentheses = 0;
@@ -130,7 +135,7 @@ record McfppCallContext(
         int braces = 0;
         int angles = 0;
         for (PsiElement cursor = PsiTreeUtil.nextLeaf(open, true);
-             cursor != null && cursor.getTextOffset() < close.getTextOffset();
+             cursor != null && cursor.getTextOffset() < end;
              cursor = PsiTreeUtil.nextLeaf(cursor, true)) {
             IElementType type = type(cursor);
             String text = cursor.getText();
@@ -149,7 +154,7 @@ record McfppCallContext(
             else if ("<".equals(text) && matchingReadOnlyClose(cursor) != null) angles++;
             else if (">".equals(text) && angles > 0) angles--;
         }
-        addArgument(file, segmentStart, close.getTextOffset(), result);
+        addArgument(file, segmentStart, end, result);
         return List.copyOf(result);
     }
 
@@ -182,13 +187,13 @@ record McfppCallContext(
         return index;
     }
 
-    private static @Nullable PsiElement previousCodeLeaf(PsiElement element) {
+    static @Nullable PsiElement previousCodeLeaf(PsiElement element) {
         PsiElement cursor = PsiTreeUtil.prevLeaf(element, true);
         while (cursor != null && isTrivia(cursor)) cursor = PsiTreeUtil.prevLeaf(cursor, true);
         return cursor;
     }
 
-    private static @Nullable PsiElement nextCodeLeaf(PsiElement element) {
+    static @Nullable PsiElement nextCodeLeaf(PsiElement element) {
         PsiElement cursor = PsiTreeUtil.nextLeaf(element, true);
         while (cursor != null && isTrivia(cursor)) cursor = PsiTreeUtil.nextLeaf(cursor, true);
         return cursor;
@@ -205,5 +210,10 @@ record McfppCallContext(
     }
 
     record Argument(@NotNull String text, int startOffset, int endOffset) {
+        private static final Pattern NAMED = Pattern.compile("[\\p{L}_$][\\p{L}\\p{N}_$]*\\s*=(?!=)");
+
+        boolean isNamed() {
+            return NAMED.matcher(text).lookingAt();
+        }
     }
 }

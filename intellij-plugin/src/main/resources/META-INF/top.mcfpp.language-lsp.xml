@@ -3,6 +3,10 @@
         <postStartupActivity implementation="top.mcfpp.intellij.lsp.McfppMniSymbolPublisher"/>
         <projectService serviceInterface="top.mcfpp.intellij.mni.McfppRemoteImplementationLookup"
                         serviceImplementation="top.mcfpp.intellij.lsp.McfppLspImplementationLookup"/>
+        <projectService serviceImplementation="top.mcfpp.intellij.lsp.McfppLspDefinitionLookup"/>
+        <projectService serviceInterface="top.mcfpp.intellij.lang.McfppRemoteDocumentation"
+                        serviceImplementation="top.mcfpp.intellij.lsp.McfppLspDocumentation"/>
+        <gotoDeclarationHandler implementation="top.mcfpp.intellij.lsp.McfppLspGotoDeclarationHandler" order="last"/>
     </extensions>
     <extensions defaultExtensionNs="com.intellij.platform.lsp">
         <serverSupportProvider implementation="top.mcfpp.intellij.lsp.McfppLspIntegrationProvider"/>

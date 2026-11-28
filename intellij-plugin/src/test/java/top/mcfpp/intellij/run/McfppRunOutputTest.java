@@ -4,12 +4,22 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import static org.junit.Assert.assertEquals;
 
 public class McfppRunOutputTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
+
+    @Test public void acceptsAnEmptyEventStream() throws Exception {
+        var outputs = temporary.newFile("empty.jsonl").toPath();
+        var messages = new ArrayList<String>();
+        McfppRunOutput.publish(outputs, messages::add);
+        Files.writeString(outputs, "\r\n  \t");
+        McfppRunOutput.publish(outputs, messages::add);
+        assertEquals(List.of(), messages);
+    }
 
     @Test public void presentsRenderedMessagesAndExplicitQueriesOnly() throws Exception {
         var outputs = temporary.newFile("events.jsonl").toPath();
@@ -31,5 +41,24 @@ public class McfppRunOutputTest {
         var output = new ArrayList<String>();
         McfppRunOutput.publish(outputs, output::add);
         assertEquals(List.of("same\n", "same\n", "[\n  0,\n  0,\n  0\n]\n", "-4\n", "7\n", "0.5\n"), output);
+    }
+
+    @Test public void tailsCompleteObjectsAcrossPollsWithoutRepeatingOutput() throws Exception {
+        var outputs = temporary.newFile("live.jsonl").toPath();
+        var messages = new ArrayList<String>();
+        try (var tail = new McfppRunOutput.Tail(outputs, messages::add)) {
+            Files.writeString(outputs, "{\"text\":\"first\"}\r\n{\n  \"text\": \"",
+                StandardOpenOption.APPEND);
+            tail.poll();
+            tail.poll();
+            assertEquals(List.of("first\n"), messages);
+            byte[] end = "分割 } \\\"quoted\\\" \\nvalue\"\n}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            Files.write(outputs, java.util.Arrays.copyOf(end, 1), StandardOpenOption.APPEND);
+            tail.poll();
+            assertEquals(List.of("first\n"), messages);
+            Files.write(outputs, java.util.Arrays.copyOfRange(end, 1, end.length), StandardOpenOption.APPEND);
+            tail.finish();
+            assertEquals(List.of("first\n", "分割 } \"quoted\" \nvalue\n"), messages);
+        }
     }
 }

@@ -9,6 +9,7 @@ import com.intellij.psi.PsiReferenceRegistrar;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
+import top.mcfpp.intellij.datapack.PackResourceReference;
 
 public final class McfppReferenceContributor extends PsiReferenceContributor {
     @Override
@@ -32,6 +33,10 @@ public final class McfppReferenceContributor extends PsiReferenceContributor {
         if (element.getNode().getElementType() == McfppTokenTypes.ANNOTATION) {
             return new PsiReference[]{new McfppAnnotationReference(element)};
         }
+        if (element.getNode().getElementType() == McfppTokenTypes.STRING) {
+            PsiReference reference = PackResourceReference.forLiteral(element);
+            return reference == null ? PsiReference.EMPTY_ARRAY : new PsiReference[]{reference};
+        }
         if (!McfppReferenceNames.isName(element)) return PsiReference.EMPTY_ARRAY;
         McfppNamedElement declaration = PsiTreeUtil.getParentOfType(element, McfppNamedElement.class, false);
         if (declaration != null && declaration.getNameIdentifier() == element) return PsiReference.EMPTY_ARRAY;
@@ -43,16 +48,6 @@ public final class McfppReferenceContributor extends PsiReferenceContributor {
     }
 
     static boolean isNativeJavaTarget(PsiElement element) {
-        CharSequence source = element.getContainingFile().getViewProvider().getContents();
-        int offset = element.getTextOffset();
-        int boundary = offset;
-        while (boundary > 0) {
-            char previous = source.charAt(boundary - 1);
-            if (previous == ';' || previous == '{' || previous == '}') break;
-            boundary--;
-        }
-        String prefix = source.subSequence(boundary, offset).toString();
-        int assignment = prefix.indexOf('=');
-        return assignment >= 0 && prefix.substring(0, assignment).matches("(?s).*\\b(func|operator|get|set)\\b.*");
+        return top.mcfpp.intellij.mni.McfppMniReferenceContributor.isJavaTarget(element);
     }
 }

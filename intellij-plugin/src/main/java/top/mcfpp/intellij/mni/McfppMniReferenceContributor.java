@@ -53,16 +53,9 @@ public final class McfppMniReferenceContributor extends PsiReferenceContributor 
             return PsiReference.EMPTY_ARRAY;
         }
 
-        PsiFile file = element.getContainingFile();
-        TargetIndex targetIndex = CachedValuesManager.getCachedValue(file, () ->
-                CachedValueProvider.Result.create(
-                        TargetIndex.create(file.getViewProvider().getContents()),
-                        file
-                )
-        );
         TextRange elementRange = element.getTextRange();
         List<PsiReference> references = new ArrayList<>();
-        for (Binding binding : targetIndex.inside(elementRange)) {
+        for (Binding binding : targetIndex(element.getContainingFile()).inside(elementRange)) {
             TextRange absoluteRange = new TextRange(
                     binding.segment().startOffset(),
                     binding.segment().endOffset()
@@ -77,19 +70,21 @@ public final class McfppMniReferenceContributor extends PsiReferenceContributor 
         return references.toArray(PsiReference.EMPTY_ARRAY);
     }
 
+    public static boolean isJavaTarget(PsiElement element) {
+        return element != null && !targetIndex(element.getContainingFile()).inside(element.getTextRange()).isEmpty();
+    }
+
+    private static TargetIndex targetIndex(PsiFile file) {
+        return CachedValuesManager.getCachedValue(file, () ->
+                CachedValueProvider.Result.create(TargetIndex.create(file.getViewProvider().getContents()), file));
+    }
+
     /** Returns the Java binding represented by an MCFPP native declaration name. */
     static Optional<MniJavaTargetParser.Target> declarationTarget(PsiElement element) {
         if (!McfppReferenceNames.isName(element)) {
             return Optional.empty();
         }
-        PsiFile file = element.getContainingFile();
-        TargetIndex targetIndex = CachedValuesManager.getCachedValue(file, () ->
-                CachedValueProvider.Result.create(
-                        TargetIndex.create(file.getViewProvider().getContents()),
-                        file
-                )
-        );
-        return declarationTarget(element, targetIndex);
+        return declarationTarget(element, targetIndex(element.getContainingFile()));
     }
 
     private static Optional<MniJavaTargetParser.Target> declarationTarget(

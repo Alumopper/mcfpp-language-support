@@ -4,6 +4,8 @@ import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.TextDocumentPositionParams
 
 internal fun MCFPPWorkspaceView.resolveSymbolAt(params: TextDocumentPositionParams, analysis: MCFPPDocumentAnalysis): MCFPPSymbol? {
+    val position = params.position
+    if (analysis.commandText[position.line].orEmpty().any { containsPosition(it, position) && position != it.end }) return null
     templateFieldAt(analysis, params.position)?.let { return it }
     val word = analysis.wordAt(params.position) ?: return null
     val references = analysis.referenceOccurrencesByName[word].orEmpty()

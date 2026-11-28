@@ -31,6 +31,8 @@ public final class McfppSyntaxHighlighter extends SyntaxHighlighterBase {
             "MCFPP_COMMENT", DefaultLanguageHighlighterColors.LINE_COMMENT);
     public static final TextAttributesKey DOC_COMMENT = createTextAttributesKey(
             "MCFPP_DOC_COMMENT", DefaultLanguageHighlighterColors.DOC_COMMENT);
+    public static final TextAttributesKey DOC_TAG = createTextAttributesKey(
+            "MCFPP_DOC_TAG", DefaultLanguageHighlighterColors.DOC_COMMENT_TAG);
     public static final TextAttributesKey COMMAND = createTextAttributesKey(
             "MCFPP_COMMAND", DefaultLanguageHighlighterColors.METADATA);
     public static final TextAttributesKey COMMAND_ROOT = createTextAttributesKey(

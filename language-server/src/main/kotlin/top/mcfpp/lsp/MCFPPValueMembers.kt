@@ -21,12 +21,14 @@ internal object MCFPPValueMembers {
     }
     private data class JvmMethod(val owner: String, val method: String, val parameterTypes: List<String>, val returnType: String)
     private data class ExportedImplementation(val binding: JvmMethod, val source: Source)
+    private data class ExportedDeclaration(val binding: JvmMethod, val name: String, val source: Source)
     private data class MacroParameter(val name: String?, val type: String, val mode: MacroParameterMode,
-                                      val callbackParameters: List<MacroParameter>) {
+                                      val callbackParameters: List<MacroParameter>, val resourceKind: String?) {
         fun parameter(acceptsFunctionValues: Boolean = false): MCFPPFunctionParameter =
             MCFPPFunctionParameter(name, type, macroMode = mode,
                 macroCallbackParameters = callbackParameters.map { it.parameter() },
-                acceptsFunctionValues = acceptsFunctionValues && mode == MacroParameterMode.INLINE)
+                acceptsFunctionValues = acceptsFunctionValues && mode == MacroParameterMode.INLINE,
+                resourceKind = resourceKind)
     }
 
     private data class ExportedMember(
@@ -57,6 +59,7 @@ internal object MCFPPValueMembers {
         val members: List<ExportedMember>,
         val receiverAliases: Map<String, String>,
         val implementations: List<ExportedImplementation>? = null,
+        val declarations: List<ExportedDeclaration>? = null,
     )
 
     private const val sourceUriPrefix = "mcfpp-kotlin-source:/"
@@ -117,8 +120,15 @@ internal object MCFPPValueMembers {
             catalogue.members.mapNotNull { entry -> entry.jvmBinding?.let { binding -> entry.implementation?.let { binding to it } } }
     }
 
+    private val sourceDeclarations by lazy { catalogue.declarations.orEmpty().groupBy { it.binding to it.name } }
+
+    private fun NativeBinding.jvmMethod() = JvmMethod(ownerClass, method, jvmParameters, jvmResult)
+
+    fun declaration(binding: NativeBinding, name: String): Location? =
+        sourceDeclarations[binding.jvmMethod() to name]?.singleOrNull()?.source?.location(stdlibUriPrefix)
+
     fun implementation(binding: NativeBinding): Location? =
-        implementations[JvmMethod(binding.ownerClass, binding.method, binding.jvmParameters, binding.jvmResult)]?.location()
+        implementations[binding.jvmMethod()]?.location()
 
     fun resolveImplementation(location: Location): Location? =
         resolveSource(location, sourceUriPrefix, "kotlin-sources", ".kt", localRoots)

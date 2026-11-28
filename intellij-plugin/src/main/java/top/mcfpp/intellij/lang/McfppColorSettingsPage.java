@@ -43,6 +43,7 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
             descriptor("Numbers", McfppSyntaxHighlighter.NUMBER),
             descriptor("Comments//Line and block", McfppSyntaxHighlighter.COMMENT),
             descriptor("Comments//Documentation", McfppSyntaxHighlighter.DOC_COMMENT),
+            descriptor("Comments//Documentation tags", McfppSyntaxHighlighter.DOC_TAG),
             descriptor("Braces", McfppSyntaxHighlighter.BRACES),
             descriptor("Brackets", McfppSyntaxHighlighter.BRACKETS),
             descriptor("Parentheses", McfppSyntaxHighlighter.PARENTHESES),
@@ -72,6 +73,7 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
                 @From(\"top.mcfpp.mni.minecraft.MinecraftObject\")
                 data <type>PlayerInfo</type> {
                     var <field>score</field>: int = 0
+                    /// <docTag>@return</docTag> Whether the score is positive.
                     func <function>update</function>(<parameter>target</parameter>: entity): bool {
                         var <variable>active</variable>: bool = true
                         return <field>score</field> >= 0 && active
@@ -94,6 +96,7 @@ public final class McfppColorSettingsPage implements ColorSettingsPage {
                 Map.entry("macroFunction", McfppSyntaxHighlighter.MACRO_FUNCTION),
                 Map.entry("mniFunction", McfppSyntaxHighlighter.MNI_FUNCTION),
                 Map.entry("parameter", McfppSyntaxHighlighter.PARAMETER),
+                Map.entry("docTag", McfppSyntaxHighlighter.DOC_TAG),
                 Map.entry("type", McfppSyntaxHighlighter.TYPE_NAME),
                 Map.entry("variable", McfppSyntaxHighlighter.VARIABLE),
                 Map.entry("field", McfppSyntaxHighlighter.FIELD),

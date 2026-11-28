@@ -123,4 +123,62 @@ public final class PackResourceIntegrationTest extends McfppJavaFixtureTestCase 
         myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
         assertTrue(myFixture.doHighlighting().stream().anyMatch(info -> "Resource conflicts with compiler output: demo:handle_use".equals(info.getDescription())));
     }
+
+    public void testResourceArgumentNavigatesAndWarnsOnlyForAnnotatedCalls() {
+        var function = raw();
+        var file = myFixture.addFileToProject("src/main/mcfpp/caller.mcfpp", """
+                func run(@Resource("function") id: string) {}
+                func say(id: string) {}
+                func caller() {
+                    run("demo:raw");
+                    run("demo:missing");
+                    say("demo:ignored");
+                }
+                """);
+        myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+        assertEquals(function, reference(file, "demo:raw").resolve());
+        var literal = file.findElementAt(file.getText().indexOf("demo:raw"));
+        assertNotNull(literal.getReference());
+        assertEquals(function, literal.getReference().resolve());
+        assertNull(file.findReferenceAt(file.getText().indexOf("demo:ignored") + 2));
+        var warnings = myFixture.doHighlighting().stream()
+                .filter(info -> info.getDescription() != null && info.getDescription().startsWith("Missing function resource:"))
+                .toList();
+        assertEquals(1, warnings.size());
+        assertEquals(com.intellij.lang.annotation.HighlightSeverity.WARNING, warnings.getFirst().getSeverity());
+        assertEquals("Missing function resource: demo:missing", warnings.getFirst().getDescription());
+    }
+
+    public void testResourceArgumentCompletionReplacesTheLiteralContents() {
+        raw();
+        var file = myFixture.addFileToProject("src/main/mcfpp/caller.mcfpp", """
+                func run(@Resource("function") id: string) {}
+                func caller() { run("demo:rxx"); }
+                """);
+        myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+        myFixture.getEditor().getCaretModel().moveToOffset(file.getText().indexOf("demo:rxx") + "demo:r".length());
+        var items = myFixture.completeBasic();
+        if (items != null) {
+            var item = Arrays.stream(items).filter(candidate -> candidate.getLookupString().equals("demo:raw")).findFirst().orElseThrow();
+            myFixture.getLookup().setCurrentItem(item);
+            myFixture.finishLookup('\n');
+        }
+        assertTrue(myFixture.getFile().getText(), myFixture.getFile().getText().contains("run(\"demo:raw\");"));
+    }
+
+    public void testMinecraftRegistryCompletionUsesTheProjectVersion() {
+        var file = myFixture.addFileToProject("src/main/mcfpp/caller.mcfpp", """
+                func effect(@Resource("effect") id: string) {}
+                func caller() { effect("spe"); }
+                """);
+        myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+        myFixture.getEditor().getCaretModel().moveToOffset(file.getText().indexOf("\"spe\"") + 4);
+        var items = myFixture.completeBasic();
+        if (items != null) {
+            var item = Arrays.stream(items).filter(candidate -> candidate.getLookupString().equals("minecraft:speed")).findFirst().orElseThrow();
+            myFixture.getLookup().setCurrentItem(item);
+            myFixture.finishLookup('\n');
+        }
+        assertTrue(myFixture.getFile().getText(), myFixture.getFile().getText().contains("effect(\"minecraft:speed\");"));
+    }
 }

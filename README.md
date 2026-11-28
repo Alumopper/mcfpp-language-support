@@ -2,7 +2,7 @@
 
 > Preview software: the language server and editor integrations are under active development. Please report reproducible issues through GitHub Issues.
 
-This repository provides an MCFPP language server built with Kotlin, ANTLR 4, and LSP4J, together with extensions for Visual Studio Code and IntelliJ IDEA. Language behavior follows the [MCFPP documentation](https://www.mcfpp.top/) and the compiler grammar.
+This repository provides an MCFPP language server built with Kotlin, ANTLR 4, and LSP4J, together with the IntelliJ IDEA plugin. Language behavior follows the [MCFPP documentation](https://www.mcfpp.top/) and the compiler grammar.
 
 Shared contracts use `abstract data` with explicit `abstract func` methods. Runtime variable declarations use `external name: Type`, replacing `dynamic`. The `interface` and `data abstract` declaration forms are retired.
 
@@ -32,16 +32,15 @@ Public address values use `ScoreRef` and `NBTRef<T>`, with synchronous `tryRead`
 ## Components
 
 ```text
-language-server/                  Kotlin LSP server, ANTLR grammar, and tests
-shared/                           Version preprocessing shared by the LSP and IntelliJ
-vscode-extension/                 VS Code client, syntax highlighting, and bundled server
+language-server/                  Kotlin LSP server and tests
+shared/                           Editor utilities shared by the LSP and IntelliJ
 intellij-plugin/                  IntelliJ IDEA plugin, LSP client, MNI support, and datapack editing
 examples/complete-mcfpp-project/  End-to-end MCFPP and Java/MNI sample project
 ```
 
 ### Visual Studio Code
 
-The VS Code extension recognizes `.mcfpp` files and uses `MinecraftCommands.syntax-mcfunction` for embedded Minecraft command language support. `redhat.java` is an optional enhancement: MCFPP editing works without it, while Java/MNI navigation and completion are enabled automatically when it is installed.
+The [MCFPP VS Code extension](https://github.com/Alumopper/MCFPP-vscode-extension) uses the standalone language server built here. Run `npm run sync-tools` in that repository to update its bundled tools.
 
 ### IntelliJ IDEA
 
@@ -62,20 +61,7 @@ cd language-server
 ./gradlew.bat clean test build
 ```
 
-The executable fat JAR is written to `language-server/build/libs/mcfpp-language-server.jar`. The build also synchronizes it to the VS Code extension's bundled `server` directory.
-
-### VS Code extension
-
-Node.js and npm are required.
-
-```powershell
-cd vscode-extension
-npm ci
-npm run compile
-npx @vscode/vsce package
-```
-
-Open the repository root or `vscode-extension` directory in VS Code, select `Run MCFPP Extension (Example Project)`, and press `F5`. The extension development host opens the complete example project directly.
+The standalone JAR is written to `language-server/build/libs/mcfpp-language-server.jar`. The IDEA plugin uses `language-server/build/libs/mcfpp-language-server-intellij.jar`.
 
 ### IntelliJ IDEA plugin
 

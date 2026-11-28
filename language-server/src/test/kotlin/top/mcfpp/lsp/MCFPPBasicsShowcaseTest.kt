@@ -91,6 +91,41 @@ class MCFPPBasicsShowcaseTest {
         }
     }
 
+    @Test fun `text members resolve and expose documentation inside interpolation`() {
+        val main = project().resolve("src/main/mcfpp/main.mcfpp")
+        val tripleQuote = "\"\"\""
+        main.writeText("""
+            func label(name: string, points: int): text {
+                return "${'$'}{Text.of(name).color("gold").bold()} + ${'$'}{Text.of(points).color("green")}"
+                    .hover(Text.of("help"))
+            }
+            func main() {
+                print("key: ${'$'}{Text.keybind("key.jump")}")
+                print("escaped: \${'$'}{Text.ignoredMember()}")
+                print(${tripleQuote}line
+                    ${'$'}{Text.of("outer (").hover("${'$'}{Text.of("inner )")}").bold()}
+                ${tripleQuote})
+                print("${'$'}{Text.of("invalid").missingTextMember()}")
+            }
+        """.trimIndent())
+        check(main) { server, uri, source, diagnostics ->
+            assertEquals(listOf("Undefined symbol `missingTextMember`"),
+                diagnostics.filter { it.severity == DiagnosticSeverity.Error }.map { it.message })
+            val service = server.textDocumentService
+            val document = TextDocumentIdentifier(uri)
+            fun at(marker: String) = offsetToPosition(source, source.indexOf(marker).also { assertTrue(it >= 0) } + marker.length)
+
+            val of = service.hover(HoverParams(document, at("+ ${'$'}{Text.o"))).get()
+            assertContains(of.contents.right.value, "十进制文本")
+            val color = service.hover(HoverParams(document, at(".col"))).get()
+            assertContains(color.contents.right.value, "#RRGGBB")
+            val signature = assertNotNull(service.signatureHelp(SignatureHelpParams(document, at(".color(\"go"))).get())
+            assertTrue(signature.signatures.any { it.label.contains("string") })
+            val completion = service.completion(CompletionParams(document, at("Text.of(name)."))).get()
+            assertTrue(completion.left.any { it.label == "color" })
+        }
+    }
+
     private fun checkTestCalls(file: Path) = check(file) { server, uri, source, diagnostics ->
         assertEquals(emptyList(), diagnostics.filter { it.severity == DiagnosticSeverity.Error }.map { it.message })
         for (name in listOf("sumTo", "factorial", "award", "half")) {

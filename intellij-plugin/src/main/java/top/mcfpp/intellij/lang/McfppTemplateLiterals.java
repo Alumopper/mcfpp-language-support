@@ -290,7 +290,7 @@ final class McfppTemplateLiterals implements TemplateLiterals.Resolver {
             }
             var parameters = callable.parameters();
             for (int i = 0; i < parameters.size(); i++) {
-                String parameter = parameters.get(i).substring(callable.signature());
+                String parameter = McfppParameterSyntax.declaration(parameters.get(i).substring(callable.signature())).text();
                 String name = parameter.split(":", 2)[0].strip();
                 if (argumentName == null ? i != call.currentArgument() : !argumentName.equals(name)) continue;
                 String type = declaredType(parameter);

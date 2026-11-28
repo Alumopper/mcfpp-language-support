@@ -132,6 +132,70 @@ class MCFPPBuiltinMemberEditorTest {
         assertEquals("mapImmutableList", sourceAt(implementation))
     }
 
+    @Test fun definitionLinksMarkTheUsageAndIgnoreVanillaCommandText() = withServer { server, document ->
+        server.initialize(InitializeParams().apply {
+            capabilities = ClientCapabilities().apply {
+                textDocument = TextDocumentClientCapabilities().apply {
+                    definition = DefinitionCapabilities().apply { linkSupport = true }
+                }
+            }
+        }).get(10, TimeUnit.SECONDS)
+        val text = """
+            func main(values: list<int>) {
+                var value = 3
+                /data modify storage showcase:inputs values set value [3,4,6]
+                /say ${'$'}{value}
+                var mapped = values.map { it * 2 }
+                print(value)
+                var ref = nbtStorageRef<list<int>>("showcase:inputs", "values")
+                ref.tryRead { input -> print(input) }
+            }
+        """.trimIndent()
+        val service = server.textDocumentService
+        service.didChange(DidChangeTextDocumentParams(VersionedTextDocumentIdentifier(document.uri, 2),
+            listOf(TextDocumentContentChangeEvent(text))))
+        fun definition(marker: String) = service.definition(DefinitionParams(document, position(text, marker)))
+            .get(10, TimeUnit.SECONDS)
+        fun link(marker: String, name: String): LocationLink {
+            val response = definition(marker)
+            assertTrue(response.isRight, "$marker: $response")
+            val link = response.right.single()
+            val range = link.originSelectionRange
+            assertEquals(name, text.lines()[range.start.line].substring(range.start.character, range.end.character))
+            return link
+        }
+        assertTrue(definition("set valu").left.isEmpty())
+        assertEquals(document.uri, link("say ${'$'}{valu", "value").targetUri)
+        assertEquals(document.uri, link("values.map { i", "it").targetUri)
+        assertTrue(link(".ma", "map").targetUri.endsWith("collections.mcfpp"))
+        assertTrue(link(".tryRe", "tryRead").targetUri.endsWith("ReferenceReadCallbacks.kt"))
+
+        var line = 0
+        var column = 0
+        val styles = service.semanticTokensFull(SemanticTokensParams(document)).get(10, TimeUnit.SECONDS).data
+            .chunked(5).map { (lines, characters, length, type) ->
+                line += lines
+                column = if (lines == 0) column + characters else characters
+                text.lines()[line].substring(column, column + length) to MCFPPSemanticTokenLegend.tokenTypes[type]
+            }
+        assertContains(styles, "map" to "macro")
+        assertContains(styles, "tryRead" to "mniFunction")
+    }
+
+    @Test fun compiledStdlibNativeFunctionsRetainTheirSourceDeclarations() {
+        val loader = javaClass.classLoader
+        val stdlib = loader.getResourceAsStream("datapack/targets/1.21.8/bin.mclib")
+            ?: loader.getResourceAsStream("datapack/bin.mclib")
+        val bytes = assertNotNull(stdlib).use { it.readBytes() }
+        val print = librarySymbols(bytes, "file:///mcfpp.toml", standard = true)
+            .single { it.name == "print" && it.parameters.singleOrNull()?.typeName == "int" }
+        val declaration = assertNotNull(MCFPPValueMembers.resolveDeclaration(print.location()))
+        assertTrue(declaration.uri.endsWith("lang/sys.mcfpp"))
+        assertEquals("print", sourceAt(declaration))
+        val implementation = assertNotNull(print.nativeImplementation?.let(MCFPPValueMembers::resolveImplementation))
+        assertEquals("printInt", sourceAt(implementation))
+    }
+
     @Test fun matchingSourceJarResolvesExactJvmOverload() {
         val root = Files.createTempDirectory("mcfpp-source-jar-test")
         try {

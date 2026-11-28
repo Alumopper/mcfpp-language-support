@@ -174,7 +174,10 @@ final class McfppScopeBinder {
                 if (contextType != null) continue;
                 // An implicit parameter exists only in a callback-shaped expression, not a control-flow block.
                 int before = previousCode(tokens, open - 1);
-                if (before < 0 || !Set.of(")", "=", "(", ",", "tryRead").contains(tokens.get(before).text())) continue;
+                int receiverDot = previousCode(tokens, before - 1);
+                boolean memberCall = before >= 0 && tokens.get(before).type() == McfppTokenTypes.IDENTIFIER &&
+                        receiverDot >= 0 && tokens.get(receiverDot).type() == McfppTokenTypes.DOT;
+                if (before < 0 || !memberCall && !Set.of(")", "=", "(", ",").contains(tokens.get(before).text())) continue;
                 if (")".equals(tokens.get(before).text())) {
                     int left = before - 1, depth = 1;
                     for (; left >= 0; left--) {
@@ -203,7 +206,8 @@ final class McfppScopeBinder {
             boolean readOnly,
             List<Draft> drafts
     ) {
-        int name = nextCode(tokens, start);
+        int declaration = McfppParameterSyntax.prefix(tokens, start, end).next();
+        int name = nextCode(tokens, declaration);
         while (name >= 0 && name < end && "var".equals(tokens.get(name).text())) {
             name = nextCode(tokens, name + 1);
         }
@@ -212,7 +216,7 @@ final class McfppScopeBinder {
         boolean annotation = afterName >= 0 && afterName < end && tokens.get(afterName).type() == McfppTokenTypes.COLON;
         boolean implicitType = readOnly && (afterName < 0 || afterName >= end || "=".equals(tokens.get(afterName).text()));
         if (!annotation && !implicitType) return;
-        int first = nextCode(tokens, start);
+        int first = nextCode(tokens, declaration);
         int last = previousCode(tokens, end - 1);
         String parameterSignature = first < 0 || last < first
                 ? tokens.get(name).text()

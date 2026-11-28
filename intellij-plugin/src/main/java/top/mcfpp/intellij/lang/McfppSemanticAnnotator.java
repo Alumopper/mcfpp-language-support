@@ -26,6 +26,10 @@ public final class McfppSemanticAnnotator implements Annotator, DumbAware {
         if (element.getFirstChild() != null || element.getNode() == null) {
             return;
         }
+        if (McfppDocumentationEditor.isComment(element)) {
+            McfppDocumentationEditor.highlight(element, holder);
+            return;
+        }
         boolean identifier = element.getNode().getElementType() == McfppTokenTypes.IDENTIFIER;
         boolean string = element.getNode().getElementType() == McfppTokenTypes.STRING;
         boolean command = element.getNode().getElementType() == McfppTokenTypes.COMMAND;

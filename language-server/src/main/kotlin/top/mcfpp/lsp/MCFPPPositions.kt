@@ -2,6 +2,14 @@ package top.mcfpp.lsp
 
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
+import org.antlr.v4.runtime.Token
+import top.mcfpp.antlr.mcfppLexer
+
+internal fun commandTextRanges(tokens: List<Token>, position: (Int) -> Position): Map<Int, List<Range>> =
+    tokens.asSequence()
+        .filter { it.type == mcfppLexer.OrgCommandText }
+        .map { Range(position(it.startIndex), position(it.stopIndex + 1)) }
+        .groupBy { it.start.line }
 
 internal fun offsetToPosition(text: String, offset: Int): Position {
     val boundedOffset = offset.coerceIn(0, text.length)

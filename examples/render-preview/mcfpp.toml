@@ -1,0 +1,4 @@
+schema = 1
+name = "render-preview"
+namespace = "example.preview"
+version = "1.21.8"

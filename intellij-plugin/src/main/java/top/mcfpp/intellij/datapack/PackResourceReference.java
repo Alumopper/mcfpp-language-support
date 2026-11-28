@@ -4,6 +4,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.*;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.api.resources.PackResources;
+import top.mcfpp.intellij.lang.McfppResourceArguments;
 
 public final class PackResourceReference extends PsiPolyVariantReferenceBase<PsiElement> {
     final PackResources.Reference resource;
@@ -46,5 +47,13 @@ public final class PackResourceReference extends PsiPolyVariantReferenceBase<Psi
         if (index != null) for (var ref : index.references(file)) if (ref.start() <= offset && offset < ref.end())
             return new PackResourceReference(file, new TextRange(ref.start(), ref.end()), ref);
         return null;
+    }
+
+    public static PsiReference forLiteral(PsiElement literal) {
+        var argument = McfppResourceArguments.forLiteral(literal);
+        var reference = argument == null ? null : argument.reference();
+        if (reference == null) return null;
+        int start = literal.getTextRange().getStartOffset();
+        return new PackResourceReference(literal, new TextRange(reference.start() - start, reference.end() - start), reference);
     }
 }

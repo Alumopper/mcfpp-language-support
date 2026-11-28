@@ -158,6 +158,19 @@ final class McfppPsiParser implements PsiParser {
                 builder.advanceLexer();
                 continue;
             }
+            if (atParameterStart && type == McfppTokenTypes.ANNOTATION) {
+                builder.advanceLexer();
+                if (builder.getTokenType() == McfppTokenTypes.LEFT_PARENTHESIS) {
+                    int depth = 0;
+                    do {
+                        IElementType annotationToken = builder.getTokenType();
+                        if (annotationToken == McfppTokenTypes.LEFT_PARENTHESIS) depth++;
+                        if (annotationToken == McfppTokenTypes.RIGHT_PARENTHESIS) depth--;
+                        builder.advanceLexer();
+                    } while (!builder.eof() && depth > 0);
+                }
+                continue;
+            }
             if (type == McfppTokenTypes.LEFT_PARENTHESIS) parentheses++;
             else if (type == McfppTokenTypes.RIGHT_PARENTHESIS && parentheses > 0) parentheses--;
             else if (type == McfppTokenTypes.LEFT_BRACKET) brackets++;

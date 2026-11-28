@@ -1,7 +1,3 @@
-/vscode-extension/node_modules/
-/vscode-extension/server/
-/vscode-extension/out/
-/vscode-extension/*.vsix
 /language-server/build/
 /language-server/docs/
 /language-server/.gradle/

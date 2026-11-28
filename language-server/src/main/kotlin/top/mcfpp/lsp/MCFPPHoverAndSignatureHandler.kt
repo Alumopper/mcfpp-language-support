@@ -14,8 +14,22 @@ import org.eclipse.lsp4j.SignatureHelpParams
 import org.eclipse.lsp4j.SignatureInformation
 import org.eclipse.lsp4j.SymbolKind
 import org.eclipse.lsp4j.jsonrpc.messages.Either
+import top.mcfpp.language.DocumentationMarkdown
+import top.mcfpp.language.McfppDocumentationData
 
 internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspaceView) {
+    fun documentation(params: HoverParams, analysis: MCFPPDocumentAnalysis): McfppDocumentationData? {
+        val symbol = workspace.resolveSymbolAt(params, analysis) ?: return null
+        val signature = if (symbol.kind in setOf(SymbolKind.Function, SymbolKind.Method, SymbolKind.Constructor)) {
+            buildSignatureLabel(symbol)
+        } else {
+            val type = hoverType(symbol, analysis)
+            symbol.name + (type?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+        }
+        return McfppDocumentationData(signature, symbol.documentation, symbol.namespaceName, symbol.containerName,
+            symbol.receiverType, symbol.detail.takeIf { symbol.kind == SymbolKind.EnumMember })
+    }
+
     fun hover(params: HoverParams, analysis: MCFPPDocumentAnalysis): Hover? {
         val symbol = workspace.resolveSymbolAt(params, analysis) ?: return null
         val markdown = buildString {
@@ -28,8 +42,7 @@ internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspa
                 append(" `")
                 append(symbol.name)
                 append('`')
-                val owner = if (symbol.uri == analysis.uri) analysis else workspace.allAnalyses()[symbol.uri]
-                (symbol.typeName ?: owner?.let { declarationType(it, symbol) })?.takeIf { it.isNotBlank() }?.let {
+                hoverType(symbol, analysis)?.takeIf { it.isNotBlank() }?.let {
                     append(" : `")
                     append(it)
                     append('`')
@@ -47,7 +60,7 @@ internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspa
             }
             symbol.documentation?.takeIf { it.isNotBlank() }?.let {
                 append("\n\n---\n\n")
-                append(it)
+                append(DocumentationMarkdown.render(it))
             }
             if (symbol.kind == SymbolKind.EnumMember && symbol.detail != null) append("\n\n`${symbol.detail}`")
         }
@@ -55,6 +68,11 @@ internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspa
         hover.contents = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, markdown))
         hover.range = analysis.wordRange(params.position) ?: symbol.selectionRange
         return hover
+    }
+
+    private fun hoverType(symbol: MCFPPSymbol, analysis: MCFPPDocumentAnalysis): String? {
+        val owner = if (symbol.uri == analysis.uri) analysis else workspace.allAnalyses()[symbol.uri]
+        return symbol.typeName ?: owner?.let { declarationType(it, symbol) }
     }
 
     fun signatureHelp(params: SignatureHelpParams, analysis: MCFPPDocumentAnalysis): SignatureHelp? {
@@ -179,10 +197,10 @@ internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspa
             ?.let { groupOffset + context.activeParameter.coerceAtMost(it.lastIndex) }
         return SignatureInformation(buildSignatureLabel(symbol, context.name)).apply {
             symbol.documentation?.takeIf { it.isNotBlank() }?.let {
-                documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, it))
+                documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, DocumentationMarkdown.render(it)))
             }
             this.parameters = parameters.map { parameter ->
-                val description = parameter.name?.let { parameterDocumentation(symbol.documentation, it) }
+                val description = parameter.name?.let { DocumentationMarkdown.parameter(symbol.documentation, it) }
                 if (description == null) ParameterInformation(parameter.label())
                 else ParameterInformation(parameter.label(), MarkupContent(MarkupKind.MARKDOWN, description))
             }
@@ -190,14 +208,4 @@ internal class MCFPPHoverAndSignatureHandler(private val workspace: MCFPPWorkspa
         }
     }
 
-    private fun parameterDocumentation(documentation: String?, parameterName: String): String? {
-        if (documentation.isNullOrBlank()) return null
-        val marker = "@param $parameterName"
-        return documentation.lineSequence()
-            .map(String::trim)
-            .firstOrNull { it == marker || it.startsWith("$marker ") }
-            ?.removePrefix(marker)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-    }
 }

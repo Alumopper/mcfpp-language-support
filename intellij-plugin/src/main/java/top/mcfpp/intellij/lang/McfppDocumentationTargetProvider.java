@@ -1,6 +1,5 @@
 package top.mcfpp.intellij.lang;
 
-import com.intellij.lang.documentation.DocumentationMarkup;
 import com.intellij.model.Pointer;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.util.text.StringUtil;
@@ -19,8 +18,7 @@ import com.intellij.psi.SmartPointerManager;
 import com.intellij.psi.SmartPsiElementPointer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.commonmark.parser.Parser;
-import org.commonmark.renderer.html.HtmlRenderer;
+import top.mcfpp.language.McfppDocumentationData;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,36 +27,41 @@ import java.util.Set;
 
 /** Quick Documentation backed by the same cached declaration model as navigation. */
 public final class McfppDocumentationTargetProvider implements DocumentationTargetProvider {
-    private static final Parser MARKDOWN_PARSER = Parser.builder().build();
-    private static final HtmlRenderer MARKDOWN_RENDERER = HtmlRenderer.builder().escapeHtml(true).sanitizeUrls(true).build();
-
-    static String renderMarkdown(String text) {
-        return MARKDOWN_RENDERER.render(MARKDOWN_PARSER.parse(text));
-    }
     @Override
     public @NotNull List<? extends @NotNull DocumentationTarget> documentationTargets(
             @NotNull PsiFile file,
             int offset
     ) {
-        // Reuse the LSP target, including compiler-injected APIs; retain native hover as a fallback.
-        // https://plugins.jetbrains.com/docs/intellij/documentation.html#documentation-target-api
-        if (file instanceof McfppFile) {
+        if (!(file instanceof McfppFile)) {
+            return referenceTargets(file.findReferenceAt(offset));
+        }
+        var remote = file.getProject().getService(McfppRemoteDocumentation.class);
+        if (remote == null || !remote.isAvailable()) {
+            // A different language server may also support this file.
             for (DocumentationTargetProvider provider : DocumentationTargetProvider.EP_NAME.getExtensionList()) {
                 if (provider.getClass().getName().startsWith("com.intellij.platform.lsp.") &&
                         !provider.documentationTargets(file, offset).isEmpty()) return List.of();
             }
-        }
-        if (!(file instanceof McfppFile)) {
-            PsiReference reference = file.findReferenceAt(offset);
-            if (reference == null) return List.of();
-            List<DocumentationTarget> targets = new ArrayList<>();
-            Set<String> seen = new HashSet<>();
-            if (reference instanceof PsiPolyVariantReference poly) {
-                for (ResolveResult resolved : poly.multiResolve(false)) addTarget(resolved.getElement(), targets, seen);
-            } else addTarget(reference.resolve(), targets, seen);
-            return targets;
+            remote = null;
         }
         int safeOffset = Math.max(0, Math.min(offset, Math.max(0, file.getTextLength() - 1)));
+        var targets = localTargets(file, safeOffset);
+        if (remote == null) return targets;
+        var target = McfppRemoteDocumentationTarget.at(file, safeOffset, remote, targets.isEmpty() ? null : targets.getFirst());
+        return target == null ? targets : List.of(target);
+    }
+
+    private static List<DocumentationTarget> referenceTargets(@Nullable PsiReference reference) {
+        if (reference == null) return List.of();
+        List<DocumentationTarget> targets = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        if (reference instanceof PsiPolyVariantReference poly) {
+            for (ResolveResult resolved : poly.multiResolve(false)) addTarget(resolved.getElement(), targets, seen);
+        } else addTarget(reference.resolve(), targets, seen);
+        return targets;
+    }
+
+    private static List<DocumentationTarget> localTargets(PsiFile file, int safeOffset) {
         List<PsiElement> fields = McfppTemplateLiterals.fieldTargets(file, safeOffset);
         if (fields != null) {
             List<DocumentationTarget> targets = new ArrayList<>();
@@ -151,31 +154,8 @@ public final class McfppDocumentationTargetProvider implements DocumentationTarg
         public @Nullable DocumentationResult computeDocumentation() {
             McfppSymbol symbol = currentSymbol();
             if (symbol == null) return null;
-            StringBuilder html = new StringBuilder()
-                    .append(DocumentationMarkup.DEFINITION_START)
-                    .append("<code>").append(escape(symbol.signature())).append("</code>")
-                    .append(DocumentationMarkup.DEFINITION_END);
-            if (symbol.documentation() != null && !symbol.documentation().isBlank()) {
-                html.append(DocumentationMarkup.CONTENT_START)
-                        .append(renderMarkdown(symbol.documentation()))
-                        .append(DocumentationMarkup.CONTENT_END);
-            }
-            html.append(DocumentationMarkup.SECTIONS_START)
-                    .append(DocumentationMarkup.SECTION_HEADER_START).append("Kind:")
-                    .append(DocumentationMarkup.SECTION_SEPARATOR).append(escape(symbol.kind().presentableName()))
-                    .append(DocumentationMarkup.SECTION_END);
-            if (!symbol.namespace().isEmpty()) {
-                html.append(DocumentationMarkup.SECTION_HEADER_START).append("Namespace:")
-                        .append(DocumentationMarkup.SECTION_SEPARATOR).append(escape(symbol.namespace()))
-                        .append(DocumentationMarkup.SECTION_END);
-            }
-            if (symbol.owner() != null) {
-                html.append(DocumentationMarkup.SECTION_HEADER_START).append("Owner:")
-                        .append(DocumentationMarkup.SECTION_SEPARATOR).append(escape(symbol.owner()))
-                        .append(DocumentationMarkup.SECTION_END);
-            }
-            html.append(DocumentationMarkup.SECTIONS_END);
-            return DocumentationResult.documentation(html.toString());
+            return McfppQuickDocumentation.render(filePointer.getProject(), new McfppDocumentationData(
+                    symbol.signature(), symbol.documentation(), symbol.namespace(), symbol.owner(), null, null));
         }
 
         private @Nullable McfppSymbol currentSymbol() {

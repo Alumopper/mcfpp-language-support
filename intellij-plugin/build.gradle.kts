@@ -26,6 +26,7 @@ fun bundledArtifact(name: String, purpose: String, dependencies: NamedDomainObje
 
 val compilerCli = bundledArtifact("compilerCli", "mcfpp-cli", compilerArtifacts)
 val compilerSources = bundledArtifact("compilerSources", "mcfpp-sources", compilerArtifacts)
+val editorMetadata = bundledArtifact("editorMetadata", "mcfpp-editor-metadata", compilerArtifacts)
 val stdlibSources = bundledArtifact("stdlibSources", "mcfpp-stdlib-sources", compilerArtifacts)
 val languageServerJar = bundledArtifact("languageServerJar", "mcfpp-intellij-server", serverArtifacts)
 
@@ -76,6 +77,8 @@ val generateEntityEditorApi by tasks.registering(JavaExec::class) {
 tasks.processResources {
     dependsOn(generateEntityEditorApi)
     from(layout.buildDirectory.dir("generated-entity-api"))
+    dependsOn(editorMetadata)
+    from({ zipTree(editorMetadata.get().singleFile) }) { include("minecraft-registries/*.tsv") }
 }
 
 val unpackPackResourceSources by tasks.registering(Sync::class) {

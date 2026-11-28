@@ -25,6 +25,7 @@ private fun MCFPPSymbol.withMacroMetadata(macro: MCFPPSymbol) = copy(
     typeParameters = macro.typeParameters.ifEmpty { typeParameters },
     parameters = if (parameters.size == macro.parameters.size) parameters.zip(macro.parameters).map { (source, metadata) ->
         source.copy(macroMode = metadata.macroMode ?: source.macroMode,
+            resourceKind = source.resourceKind ?: metadata.resourceKind,
             macroCallbackParameters = metadata.macroCallbackParameters.ifEmpty { source.macroCallbackParameters })
     } else parameters,
 )
@@ -34,6 +35,7 @@ internal class MCFPPWorkspaceView(
     private val openAnalyses: () -> Map<String, MCFPPDocumentAnalysis>
 ) {
     val calls = MCFPPCallQueries(this)
+    val resources = MCFPPResourceQueries(this, projectIndex)
 
     fun namespaceForUri(uri: String): String? = projectIndex.namespaceForUri(uri)
     class SymbolCaches {
@@ -41,6 +43,7 @@ internal class MCFPPWorkspaceView(
         @Volatile private var macroSignatures: Map<MacroSignatureKey, MCFPPSymbol>? = null
         @Volatile private var enumMemberNames: Set<String>? = null
         private val documents = ConcurrentHashMap<String, DocumentCaches>()
+        val resourceFunctions = ConcurrentHashMap<MCFPPProjectConfig, Map<String, List<org.eclipse.lsp4j.Location>>>()
 
         fun forDocument(analysis: MCFPPDocumentAnalysis): DocumentCaches =
             documents.compute(analysis.uri) { _, cached ->

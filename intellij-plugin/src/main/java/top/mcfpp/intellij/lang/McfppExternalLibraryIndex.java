@@ -9,6 +9,7 @@ import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import org.jetbrains.annotations.NotNull;
 import top.mcfpp.intellij.mni.McfppLibraryRootsProvider;
+import top.mcfpp.intellij.mni.MniJavaTargetParser;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -85,7 +86,8 @@ final class McfppExternalLibraryIndex {
             Set<String> typeNames
     ) {
         try {
-            McfppFileModel model = McfppFileModel.parse(VfsUtilCore.loadText(file));
+            String source = VfsUtilCore.loadText(file);
+            McfppFileModel model = McfppFileModel.parse(source);
             if (model.namespace().isEmpty()) {
                 model = model.withNamespace(McfppNamespaceResolver.infer(file).namespace());
             }
@@ -93,6 +95,12 @@ final class McfppExternalLibraryIndex {
                 names.add(symbol.name());
                 if (symbol.kind().isType()) typeNames.add(symbol.name());
                 files.computeIfAbsent(symbol.name(), ignored -> new LinkedHashSet<>()).add(file);
+            }
+            for (var target : MniJavaTargetParser.parse(source)) {
+                String key = target.kind() == MniJavaTargetParser.Kind.JAVA_METHOD
+                        ? McfppSymbolIndex.mniMethodKey(target.qualifiedName())
+                        : McfppSymbolIndex.mniClassKey(target.qualifiedName());
+                files.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(file);
             }
         } catch (IOException ignored) {
             // A single unreadable optional source file must not disable the rest of the library.

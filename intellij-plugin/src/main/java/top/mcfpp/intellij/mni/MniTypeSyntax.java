@@ -11,13 +11,13 @@ import java.util.*;
 final class MniTypeSyntax {
     static final Set<String> BUILTINS = Collections.unmodifiableSet(new LinkedHashSet<>(List.of(
             "int", "bool", "byte", "short", "long", "float", "double", "string", "entity", "text", "nbt",
-            "any", "object", "pos2", "pos3", "range", "Type", "ByteArray", "IntArray", "LongArray", "ScoreRef",
+            "any", "object", "DataObject", "pos2", "pos3", "range", "Type", "ByteArray", "IntArray", "LongArray", "ScoreRef",
             "NBTRef", "list", "map", "dict", "ImmutableList", "void")));
     record Name(String text, int start, int end, int arguments, boolean applied) {
         String simpleName() { return text.substring(text.lastIndexOf(':') + 1); }
         String namespace() { int colon = text.lastIndexOf(':'); return colon < 0 ? null : text.substring(0, colon); }
         int identifierStart() { return end - simpleName().length(); }
-        boolean builtin() { return BUILTINS.contains(text) || text.matches("vec[0-9]+"); }
+        boolean builtin() { return BUILTINS.contains(text) || text.equals("mcfpp.lang:DataObject") || text.matches("vec[0-9]+"); }
     }
     record Problem(int start, int end, String message) {}
     record Result(List<Name> names, List<Problem> problems, int typeEnd) {}

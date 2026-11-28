@@ -220,6 +220,44 @@ public final class MniAnnotationTypesTest extends McfppJavaFixtureTestCase {
         assertContainsElements(myFixture.getLookupElementStrings(), "int", "demo:Widget");
     }
 
+    public void testKotlinNativeAndMacroGenericsUseTheirDeclaringScopes() {
+        myFixture.addClass("package top.mcfpp.mni.api; public class MacroContext {}");
+        myFixture.addFileToProject("src/main/mcfpp/dependency.mcfpp", "namespace models; data Payload {}");
+        myFixture.addFileToProject("src/main/mcfpp/binding.mcfpp", """
+                namespace demo
+                import models:Payload as Item
+                func list<E>.expand<R>(transform: (E) -> Item): list<R> = sample.Provider.expand
+                """);
+        var file = myFixture.configureByText("Provider.kt", """
+                package sample
+                import top.mcfpp.annotations.*
+                import top.mcfpp.mni.api.MacroContext
+                object Provider {
+                    @JvmStatic
+                    @MNIMacro(normalParams = ["(E)->Item"], returnType = "list<R>")
+                    fun expand(context: MacroContext, transform: Any) {}
+                    @MNIFunction(normalParams = ["E", "DataObject"], genericType = ["E"])
+                    fun nativeEntry() {}
+                    @MNIFunction(normalParams = ["E"])
+                    fun unrelated() {}
+                }
+                """);
+        var errors = myFixture.doHighlighting(HighlightSeverity.ERROR).stream().filter(info ->
+                info.getDescription() != null && info.getDescription().startsWith("Unknown MCFPP type")).toList();
+        assertEquals(errors.toString(), 1, errors.size());
+        assertTrue(errors.getFirst().startOffset > file.getText().indexOf("fun nativeEntry"));
+        for (String name : List.of("E", "Item", "R")) {
+            int offset = switch (name) {
+                case "E" -> file.getText().indexOf("(E)") + 1;
+                case "Item" -> file.getText().indexOf("->Item") + 2;
+                default -> file.getText().indexOf("list<R>") + 5;
+            };
+            var reference = file.findReferenceAt(offset);
+            assertNotNull(name, reference);
+            assertNotNull(name, reference.resolve());
+        }
+    }
+
     public void testUnqualifiedTypeUsesTheNativeDeclarationNamespace() {
         myFixture.addFileToProject("src/main/mcfpp/binding.mcfpp", """
                 namespace bound;

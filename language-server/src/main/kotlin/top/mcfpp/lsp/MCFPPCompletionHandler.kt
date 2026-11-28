@@ -12,6 +12,7 @@ import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.SymbolKind
 import org.eclipse.lsp4j.TextEdit
 import org.eclipse.lsp4j.jsonrpc.messages.Either
+import top.mcfpp.language.DocumentationMarkdown
 import top.mcfpp.language.VersionPreprocessor
 
 internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView) {
@@ -49,6 +50,12 @@ internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView)
                 }
             }
             return Either.forLeft(items)
+        }
+        workspace.resources.completions(analysis, params.position)?.let {
+            return Either.forLeft(it)
+        }
+        when (params.context?.triggerCharacter) {
+            "\"", "'" -> return Either.forLeft(emptyList())
         }
         templateCompletions(analysis, params.position)?.let {
             return Either.forLeft(it)
@@ -134,7 +141,9 @@ internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView)
             CompletionItem(field.name()).apply {
                 kind = CompletionItemKind.Field
                 detail = "${field.name()}: ${field.type()}" + if (field.hasDefault()) " (default)" else ""
-                symbol?.documentation?.let { documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, it)) }
+                symbol?.documentation?.let {
+                    documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, DocumentationMarkdown.render(it)))
+                }
                 insertTextFormat = if (site.hasColon()) InsertTextFormat.PlainText else InsertTextFormat.Snippet
                 textEdit = Either.forLeft(TextEdit(Range(offsetToPosition(analysis.text, site.start()), offsetToPosition(analysis.text, site.end())),
                     field.name() + if (site.hasColon()) "" else ": \${1}"))
@@ -221,7 +230,7 @@ internal class MCFPPCompletionHandler(private val workspace: MCFPPWorkspaceView)
             symbol.typeName ?: symbol.detail ?: symbol.containerName
         }
         symbol.documentation?.takeIf { it.isNotBlank() }?.let {
-            documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, it))
+            documentation = Either.forRight(MarkupContent(MarkupKind.MARKDOWN, DocumentationMarkdown.render(it)))
         }
     }
 

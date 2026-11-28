@@ -281,7 +281,8 @@ internal class MCFPPDocumentLifecycle(private val server: MCFPPLanguageServer) {
                         symbol.isMacro.toString(),
                         symbol.isNative.toString(),
                         symbol.superTypes.joinToString(","),
-                        parameterSignatureKey(symbol)
+                        parameterSignatureKey(symbol),
+                        symbol.parameters.joinToString(",") { it.resourceKind.orEmpty() }
                     ).joinToString("|")
                 }
                 .sorted()

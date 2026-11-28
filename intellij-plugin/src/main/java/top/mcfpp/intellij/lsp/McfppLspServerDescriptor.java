@@ -38,6 +38,11 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
     public @NotNull com.intellij.platform.lsp.api.customization.LspCustomization getLspCustomization() {
         return new com.intellij.platform.lsp.api.customization.LspCustomization() {
             @Override
+            public @NotNull com.intellij.platform.lsp.api.customization.LspHoverCustomizer getHoverCustomizer() {
+                return com.intellij.platform.lsp.api.customization.LspHoverDisabled.INSTANCE;
+            }
+
+            @Override
             public @NotNull com.intellij.platform.lsp.api.customization.LspCompletionCustomizer getCompletionCustomizer() {
                 return new McfppLspCompletionSupport();
             }
@@ -45,6 +50,11 @@ final class McfppLspServerDescriptor extends ProjectWideLspServerDescriptor {
             @Override
             public @NotNull com.intellij.platform.lsp.api.customization.LspDiagnosticsCustomizer getDiagnosticsCustomizer() {
                 return new McfppLspDiagnosticsSupport();
+            }
+
+            @Override
+            public @NotNull com.intellij.platform.lsp.api.customization.LspSemanticTokensCustomizer getSemanticTokensCustomizer() {
+                return new McfppLspSemanticTokensSupport();
             }
 
             @Override

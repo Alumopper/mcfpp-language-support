@@ -142,7 +142,7 @@ final class McfppTypes {
     }
 
     private static String parameterType(String signature, TextRange range) {
-        String parameter = range.substring(signature).strip();
+        String parameter = McfppParameterSyntax.declaration(range.substring(signature)).text().strip();
         int assignment = parameter.indexOf('=');
         if (assignment >= 0) parameter = parameter.substring(0, assignment).stripTrailing();
         int annotation = parameter.indexOf(':');

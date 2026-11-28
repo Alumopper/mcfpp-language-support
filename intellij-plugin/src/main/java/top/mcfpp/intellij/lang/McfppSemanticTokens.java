@@ -186,7 +186,8 @@ final class McfppSemanticTokens {
     private static boolean isFunctionCall(List<Token> tokens, int identifierIndex) {
         int next = nextSignificant(tokens, identifierIndex + 1);
         if (next < 0) return false;
-        if (tokens.get(next).type() == McfppTokenTypes.LEFT_PARENTHESIS) return true;
+        if (tokens.get(next).type() == McfppTokenTypes.LEFT_PARENTHESIS ||
+                tokens.get(next).type() == McfppTokenTypes.LEFT_BRACE && isMemberAccess(tokens, identifierIndex)) return true;
         if (!"<".equals(tokens.get(next).text())) return false;
         int close = matchingClosingAngle(tokens, next);
         int normalArguments = nextSignificant(tokens, close + 1);

@@ -6,10 +6,10 @@ public final class MemberExpressions {
 
     public static boolean endsAtCall(String text, int open) {
         if (open < 0 || !text.endsWith(")")) return false;
-        boolean[] code = codeMask(text, text.length());
+        var code = McfppCodeMask.scan(text, text.length());
         int depth = 0;
         for (int i = open; i < text.length(); i++) {
-            if (!code[i]) continue;
+            if (!code.includes(i)) continue;
             if (text.charAt(i) == '(') depth++;
             if (text.charAt(i) == ')' && --depth == 0) return i == text.length() - 1;
         }
@@ -20,13 +20,13 @@ public final class MemberExpressions {
     public static String calledMemberReceiver(String expression, String name) {
         String text = expression.strip();
         if (!text.endsWith(")")) return null;
-        boolean[] code = codeMask(text, text.length());
+        var code = McfppCodeMask.scan(text, text.length());
         var matcher = java.util.regex.Pattern.compile("\\.\\s*" + java.util.regex.Pattern.quote(name) + "\\s*\\(").matcher(text);
         while (matcher.find()) {
-            if (!code[matcher.start()]) continue;
+            if (!code.includes(matcher.start())) continue;
             int depth = 1;
             for (int index = matcher.end(); index < text.length(); index++) {
-                if (!code[index]) continue;
+                if (!code.includes(index)) continue;
                 if (text.charAt(index) == '(') depth++;
                 else if (text.charAt(index) == ')' && --depth == 0) {
                     if (index == text.length() - 1) return receiverBefore(text, matcher.start());
@@ -42,7 +42,8 @@ public final class MemberExpressions {
         // Either dot in a range operator is not a member separator.
         if (separator > 0 && source.charAt(separator - 1) == '.' ||
                 separator + 1 < source.length() && source.charAt(separator + 1) == '.') return null;
-        return expressionBefore(source, separator);
+        var code = McfppCodeMask.scan(source, separator + 1);
+        return code.includes(separator) ? expressionBefore(source, separator, code) : null;
     }
 
     /** Receiver in a reference read with a trailing callback. */
@@ -56,14 +57,17 @@ public final class MemberExpressions {
     }
 
     static String expressionBefore(CharSequence source, int separator) {
-        boolean[] code = codeMask(source, separator);
+        return expressionBefore(source, separator, McfppCodeMask.scan(source, separator));
+    }
+
+    private static String expressionBefore(CharSequence source, int separator, McfppCodeMask code) {
         int end = separator;
         if (end > 0 && source.charAt(end - 1) == '?') end--;
-        while (end > 0 && Character.isWhitespace(source.charAt(end - 1))) end--;
+        while (end > code.start() && Character.isWhitespace(source.charAt(end - 1))) end--;
         int parentheses = 0, brackets = 0, braces = 0, angles = 0;
         int index = end - 1;
-        for (; index >= 0; index--) {
-            if (!code[index]) continue;
+        for (; index >= code.start(); index--) {
+            if (!code.includes(index)) continue;
             char value = source.charAt(index);
             boolean nested = parentheses > 0 || brackets > 0 || braces > 0 || angles > 0;
             if (value == ')') parentheses++;
@@ -128,31 +132,4 @@ public final class MemberExpressions {
         return index >= 0 && (source.charAt(index) == '{' || source.charAt(index) == ',');
     }
 
-    private static boolean[] codeMask(CharSequence source, int end) {
-        boolean[] code = new boolean[end];
-        for (int index = 0; index < end;) {
-            char value = source.charAt(index);
-            if (value == '\'' || value == '"') {
-                char quote = value;
-                boolean triple = index + 2 < end && source.charAt(index + 1) == quote && source.charAt(index + 2) == quote;
-                index += triple ? 3 : 1;
-                while (index < end) {
-                    if (source.charAt(index) == '\\') { index = Math.min(end, index + 2); continue; }
-                    if (source.charAt(index) == quote && (!triple || index + 2 < end &&
-                            source.charAt(index + 1) == quote && source.charAt(index + 2) == quote)) {
-                        index += triple ? 3 : 1;
-                        break;
-                    }
-                    index++;
-                }
-            } else if (value == '/' && index + 1 < end && source.charAt(index + 1) == '/') {
-                while (index < end && source.charAt(index) != '\n') index++;
-            } else if (value == '/' && index + 1 < end && source.charAt(index + 1) == '*') {
-                index += 2;
-                while (index + 1 < end && !(source.charAt(index) == '*' && source.charAt(index + 1) == '/')) index++;
-                index = Math.min(end, index + 2);
-            } else code[index++] = true;
-        }
-        return code;
-    }
 }

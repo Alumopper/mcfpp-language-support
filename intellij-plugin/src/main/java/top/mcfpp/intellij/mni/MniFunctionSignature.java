@@ -20,7 +20,8 @@ record MniFunctionSignature(
         @NotNull String returnType,
         @NotNull List<String> readOnlyNames,
         @NotNull List<String> normalNames,
-        int nameOffset
+        int nameOffset,
+        int receiverStartOffset
 ) {
     private static final Pattern FUNCTION_NAME = Pattern.compile(
             "\\bfunc\\s+(?:([A-Za-z_$][A-Za-z0-9_$:!?<>.,\\[\\]\\s]*)\\.\\s*)?([A-Za-z_$][A-Za-z0-9_$]*)"
@@ -73,7 +74,7 @@ record MniFunctionSignature(
         }
         return Optional.of(new MniFunctionSignature(function.group(2), receiver,
                 receiver.isEmpty() ? List.of() : readOnlyNames, readOnly, normal, returnType,
-                readOnlyNames, normalNames, start + function.start(2)));
+                readOnlyNames, normalNames, start + function.start(2), receiver.isEmpty() ? -1 : start + function.start(1)));
     }
 
     boolean parametersMatch(MniJavaAnnotation annotation) {

@@ -1,6 +1,7 @@
 package top.mcfpp.lsp
 
 import org.eclipse.lsp4j.Position
+import top.mcfpp.language.McfppCodeMask
 
 internal enum class MCFPPArgumentGroup {
     READ_ONLY,
@@ -30,13 +31,13 @@ internal object MCFPPCallContextFinder {
         if (cursorOffset <= 0) {
             return emptyList()
         }
-        val mask = codeMask(text, cursorOffset)
+        val mask = McfppCodeMask.scan(text, cursorOffset)
         val expectedOpen = ArrayDeque<Char>()
         val candidates = mutableListOf<MCFPPCallContext>()
         var index = cursorOffset - 1
 
-        while (index >= 0) {
-            if (!mask[index]) {
+        while (index >= mask.start()) {
+            if (!mask.includes(index)) {
                 index -= 1
                 continue
             }
@@ -77,7 +78,7 @@ internal object MCFPPCallContextFinder {
         text: String,
         openOffset: Int,
         cursorOffset: Int,
-        mask: BooleanArray,
+        mask: McfppCodeMask,
         group: MCFPPArgumentGroup
     ): MCFPPCallContext? {
         val head = parseHead(text, openOffset, mask) ?: return null
@@ -100,7 +101,7 @@ internal object MCFPPCallContextFinder {
         )
     }
 
-    private fun readOnlyArgumentsBefore(text: String, normalOpenOffset: Int, mask: BooleanArray): List<String> {
+    private fun readOnlyArgumentsBefore(text: String, normalOpenOffset: Int, mask: McfppCodeMask): List<String> {
         val closeOffset = skipWhitespaceBackward(text, normalOpenOffset - 1)
         if (closeOffset < 0 || text[closeOffset] != '>') {
             return emptyList()
@@ -115,7 +116,7 @@ internal object MCFPPCallContextFinder {
 
     private data class CallHead(val name: String, val qualifier: String?, val separator: Char?)
 
-    private fun parseHead(text: String, openOffset: Int, mask: BooleanArray): CallHead? {
+    private fun parseHead(text: String, openOffset: Int, mask: McfppCodeMask): CallHead? {
         var headEnd = openOffset
         var index = skipWhitespaceBackward(text, headEnd - 1)
         if (openOffset < text.length && text[openOffset] == '(' && index >= 0 && text[index] == '>') {
@@ -165,7 +166,7 @@ internal object MCFPPCallContextFinder {
         return CallHead(name, qualifier, separator)
     }
 
-    private fun splitArgumentRanges(text: String, start: Int, end: Int, mask: BooleanArray): List<IntRange> {
+    private fun splitArgumentRanges(text: String, start: Int, end: Int, mask: McfppCodeMask): List<IntRange> {
         if (start >= end) {
             return listOf(start until start)
         }
@@ -177,7 +178,7 @@ internal object MCFPPCallContextFinder {
         var angles = 0
         var index = start
         while (index < end) {
-            if (!mask[index]) {
+            if (!mask.includes(index)) {
                 index += 1
                 continue
             }
@@ -201,11 +202,11 @@ internal object MCFPPCallContextFinder {
         return result
     }
 
-    private fun matchingOpen(text: String, closeOffset: Int, open: Char, close: Char, mask: BooleanArray): Int {
+    private fun matchingOpen(text: String, closeOffset: Int, open: Char, close: Char, mask: McfppCodeMask): Int {
         var depth = 1
         var index = closeOffset - 1
-        while (index >= 0) {
-            if (mask[index]) {
+        while (index >= mask.start()) {
+            if (mask.includes(index)) {
                 when (text[index]) {
                     close -> depth += 1
                     open -> {
@@ -219,11 +220,11 @@ internal object MCFPPCallContextFinder {
         return -1
     }
 
-    private fun matchingClose(text: String, openOffset: Int, end: Int, mask: BooleanArray): Int {
+    private fun matchingClose(text: String, openOffset: Int, end: Int, mask: McfppCodeMask): Int {
         var depth = 1
         var index = openOffset + 1
         while (index < end) {
-            if (mask[index]) {
+            if (mask.includes(index)) {
                 when (text[index]) {
                     '<' -> depth += 1
                     '>' -> {
@@ -245,47 +246,4 @@ internal object MCFPPCallContextFinder {
 
     private fun isIdentifierPart(character: Char): Boolean = character == '_' || character.isLetterOrDigit()
 
-    private fun codeMask(text: String, end: Int): BooleanArray {
-        val mask = BooleanArray(end)
-        var index = 0
-        while (index < end) {
-            when {
-                text.startsWith("\"\"\"", index) -> index = skipDelimited(text, index, end, "\"\"\"")
-                text[index] == '"' -> index = skipQuoted(text, index, end, '"')
-                text[index] == '\'' -> index = skipQuoted(text, index, end, '\'')
-                text.startsWith("//", index) || text[index] == '#' -> {
-                    while (index < end && text[index] != '\r' && text[index] != '\n') index += 1
-                }
-                else -> {
-                    mask[index] = true
-                    index += 1
-                }
-            }
-        }
-        return mask
-    }
-
-    private fun skipQuoted(text: String, start: Int, end: Int, quote: Char): Int {
-        var index = start + 1
-        while (index < end) {
-            if (text[index] == '\\') {
-                index += 2
-            } else if (text[index] == quote) {
-                return index + 1
-            } else {
-                index += 1
-            }
-        }
-        return end
-    }
-
-    private fun skipDelimited(text: String, start: Int, end: Int, delimiter: String): Int {
-        val close = text.indexOf(delimiter, start + delimiter.length)
-        return if (close < 0 || close >= end) end else close + delimiter.length
-    }
-
-    private fun skipUntil(text: String, start: Int, end: Int, delimiter: String, advance: Int = delimiter.length): Int {
-        val close = text.indexOf(delimiter, start + advance)
-        return if (close < 0 || close >= end) end else close + delimiter.length
-    }
 }
